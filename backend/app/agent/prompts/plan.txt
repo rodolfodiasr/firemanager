@@ -1,0 +1,38 @@
+Com base nos dados coletados, gere um ActionPlan estruturado em JSON.
+
+Dados coletados:
+{collected_data}
+
+Dispositivo alvo:
+- ID: {device_id}
+- Vendor: {vendor}
+- Versão: {firmware_version}
+
+Intenção identificada: {intent}
+
+Gere o ActionPlan no seguinte formato JSON (sem markdown):
+{
+  "intent": "<intent_type>",
+  "device_id": "<uuid>",
+  "steps": [
+    {
+      "sequence": 1,
+      "action": "<ação específica do vendor>",
+      "params": {}
+    }
+  ],
+  "rule_spec": {
+    "name": "<nome da regra>",
+    "src_address": "<endereço origem>",
+    "dst_address": "<endereço destino>",
+    "service": "<serviço/porta>",
+    "action": "accept|deny",
+    "comment": "<comentário>",
+    "extra": {}
+  },
+  "group_spec": null,
+  "raw_intent_data": {}
+}
+
+Se a intenção for create_group, preencha group_spec em vez de rule_spec.
+Para delete_rule e list_rules, rule_spec pode ser null.
