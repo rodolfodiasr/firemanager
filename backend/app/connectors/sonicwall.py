@@ -276,10 +276,11 @@ class SonicWallConnector(BaseConnector):
         if isinstance(access_rules, dict):
             raw_list = access_rules.get("ipv4", [])
         elif isinstance(access_rules, list):
+            # v7 format: [{"ipv4": {...}}, ...] — each entry is a dict with ipv4 wrapper
             raw_list = []
             for item in access_rules:
                 if isinstance(item, dict):
-                    raw_list.extend(item["ipv4"]) if "ipv4" in item else raw_list.append(item)
+                    raw_list.append(item["ipv4"]) if "ipv4" in item else raw_list.append(item)
         else:
             raw_list = []
 
