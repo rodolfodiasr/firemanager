@@ -20,8 +20,9 @@ export function Login() {
     try {
       await signIn(data.email, data.password, data.totp_code);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(msg ?? "Credenciais inválidas");
+      const raw = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      const msg = typeof raw === "string" ? raw : "Credenciais inválidas";
+      setError(msg);
     }
   };
 
