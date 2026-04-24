@@ -51,10 +51,10 @@ class SonicWallConnector(BaseConnector):
         }
         base_headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
-        # Try Basic Auth first, then Digest Auth as fallback
+        # Try Digest Auth first (SonicOS 6.x/TZ series), then Basic (SonicOS 7+ session mode)
         for auth in (
-            httpx.BasicAuth(self.username, self.password),
             httpx.DigestAuth(self.username, self.password),
+            httpx.BasicAuth(self.username, self.password),
         ):
             async with httpx.AsyncClient(
                 base_url=self.base_url,
