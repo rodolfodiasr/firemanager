@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import type { ChatResponse } from "../types/operation";
 
 export interface ChatMessage {
   role: "user" | "assistant";

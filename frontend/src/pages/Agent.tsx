@@ -3,7 +3,6 @@ import { PageWrapper } from "../components/layout/PageWrapper";
 import { ChatWindow } from "../components/agent/ChatWindow";
 import { useDevices } from "../hooks/useDevices";
 import { useAgent } from "../hooks/useAgent";
-import { ChevronDown } from "lucide-react";
 
 export function Agent() {
   const { devices } = useDevices();
