@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from sqlalchemy import select
@@ -7,6 +8,8 @@ from app.connectors.factory import get_connector
 from app.models.device import Device, DeviceStatus
 from app.schemas.device import DeviceCreate, DeviceUpdate
 from app.utils.crypto import encrypt_credentials
+
+logger = logging.getLogger(__name__)
 
 
 class DeviceNotFoundError(Exception):
@@ -86,10 +89,12 @@ async def health_check_device(db: AsyncSession, device_id: UUID) -> Device:
             if result.firmware_version:
                 device.firmware_version = result.firmware_version
         else:
+            logger.warning("Health check failed for device %s: %s", device_id, result.error)
             device.status = DeviceStatus.offline
         from datetime import datetime, timezone
         device.last_seen = datetime.now(timezone.utc)
-    except Exception:
+    except Exception as exc:
+        logger.exception("Health check exception for device %s: %s", device_id, exc)
         device.status = DeviceStatus.error
     await db.flush()
     await db.refresh(device)
