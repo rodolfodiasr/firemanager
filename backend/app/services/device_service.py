@@ -29,6 +29,7 @@ async def create_device(db: AsyncSession, data: DeviceCreate) -> Device:
     )
     db.add(device)
     await db.flush()
+    await db.refresh(device)
     return device
 
 
@@ -66,6 +67,7 @@ async def update_device(db: AsyncSession, device_id: UUID, data: DeviceUpdate) -
     if data.notes is not None:
         device.notes = data.notes
     await db.flush()
+    await db.refresh(device)
     return device
 
 
@@ -90,4 +92,5 @@ async def health_check_device(db: AsyncSession, device_id: UUID) -> Device:
     except Exception:
         device.status = DeviceStatus.error
     await db.flush()
+    await db.refresh(device)
     return device
