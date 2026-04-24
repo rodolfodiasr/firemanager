@@ -98,8 +98,8 @@ class SonicWallConnector(BaseConnector):
                     pass
 
     async def _commit(self, client: httpx.AsyncClient) -> None:
-        if self._v6:
-            await client.post("/api/sonicos/config/pending")
+        # Both v6 and v7 require POST /config/pending to persist staged changes
+        await client.post("/api/sonicos/config/pending")
 
     # ------------------------------------------------------------------
     # Firmware retrieval
