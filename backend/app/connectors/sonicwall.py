@@ -242,10 +242,11 @@ class SonicWallConnector(BaseConnector):
                     }
                 ]
             }
+        # v7/v8: array of per-entry {"ipv4": {...}} wrappers (same pattern as address-objects)
         return {
-            "access_rules": {
-                "ipv4": [
-                    {
+            "access_rules": [
+                {
+                    "ipv4": {
                         "name": spec.name,
                         "enable": True,
                         "action": {"action": spec.action},
@@ -256,8 +257,8 @@ class SonicWallConnector(BaseConnector):
                         "service": {"name": svc_name},
                         "comment": spec.comment or "",
                     }
-                ]
-            }
+                }
+            ]
         }
 
     # ------------------------------------------------------------------
