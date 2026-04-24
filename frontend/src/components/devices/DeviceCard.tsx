@@ -1,4 +1,4 @@
-import { Server, RefreshCw, Trash2 } from "lucide-react";
+import { Server, RefreshCw, Trash2, Pencil } from "lucide-react";
 import type { Device } from "../../types/device";
 import { HealthBadge } from "./HealthBadge";
 
@@ -6,6 +6,7 @@ interface DeviceCardProps {
   device: Device;
   onSelect: (id: string) => void;
   onHealthCheck: (id: string) => void;
+  onEdit: (device: Device) => void;
   onDelete: (id: string) => void;
   isSelected?: boolean;
 }
@@ -22,6 +23,7 @@ export function DeviceCard({
   device,
   onSelect,
   onHealthCheck,
+  onEdit,
   onDelete,
   isSelected = false,
 }: DeviceCardProps) {
@@ -60,6 +62,13 @@ export function DeviceCard({
         >
           <RefreshCw size={12} />
           Verificar
+        </button>
+        <button
+          onClick={() => onEdit(device)}
+          className="flex items-center gap-1 text-xs text-gray-600 hover:text-brand-600 transition-colors"
+        >
+          <Pencil size={12} />
+          Editar
         </button>
         <button
           onClick={() => onDelete(device.id)}

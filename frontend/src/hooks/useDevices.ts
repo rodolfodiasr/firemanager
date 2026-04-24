@@ -3,6 +3,11 @@ import toast from "react-hot-toast";
 import { devicesApi } from "../api/devices";
 import type { DeviceCreate } from "../types/device";
 
+interface UpdateArgs {
+  id: string;
+  data: Partial<DeviceCreate>;
+}
+
 export function useDevices() {
   const qc = useQueryClient();
 
@@ -28,6 +33,15 @@ export function useDevices() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: UpdateArgs) => devicesApi.update(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["devices"] });
+      toast.success("Dispositivo atualizado");
+    },
+    onError: () => toast.error("Erro ao atualizar dispositivo"),
+  });
+
   const healthCheckMutation = useMutation({
     mutationFn: devicesApi.healthCheck,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }),
@@ -37,6 +51,7 @@ export function useDevices() {
     devices: devicesQuery.data ?? [],
     isLoading: devicesQuery.isLoading,
     create: createMutation.mutateAsync,
+    update: (id: string, data: Partial<DeviceCreate>) => updateMutation.mutateAsync({ id, data }),
     remove: deleteMutation.mutate,
     healthCheck: healthCheckMutation.mutate,
   };

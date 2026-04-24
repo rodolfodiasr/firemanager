@@ -3,14 +3,16 @@ import { Plus } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { DeviceCard } from "../components/devices/DeviceCard";
 import { AddDeviceModal } from "../components/devices/AddDeviceModal";
+import { EditDeviceModal } from "../components/devices/EditDeviceModal";
 import { ConfirmModal } from "../components/shared/ConfirmModal";
 import { EmptyState } from "../components/shared/EmptyState";
 import { useDevices } from "../hooks/useDevices";
-import type { DeviceCreate } from "../types/device";
+import type { Device, DeviceCreate } from "../types/device";
 
 export function Devices() {
-  const { devices, isLoading, create, remove, healthCheck } = useDevices();
+  const { devices, isLoading, create, update, remove, healthCheck } = useDevices();
   const [showAdd, setShowAdd] = useState(false);
+  const [editDevice, setEditDevice] = useState<Device | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const handleCreate = async (data: DeviceCreate) => {
@@ -54,6 +56,7 @@ export function Devices() {
               device={device}
               onSelect={() => {}}
               onHealthCheck={healthCheck}
+              onEdit={setEditDevice}
               onDelete={(id) => setDeleteId(id)}
             />
           ))}
@@ -61,6 +64,13 @@ export function Devices() {
       )}
 
       <AddDeviceModal isOpen={showAdd} onClose={() => setShowAdd(false)} onSubmit={handleCreate} />
+
+      <EditDeviceModal
+        isOpen={!!editDevice}
+        device={editDevice}
+        onClose={() => setEditDevice(null)}
+        onSubmit={update}
+      />
 
       <ConfirmModal
         isOpen={!!deleteId}
