@@ -1,7 +1,8 @@
 """SonicWall SonicOS 6/7/8 REST API connector."""
+import contextlib
 import json
 import time
-from typing import Any
+from typing import Any, AsyncGenerator
 
 import httpx
 
@@ -18,7 +19,9 @@ from app.connectors.base import (
 class SonicWallConnector(BaseConnector):
     """SonicOS 6.5/7.x/8.x REST API connector.
 
-    SonicOS 6 requires an explicit commit after mutations — handled automatically.
+    SonicOS 7+ uses session-based auth: POST /api/sonicos/auth to get a
+    session cookie, then use the cookie for all subsequent requests.
+    SonicOS 6 requires an explicit commit after mutations.
     """
 
     def __init__(
@@ -35,14 +38,38 @@ class SonicWallConnector(BaseConnector):
         self.os_version = os_version
         self.verify_ssl = verify_ssl
 
-    def _client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
+    @contextlib.asynccontextmanager
+    async def _session(self) -> AsyncGenerator[httpx.AsyncClient, None]:
+        """Open an authenticated SonicOS session and yield the client."""
+        async with httpx.AsyncClient(
             base_url=self.base_url,
-            auth=(self.username, self.password),
             verify=self.verify_ssl,
             headers={"Content-Type": "application/json", "Accept": "application/json"},
             timeout=30.0,
-        )
+        ) as client:
+            resp = await client.post(
+                "/api/sonicos/auth",
+                json={"override": True},
+                auth=(self.username, self.password),
+            )
+            if not resp.is_success:
+                raise Exception(
+                    f"SonicWall auth failed: HTTP {resp.status_code} — {resp.text[:300]}"
+                )
+            body = resp.json()
+            status_obj = body.get("status", {})
+            if status_obj.get("success") is False:
+                info = status_obj.get("info", [{}])
+                reason = info[0].get("message", "Unauthorized") if info else "Unauthorized"
+                raise Exception(f"SonicWall auth rejected: {reason}")
+
+            try:
+                yield client
+            finally:
+                try:
+                    await client.delete("/api/sonicos/auth")
+                except Exception:
+                    pass
 
     async def _commit(self, client: httpx.AsyncClient) -> None:
         """SonicOS 6 requires explicit commit to persist changes."""
@@ -52,20 +79,9 @@ class SonicWallConnector(BaseConnector):
     async def test_connection(self) -> ConnectionResult:
         start = time.monotonic()
         try:
-            async with self._client() as client:
-                # Root endpoint confirms connectivity and auth
-                resp = await client.get("/api/sonicos")
-                resp.raise_for_status()
-                data = resp.json()
-                status_obj = data.get("status", {})
-                if status_obj.get("success") is False:
-                    info = status_obj.get("info", [{}])
-                    reason = info[0].get("message", "Unauthorized") if info else "Unauthorized"
-                    return ConnectionResult(success=False, error=reason)
-
+            async with self._session() as client:
                 latency = (time.monotonic() - start) * 1000
 
-                # Try to get firmware version from device endpoint
                 firmware = "unknown"
                 try:
                     dev_resp = await client.get("/api/sonicos/device")
@@ -84,7 +100,7 @@ class SonicWallConnector(BaseConnector):
             return ConnectionResult(success=False, error=str(exc))
 
     async def list_rules(self) -> list[FirewallRule]:
-        async with self._client() as client:
+        async with self._session() as client:
             resp = await client.get("/api/sonicos/access-rules/ipv4")
             resp.raise_for_status()
             data = resp.json()
@@ -122,7 +138,7 @@ class SonicWallConnector(BaseConnector):
                 ]
             }
         }
-        async with self._client() as client:
+        async with self._session() as client:
             resp = await client.post("/api/sonicos/access-rules/ipv4", json=payload)
             await self._commit(client)
             if resp.status_code in (200, 201):
@@ -136,7 +152,7 @@ class SonicWallConnector(BaseConnector):
                 "ipv4": [{"name": spec.name, "address_objects": [{"name": m} for m in spec.members]}]
             }
         }
-        async with self._client() as client:
+        async with self._session() as client:
             resp = await client.post("/api/sonicos/address-groups/ipv4", json=payload)
             await self._commit(client)
             if resp.status_code in (200, 201):
@@ -144,7 +160,7 @@ class SonicWallConnector(BaseConnector):
             return ExecutionResult(success=False, error=resp.text)
 
     async def delete_rule(self, rule_id: str) -> ExecutionResult:
-        async with self._client() as client:
+        async with self._session() as client:
             resp = await client.delete(f"/api/sonicos/access-rules/ipv4/uuid/{rule_id}")
             await self._commit(client)
             if resp.status_code in (200, 204):
@@ -166,7 +182,7 @@ class SonicWallConnector(BaseConnector):
                 ]
             }
         }
-        async with self._client() as client:
+        async with self._session() as client:
             resp = await client.put(f"/api/sonicos/access-rules/ipv4/uuid/{rule_id}", json=payload)
             await self._commit(client)
             if resp.status_code in (200, 204):
@@ -174,7 +190,7 @@ class SonicWallConnector(BaseConnector):
             return ExecutionResult(success=False, error=resp.text)
 
     async def get_config_snapshot(self) -> str:
-        async with self._client() as client:
+        async with self._session() as client:
             resp = await client.get("/api/sonicos/access-rules/ipv4")
             resp.raise_for_status()
             return json.dumps(resp.json(), indent=2)
