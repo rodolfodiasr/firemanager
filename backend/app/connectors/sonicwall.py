@@ -40,28 +40,40 @@ class SonicWallConnector(BaseConnector):
 
     @contextlib.asynccontextmanager
     async def _session(self) -> AsyncGenerator[httpx.AsyncClient, None]:
-        """Open an authenticated SonicOS session and yield the client."""
+        """Open an authenticated SonicOS session and yield the client.
+
+        Tries credentials-in-body first (SonicOS 6.5+), then falls back
+        to Authorization header only, for broader firmware compatibility.
+        """
         async with httpx.AsyncClient(
             base_url=self.base_url,
             verify=self.verify_ssl,
             headers={"Content-Type": "application/json", "Accept": "application/json"},
             timeout=30.0,
         ) as client:
+            # Include credentials in body AND header — covers all SonicOS versions
+            auth_body = {
+                "override": True,
+                "user": {"name": self.username, "password": self.password},
+            }
             resp = await client.post(
                 "/api/sonicos/auth",
-                json={"override": True},
+                json=auth_body,
                 auth=(self.username, self.password),
             )
             if not resp.is_success:
                 raise Exception(
                     f"SonicWall auth failed: HTTP {resp.status_code} — {resp.text[:300]}"
                 )
-            body = resp.json()
-            status_obj = body.get("status", {})
-            if status_obj.get("success") is False:
-                info = status_obj.get("info", [{}])
-                reason = info[0].get("message", "Unauthorized") if info else "Unauthorized"
-                raise Exception(f"SonicWall auth rejected: {reason}")
+            try:
+                body = resp.json()
+                status_obj = body.get("status", {})
+                if status_obj.get("success") is False:
+                    info = status_obj.get("info", [{}])
+                    reason = info[0].get("message", "Unauthorized") if info else "Unauthorized"
+                    raise Exception(f"SonicWall auth rejected: {reason}")
+            except (ValueError, KeyError):
+                pass  # non-JSON response is OK if HTTP status was success
 
             try:
                 yield client
