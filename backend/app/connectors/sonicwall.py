@@ -161,32 +161,33 @@ class SonicWallConnector(BaseConnector):
             return ip_str  # already named
 
         net = ipaddress.ip_network(ip_str, strict=False)
-        subnet = str(net.network_address)
-        mask = str(net.netmask)
+        is_host = net.prefixlen == (32 if net.version == 4 else 128)
+
+        if is_host:
+            addr_body: dict[str, Any] = {"host": {"ip": str(net.network_address)}}
+        else:
+            addr_body = {"network": {"subnet": str(net.network_address), "mask": str(net.netmask)}}
 
         if self._v6:
             payload: dict[str, Any] = {
-                "address_objects": [
-                    {"name": obj_name, "zone": zone, "subnet": subnet, "mask": mask}
-                ]
+                "address_objects": [{"name": obj_name, "zone": zone, **addr_body}]
             }
         else:
             payload = {
                 "address_objects": {
-                    "ipv4": [
-                        {
-                            "name": obj_name,
-                            "zone": zone,
-                            "network": {"subnet": subnet, "mask": mask},
-                        }
-                    ]
+                    "ipv4": [{"name": obj_name, "zone": zone, **addr_body}]
                 }
             }
-        try:
-            await client.post("/api/sonicos/address-objects/ipv4", json=payload)
+
+        r = await client.post("/api/sonicos/address-objects/ipv4", json=payload)
+        if r.is_success:
             await self._commit(client)
-        except Exception as exc:
-            logger.debug("address-object create for %s: %s", ip_str, exc)
+        elif r.status_code == 400 and "already exists" in r.text.lower():
+            logger.debug("address-object %s already exists, reusing", obj_name)
+        else:
+            logger.warning(
+                "address-object create for %s: HTTP %s — %s", ip_str, r.status_code, r.text[:300]
+            )
         return obj_name
 
     async def _ensure_service_object(
@@ -212,11 +213,15 @@ class SonicWallConnector(BaseConnector):
                 }
             ]
         }
-        try:
-            await client.post("/api/sonicos/service-objects", json=payload)
+        r = await client.post("/api/sonicos/service-objects", json=payload)
+        if r.is_success:
             await self._commit(client)
-        except Exception as exc:
-            logger.debug("service-object create for %s: %s", service, exc)
+        elif r.status_code == 400 and "already exists" in r.text.lower():
+            logger.debug("service-object %s already exists, reusing", svc_name)
+        else:
+            logger.warning(
+                "service-object create for %s: HTTP %s — %s", service, r.status_code, r.text[:300]
+            )
         return svc_name
 
     # ------------------------------------------------------------------
