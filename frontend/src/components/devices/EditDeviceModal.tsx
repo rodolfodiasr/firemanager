@@ -7,7 +7,7 @@ interface EditDeviceModalProps {
   isOpen: boolean;
   device: Device | null;
   onClose: () => void;
-  onSubmit: (id: string, data: Partial<DeviceCreate>) => Promise<void>;
+  onSubmit: (id: string, data: Partial<DeviceCreate>) => Promise<unknown>;
 }
 
 export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDeviceModalProps) {
