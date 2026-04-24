@@ -5,8 +5,6 @@ import logging
 import time
 from typing import Any, AsyncGenerator
 
-logger = logging.getLogger(__name__)
-
 import httpx
 
 from app.connectors.base import (
@@ -18,13 +16,16 @@ from app.connectors.base import (
     RuleSpec,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class SonicWallConnector(BaseConnector):
     """SonicOS 6.5/7.x/8.x REST API connector.
 
-    Auth flow (confirmed on TZ 270 / SonicOS 6.5):
-      POST /api/sonicos/auth with Digest Auth → receives session cookie
-      Subsequent requests include the session cookie (no auth header).
+    Auth: POST /api/sonicos/auth with Digest Auth → session cookie.
+    Version is auto-detected from auth response:
+      - SonicOS 6.x: access_rules is a flat array, action/from/to are strings
+      - SonicOS 7.x: access_rules wraps {"ipv4": [...]}, nested objects
     SonicOS 6 requires an explicit commit after mutations.
     """
 
@@ -41,14 +42,12 @@ class SonicWallConnector(BaseConnector):
         self.password = password
         self.os_version = os_version
         self.verify_ssl = verify_ssl
+        # Auto-detected from auth response; None means not yet determined
+        self._v6: bool | None = None
 
     @contextlib.asynccontextmanager
     async def _session(self) -> AsyncGenerator[httpx.AsyncClient, None]:
-        """Open an authenticated session using Digest Auth on POST /auth.
-
-        The SonicWall responds with a Set-Cookie session token; all
-        subsequent requests on the same client include that cookie.
-        """
+        """Authenticate via Digest Auth on POST /auth and yield the client."""
         async with httpx.AsyncClient(
             base_url=self.base_url,
             verify=self.verify_ssl,
@@ -64,15 +63,20 @@ class SonicWallConnector(BaseConnector):
                 raise Exception(
                     f"SonicWall auth failed: HTTP {resp.status_code} — {resp.text[:200]}"
                 )
+
+            # Auto-detect SonicOS version from auth response structure.
+            # SonicOS 6.x returns detailed info (config_mode, privilege, model…)
+            # inside info[0]; SonicOS 7 uses a simpler structure.
             try:
                 body = resp.json()
-                status_obj = body.get("status", {})
-                if status_obj.get("success") is False:
-                    info = status_obj.get("info", [{}])
-                    reason = info[0].get("message", "Unauthorized") if info else "Unauthorized"
-                    raise Exception(f"SonicWall auth rejected: {reason}")
-            except (ValueError, KeyError):
-                pass  # non-JSON body is OK if HTTP was 2xx
+                info = body.get("status", {}).get("info", [{}])
+                if info and "config_mode" in info[0]:
+                    self._v6 = True
+                elif self._v6 is None:
+                    self._v6 = (self.os_version <= 6)
+            except Exception:
+                if self._v6 is None:
+                    self._v6 = (self.os_version <= 6)
 
             try:
                 yield client
@@ -83,20 +87,17 @@ class SonicWallConnector(BaseConnector):
                     pass
 
     async def _commit(self, client: httpx.AsyncClient) -> None:
-        """SonicOS 6 requires explicit commit to persist changes."""
-        if self.os_version == 6:
+        if self._v6:
             await client.post("/api/sonicos/config/pending")
 
     async def test_connection(self) -> ConnectionResult:
         start = time.monotonic()
         try:
             async with self._session() as client:
-                # Validate that the session cookie grants access to a real endpoint
                 resp = await client.get("/api/sonicos/access-rules/ipv4")
                 if resp.status_code == 401:
-                    return ConnectionResult(success=False, error="Session rejected by device (401)")
+                    return ConnectionResult(success=False, error="Session rejected (401)")
                 resp.raise_for_status()
-
                 latency = (time.monotonic() - start) * 1000
 
                 firmware = "unknown"
@@ -117,19 +118,18 @@ class SonicWallConnector(BaseConnector):
             return ConnectionResult(success=False, error=str(exc))
 
     def _parse_rules(self, data: dict) -> list[FirewallRule]:
-        """Parse access-rules response handling SonicOS 6 and 7 formats."""
-        logger.debug("SonicWall access-rules raw response: %s", json.dumps(data)[:500])
+        """Parse access-rules response for both SonicOS 6 and 7 formats."""
+        logger.debug("SonicWall raw access-rules: %s", json.dumps(data)[:600])
         access_rules = data.get("access_rules", {})
 
-        # SonicOS 7: {"access_rules": {"ipv4": [...]}}
         if isinstance(access_rules, dict):
+            # SonicOS 7: {"access_rules": {"ipv4": [...]}}
             raw_list = access_rules.get("ipv4", [])
-        # SonicOS 6: {"access_rules": [...]} — flat list or zone-grouped list
         elif isinstance(access_rules, list):
+            # SonicOS 6: flat list or zone-grouped list
             raw_list = []
             for item in access_rules:
                 if isinstance(item, dict):
-                    # zone-grouped: {"from": "LAN", "to": "WAN", "ipv4": [...]}
                     if "ipv4" in item:
                         raw_list.extend(item["ipv4"])
                     else:
@@ -161,8 +161,27 @@ class SonicWallConnector(BaseConnector):
             resp.raise_for_status()
             return self._parse_rules(resp.json())
 
-    async def create_rule(self, spec: RuleSpec) -> ExecutionResult:
-        payload: dict[str, Any] = {
+    def _rule_payload(self, spec: RuleSpec) -> dict[str, Any]:
+        """Build create/edit rule payload for the detected SonicOS version."""
+        if self._v6:
+            # SonicOS 6.x: access_rules is a flat array; action/zones are strings
+            return {
+                "access_rules": [
+                    {
+                        "name": spec.name,
+                        "enable": True,
+                        "action": spec.action,
+                        "from": "LAN",
+                        "to": "WAN",
+                        "source": {"address": {"name": spec.src_address}},
+                        "destination": {"address": {"name": spec.dst_address}},
+                        "service": {"name": spec.service},
+                        "comment": spec.comment or "",
+                    }
+                ]
+            }
+        # SonicOS 7.x: access_rules wraps {"ipv4": [...]}; nested objects
+        return {
             "access_rules": {
                 "ipv4": [
                     {
@@ -179,7 +198,10 @@ class SonicWallConnector(BaseConnector):
                 ]
             }
         }
+
+    async def create_rule(self, spec: RuleSpec) -> ExecutionResult:
         async with self._session() as client:
+            payload = self._rule_payload(spec)
             resp = await client.post("/api/sonicos/access-rules/ipv4", json=payload)
             await self._commit(client)
             if resp.status_code in (200, 201):
@@ -187,11 +209,18 @@ class SonicWallConnector(BaseConnector):
             return ExecutionResult(success=False, error=resp.text)
 
     async def create_group(self, spec: GroupSpec) -> ExecutionResult:
-        payload = {
-            "address_groups": {
-                "ipv4": [{"name": spec.name, "address_objects": [{"name": m} for m in spec.members]}]
+        if self._v6:
+            payload = {
+                "address_groups": [
+                    {"name": spec.name, "address_objects": [{"name": m} for m in spec.members]}
+                ]
             }
-        }
+        else:
+            payload = {
+                "address_groups": {
+                    "ipv4": [{"name": spec.name, "address_objects": [{"name": m} for m in spec.members]}]
+                }
+            }
         async with self._session() as client:
             resp = await client.post("/api/sonicos/address-groups/ipv4", json=payload)
             await self._commit(client)
@@ -208,22 +237,11 @@ class SonicWallConnector(BaseConnector):
             return ExecutionResult(success=False, error=resp.text)
 
     async def edit_rule(self, rule_id: str, spec: RuleSpec) -> ExecutionResult:
-        payload: dict[str, Any] = {
-            "access_rules": {
-                "ipv4": [
-                    {
-                        "name": spec.name,
-                        "source": {"address": {"name": spec.src_address}},
-                        "destination": {"address": {"name": spec.dst_address}},
-                        "service": {"name": spec.service},
-                        "action": {"action": spec.action},
-                        "comment": spec.comment or "",
-                    }
-                ]
-            }
-        }
+        payload = self._rule_payload(spec)
         async with self._session() as client:
-            resp = await client.put(f"/api/sonicos/access-rules/ipv4/uuid/{rule_id}", json=payload)
+            resp = await client.put(
+                f"/api/sonicos/access-rules/ipv4/uuid/{rule_id}", json=payload
+            )
             await self._commit(client)
             if resp.status_code in (200, 204):
                 return ExecutionResult(success=True, rule_id=rule_id)
