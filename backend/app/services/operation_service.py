@@ -1,3 +1,4 @@
+import dataclasses
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -41,6 +42,7 @@ async def start_or_continue_operation(
         )
         db.add(operation)
         await db.flush()
+        await db.refresh(operation)
         session = AgentSession(device)
         _sessions[operation.id] = session
     else:
@@ -61,6 +63,7 @@ async def start_or_continue_operation(
         operation.status = OperationStatus.approved
 
     await db.flush()
+    await db.refresh(operation)
     return operation, response
 
 
@@ -85,15 +88,24 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
         operation.status = OperationStatus.failed
         operation.error_message = str(exc)
         await db.flush()
+        await db.refresh(operation)
         return operation
 
     rule_spec, group_spec = translate_to_connector_spec(plan, device)
     operation.status = OperationStatus.executing
     await db.flush()
+    await db.refresh(operation)
 
     exec_result = None
     try:
-        if plan.intent == IntentType.create_rule and rule_spec:
+        if plan.intent == IntentType.list_rules:
+            rules = await connector.list_rules()
+            operation.action_plan = {
+                **(operation.action_plan or {}),
+                "result": [dataclasses.asdict(r) for r in rules],
+            }
+            operation.status = OperationStatus.completed
+        elif plan.intent == IntentType.create_rule and rule_spec:
             exec_result = await connector.create_rule(rule_spec)
         elif plan.intent == IntentType.delete_rule:
             rule_id = plan.raw_intent_data.get("rule_id", "")
@@ -104,28 +116,30 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
         elif plan.intent == IntentType.create_group and group_spec:
             exec_result = await connector.create_group(group_spec)
 
-        if exec_result and exec_result.success:
-            operation.status = OperationStatus.completed
-            # Save config snapshot
-            try:
-                config_data = await connector.get_config_snapshot()
-                snap = Snapshot(
-                    device_id=device.id,
-                    operation_id=operation.id,
-                    config_data=config_data,
-                    config_hash=hashlib.sha256(config_data.encode()).hexdigest(),
-                    label=f"After operation {operation.id}",
-                )
-                db.add(snap)
-            except Exception:
-                pass  # snapshot failure is non-critical
-        else:
-            operation.status = OperationStatus.failed
-            operation.error_message = exec_result.error if exec_result else "Unknown error"
+        if exec_result is not None:
+            if exec_result.success:
+                operation.status = OperationStatus.completed
+                # Save config snapshot
+                try:
+                    config_data = await connector.get_config_snapshot()
+                    snap = Snapshot(
+                        device_id=device.id,
+                        operation_id=operation.id,
+                        config_data=config_data,
+                        config_hash=hashlib.sha256(config_data.encode()).hexdigest(),
+                        label=f"After operation {operation.id}",
+                    )
+                    db.add(snap)
+                except Exception:
+                    pass  # snapshot failure is non-critical
+            else:
+                operation.status = OperationStatus.failed
+                operation.error_message = exec_result.error
 
     except Exception as exc:
         operation.status = OperationStatus.failed
         operation.error_message = str(exc)
 
     await db.flush()
+    await db.refresh(operation)
     return operation

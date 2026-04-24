@@ -53,7 +53,21 @@ export function useAgent(deviceId: string | null) {
     try {
       const operation = await operationsApi.execute(currentOperationId);
       if (operation.status === "completed") {
-        addMessage("assistant", "Operação executada com sucesso! Documentos sendo gerados...");
+        const rules = operation.action_plan?.result as Array<{
+          rule_id: string; name: string; src: string; dst: string;
+          service: string; action: string; enabled: boolean;
+        }> | undefined;
+
+        if (rules && rules.length > 0) {
+          const lines = rules.map(
+            (r) => `• [${r.enabled ? "ON" : "OFF"}] **${r.name || r.rule_id}** — ${r.src} → ${r.dst} (${r.service}) [${r.action}]`
+          );
+          addMessage("assistant", `Encontrei ${rules.length} regra(s):\n\n${lines.join("\n")}`);
+        } else if (rules && rules.length === 0) {
+          addMessage("assistant", "Nenhuma regra encontrada.");
+        } else {
+          addMessage("assistant", "Operação executada com sucesso! Documentos sendo gerados...");
+        }
         toast.success("Operação concluída!");
       } else {
         addMessage("assistant", `Erro na execução: ${operation.error_message}`);
