@@ -23,7 +23,7 @@ class Document(Base):
     operation_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("operations.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    doc_type: Mapped[DocumentType] = mapped_column(Enum(DocumentType), nullable=False)
+    doc_type: Mapped[DocumentType] = mapped_column(Enum(DocumentType, native_enum=False), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

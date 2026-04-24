@@ -30,7 +30,7 @@ class Device(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    vendor: Mapped[VendorEnum] = mapped_column(Enum(VendorEnum), nullable=False)
+    vendor: Mapped[VendorEnum] = mapped_column(Enum(VendorEnum, native_enum=False), nullable=False)
     firmware_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     host: Mapped[str] = mapped_column(String(255), nullable=False)
     port: Mapped[int] = mapped_column(Integer, nullable=False, default=443)
@@ -39,7 +39,7 @@ class Device(Base):
     use_ssl: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     verify_ssl: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[DeviceStatus] = mapped_column(
-        Enum(DeviceStatus), nullable=False, default=DeviceStatus.unknown
+        Enum(DeviceStatus, native_enum=False), nullable=False, default=DeviceStatus.unknown
     )
     last_seen: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -34,7 +34,7 @@ class Operation(Base):
     intent: Mapped[str | None] = mapped_column(String(100), nullable=True)
     action_plan: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[OperationStatus] = mapped_column(
-        Enum(OperationStatus), nullable=False, default=OperationStatus.pending, index=True
+        Enum(OperationStatus, native_enum=False), nullable=False, default=OperationStatus.pending, index=True
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

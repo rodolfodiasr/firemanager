@@ -29,7 +29,7 @@ class OperationStep(Base):
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[StepStatus] = mapped_column(
-        Enum(StepStatus), nullable=False, default=StepStatus.pending
+        Enum(StepStatus, native_enum=False), nullable=False, default=StepStatus.pending
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
