@@ -24,6 +24,7 @@ def get_connector(device: Device) -> BaseConnector:
             password=creds.get("password", ""),
             os_version=os_version,
             verify_ssl=device.verify_ssl,
+            known_firmware=device.firmware_version,
         )
 
     raise NotImplementedError(f"Connector not implemented for vendor: {device.vendor}")

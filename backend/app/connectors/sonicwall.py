@@ -36,14 +36,27 @@ class SonicWallConnector(BaseConnector):
         password: str,
         os_version: int = 7,
         verify_ssl: bool = False,
+        known_firmware: str | None = None,
     ) -> None:
         self.base_url = host.rstrip("/")
         self.username = username
         self.password = password
         self.os_version = os_version
         self.verify_ssl = verify_ssl
-        # Auto-detected from auth response; None means not yet determined
-        self._v6: bool | None = None
+        # Determine SonicOS format from stored firmware version when available.
+        # "6.x.y" → v6 format; "7.x.y"/"8.x.y" → v7 format.
+        # Falls back to auth-response heuristic when firmware is unknown.
+        self._v6: bool | None = self._detect_v6_from_firmware(known_firmware)
+
+    @staticmethod
+    def _detect_v6_from_firmware(firmware: str | None) -> bool | None:
+        if not firmware or firmware in ("unknown", ""):
+            return None
+        try:
+            major = int(firmware.split(".")[0])
+            return major <= 6
+        except (ValueError, IndexError):
+            return None
 
     @contextlib.asynccontextmanager
     async def _session(self) -> AsyncGenerator[httpx.AsyncClient, None]:
@@ -100,22 +113,36 @@ class SonicWallConnector(BaseConnector):
                 resp.raise_for_status()
                 latency = (time.monotonic() - start) * 1000
 
-                firmware = "unknown"
-                try:
-                    dev_resp = await client.get("/api/sonicos/device")
-                    if dev_resp.status_code == 200:
-                        dev_data = dev_resp.json()
-                        firmware = (
-                            dev_data.get("device", {}).get("firmware_version")
-                            or dev_data.get("firmware_version")
-                            or "unknown"
-                        )
-                except Exception:
-                    pass
+                firmware = await self._fetch_firmware(client)
+                # Refine format detection once we have a real firmware version
+                if firmware and firmware != "unknown":
+                    self._v6 = self._detect_v6_from_firmware(firmware)
 
                 return ConnectionResult(success=True, latency_ms=latency, firmware_version=firmware)
         except Exception as exc:
             return ConnectionResult(success=False, error=str(exc))
+
+    async def _fetch_firmware(self, client: httpx.AsyncClient) -> str:
+        """Try known endpoints to retrieve firmware version string."""
+        candidates = [
+            # SonicOS 6.5: /version returns {"firmware_version": "..."}
+            ("/api/sonicos/version", lambda d: d.get("firmware_version")),
+            # SonicOS 7/8: /device nests under "device" key
+            ("/api/sonicos/device", lambda d: (
+                d.get("device", {}).get("firmware_version") or d.get("firmware_version")
+            )),
+        ]
+        for path, extractor in candidates:
+            try:
+                r = await client.get(path)
+                if r.status_code == 200:
+                    data = r.json()
+                    value = extractor(data)
+                    if value:
+                        return str(value)
+            except Exception:
+                continue
+        return "unknown"
 
     def _parse_rules(self, data: dict) -> list[FirewallRule]:
         """Parse access-rules response for both SonicOS 6 and 7 formats."""
