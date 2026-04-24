@@ -13,6 +13,7 @@ export function useAgent(deviceId: string | null) {
     setOperationId,
     setReadyToExecute,
     setLoading,
+    resetSession,
     reset,
   } = useAgentStore();
 
@@ -73,13 +74,14 @@ export function useAgent(deviceId: string | null) {
         addMessage("assistant", `Erro na execução: ${operation.error_message}`);
         toast.error("Falha na execução");
       }
-      reset();
+      // Keep messages visible — only reset the active operation context
+      resetSession();
     } catch {
       toast.error("Erro ao executar operação");
     } finally {
       setLoading(false);
     }
-  }, [currentOperationId, addMessage, setLoading, reset]);
+  }, [currentOperationId, addMessage, setLoading, resetSession]);
 
   return { messages, readyToExecute, loading, send, execute, reset };
 }

@@ -15,6 +15,9 @@ interface AgentState {
   setOperationId: (id: string | null) => void;
   setReadyToExecute: (ready: boolean) => void;
   setLoading: (loading: boolean) => void;
+  // Resets only the active operation state — keeps messages visible
+  resetSession: () => void;
+  // Resets everything including messages (use when switching devices)
   reset: () => void;
 }
 
@@ -32,6 +35,9 @@ export const useAgentStore = create<AgentState>((set) => ({
   setOperationId: (id) => set({ currentOperationId: id }),
   setReadyToExecute: (ready) => set({ readyToExecute: ready }),
   setLoading: (loading) => set({ loading }),
+
+  resetSession: () =>
+    set({ currentOperationId: null, readyToExecute: false, loading: false }),
 
   reset: () =>
     set({ messages: [], currentOperationId: null, readyToExecute: false, loading: false }),
