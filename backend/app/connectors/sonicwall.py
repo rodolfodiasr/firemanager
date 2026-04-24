@@ -1,8 +1,11 @@
 """SonicWall SonicOS 6/7/8 REST API connector."""
 import contextlib
 import json
+import logging
 import time
 from typing import Any, AsyncGenerator
+
+logger = logging.getLogger(__name__)
 
 import httpx
 
@@ -113,26 +116,50 @@ class SonicWallConnector(BaseConnector):
         except Exception as exc:
             return ConnectionResult(success=False, error=str(exc))
 
+    def _parse_rules(self, data: dict) -> list[FirewallRule]:
+        """Parse access-rules response handling SonicOS 6 and 7 formats."""
+        logger.debug("SonicWall access-rules raw response: %s", json.dumps(data)[:500])
+        access_rules = data.get("access_rules", {})
+
+        # SonicOS 7: {"access_rules": {"ipv4": [...]}}
+        if isinstance(access_rules, dict):
+            raw_list = access_rules.get("ipv4", [])
+        # SonicOS 6: {"access_rules": [...]} — flat list or zone-grouped list
+        elif isinstance(access_rules, list):
+            raw_list = []
+            for item in access_rules:
+                if isinstance(item, dict):
+                    # zone-grouped: {"from": "LAN", "to": "WAN", "ipv4": [...]}
+                    if "ipv4" in item:
+                        raw_list.extend(item["ipv4"])
+                    else:
+                        raw_list.append(item)
+        else:
+            raw_list = []
+
+        rules = []
+        for r in raw_list:
+            if not isinstance(r, dict):
+                continue
+            rules.append(
+                FirewallRule(
+                    rule_id=str(r.get("rule_id", r.get("uuid", ""))),
+                    name=r.get("name", ""),
+                    src=r.get("source", {}).get("address", {}).get("name", "Any"),
+                    dst=r.get("destination", {}).get("address", {}).get("name", "Any"),
+                    service=r.get("service", {}).get("name", "Any"),
+                    action=r.get("action", "allow"),
+                    enabled=r.get("enable", True),
+                    raw=r,
+                )
+            )
+        return rules
+
     async def list_rules(self) -> list[FirewallRule]:
         async with self._session() as client:
             resp = await client.get("/api/sonicos/access-rules/ipv4")
             resp.raise_for_status()
-            data = resp.json()
-            rules = []
-            for r in data.get("access_rules", {}).get("ipv4", []):
-                rules.append(
-                    FirewallRule(
-                        rule_id=str(r.get("rule_id", r.get("uuid", ""))),
-                        name=r.get("name", ""),
-                        src=r.get("source", {}).get("address", {}).get("name", "Any"),
-                        dst=r.get("destination", {}).get("address", {}).get("name", "Any"),
-                        service=r.get("service", {}).get("name", "Any"),
-                        action=r.get("action", "allow"),
-                        enabled=r.get("enable", True),
-                        raw=r,
-                    )
-                )
-            return rules
+            return self._parse_rules(resp.json())
 
     async def create_rule(self, spec: RuleSpec) -> ExecutionResult:
         payload: dict[str, Any] = {
