@@ -85,14 +85,9 @@ class SonicWallConnector(BaseConnector):
                     f"SonicWall auth failed: HTTP {resp.status_code} — {resp.text[:200]}"
                 )
 
-            # Fallback version detection from auth response when firmware is unknown
+            # Fallback: both SonicOS 6 and 7 return config_mode in auth, so use os_version hint
             if self._v6 is None:
-                try:
-                    info = resp.json().get("status", {}).get("info", [{}])
-                    # SonicOS 6.x includes config_mode/privilege in auth info
-                    self._v6 = bool(info and "config_mode" in info[0])
-                except Exception:
-                    self._v6 = (self.os_version <= 6)
+                self._v6 = (self.os_version <= 6)
 
             try:
                 yield client
@@ -168,11 +163,15 @@ class SonicWallConnector(BaseConnector):
         else:
             addr_body = {"network": {"subnet": str(net.network_address), "mask": str(net.netmask)}}
 
-        # Both v6 and v7 use flat array when posting to /ipv4 endpoint
-        # (the /ipv4 path already scopes the type; no extra wrapper needed)
-        payload: dict[str, Any] = {
-            "address_objects": [{"name": obj_name, "zone": zone, **addr_body}]
-        }
+        if self._v6:
+            payload: dict[str, Any] = {
+                "address_objects": [{"name": obj_name, "zone": zone, **addr_body}]
+            }
+        else:
+            # v7/v8: each entry wrapped in {"ipv4": {...}} — mirrors GET response format
+            payload = {
+                "address_objects": [{"ipv4": {"name": obj_name, "zone": zone, **addr_body}}]
+            }
 
         r = await client.post("/api/sonicos/address-objects/ipv4", json=payload)
         if r.is_success:
