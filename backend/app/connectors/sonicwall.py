@@ -242,16 +242,16 @@ class SonicWallConnector(BaseConnector):
                     }
                 ]
             }
-        # v7/v8: array of per-entry {"ipv4": {...}} wrappers (same pattern as address-objects)
+        # v7/v8: {"ipv4": {...}} wrapper per entry; inner fields same strings as v6
         return {
             "access_rules": [
                 {
                     "ipv4": {
                         "name": spec.name,
                         "enable": True,
-                        "action": {"action": spec.action},
-                        "from": {"zone": "LAN"},
-                        "to": {"zone": "WAN"},
+                        "action": spec.action,
+                        "from": "LAN",
+                        "to": "WAN",
                         "source": {"address": {"name": src_name}},
                         "destination": {"address": {"name": dst_name}},
                         "service": {"name": svc_name},
