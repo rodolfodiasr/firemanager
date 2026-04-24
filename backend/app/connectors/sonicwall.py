@@ -56,6 +56,12 @@ class SonicWallConnector(BaseConnector):
                 resp = await client.get("/api/sonicos/version")
                 resp.raise_for_status()
                 data = resp.json()
+                # SonicWall returns HTTP 200 even for auth failures; check body
+                status = data.get("status", {})
+                if status.get("success") is False:
+                    info = status.get("info", [{}])
+                    reason = info[0].get("message", "Unauthorized") if info else "Unauthorized"
+                    return ConnectionResult(success=False, error=reason)
                 latency = (time.monotonic() - start) * 1000
                 version = data.get("firmware_version", "unknown")
                 return ConnectionResult(success=True, latency_ms=latency, firmware_version=version)
