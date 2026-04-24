@@ -223,16 +223,22 @@ class SonicWallConnector(BaseConnector):
     # Rule payload builder
     # ------------------------------------------------------------------
 
+    _ACTION_MAP = {"accept": "allow", "permit": "allow", "drop": "discard", "reject": "deny"}
+
+    def _normalize_action(self, action: str) -> str:
+        return self._ACTION_MAP.get(action.lower(), action.lower())
+
     def _rule_payload(
         self, spec: RuleSpec, src_name: str, dst_name: str, svc_name: str
     ) -> dict[str, Any]:
+        action = self._normalize_action(spec.action)
         if self._v6:
             return {
                 "access_rules": [
                     {
                         "name": spec.name,
                         "enable": True,
-                        "action": spec.action,
+                        "action": action,
                         "from": "LAN",
                         "to": "WAN",
                         "source": {"address": {"name": src_name}},
@@ -249,7 +255,7 @@ class SonicWallConnector(BaseConnector):
                     "ipv4": {
                         "name": spec.name,
                         "enable": True,
-                        "action": spec.action,
+                        "action": action,
                         "from": "LAN",
                         "to": "WAN",
                         "source": {"address": {"name": src_name}},
