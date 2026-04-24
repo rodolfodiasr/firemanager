@@ -168,16 +168,11 @@ class SonicWallConnector(BaseConnector):
         else:
             addr_body = {"network": {"subnet": str(net.network_address), "mask": str(net.netmask)}}
 
-        if self._v6:
-            # v6: flat array, entry fields at top level
-            payload: dict[str, Any] = {
-                "address_objects": [{"name": obj_name, "zone": zone, **addr_body}]
-            }
-        else:
-            # v7/v8: array of per-entry {"ipv4": {...}} wrappers
-            payload = {
-                "address_objects": [{"ipv4": {"name": obj_name, "zone": zone, **addr_body}}]
-            }
+        # Both v6 and v7 use flat array when posting to /ipv4 endpoint
+        # (the /ipv4 path already scopes the type; no extra wrapper needed)
+        payload: dict[str, Any] = {
+            "address_objects": [{"name": obj_name, "zone": zone, **addr_body}]
+        }
 
         r = await client.post("/api/sonicos/address-objects/ipv4", json=payload)
         if r.is_success:
@@ -205,12 +200,12 @@ class SonicWallConnector(BaseConnector):
             else f"fm-{proto.lower()}-{begin}-{end}"
         )
         proto_key = proto.lower()
-        # SonicOS expects protocol type as a direct key, not wrapped in "protocol"
+        # SonicOS: protocol key directly on the entry; port range flat (not nested under "port")
         payload = {
             "service_objects": [
                 {
                     "name": svc_name,
-                    proto_key: {"port": {"begin": begin, "end": end}},
+                    proto_key: {"begin": begin, "end": end},
                 }
             ]
         }
