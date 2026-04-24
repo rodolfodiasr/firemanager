@@ -53,18 +53,33 @@ class SonicWallConnector(BaseConnector):
         start = time.monotonic()
         try:
             async with self._client() as client:
-                resp = await client.get("/api/sonicos/version")
+                # Root endpoint confirms connectivity and auth
+                resp = await client.get("/api/sonicos")
                 resp.raise_for_status()
                 data = resp.json()
-                # SonicWall returns HTTP 200 even for auth failures; check body
-                status = data.get("status", {})
-                if status.get("success") is False:
-                    info = status.get("info", [{}])
+                status_obj = data.get("status", {})
+                if status_obj.get("success") is False:
+                    info = status_obj.get("info", [{}])
                     reason = info[0].get("message", "Unauthorized") if info else "Unauthorized"
                     return ConnectionResult(success=False, error=reason)
+
                 latency = (time.monotonic() - start) * 1000
-                version = data.get("firmware_version", "unknown")
-                return ConnectionResult(success=True, latency_ms=latency, firmware_version=version)
+
+                # Try to get firmware version from device endpoint
+                firmware = "unknown"
+                try:
+                    dev_resp = await client.get("/api/sonicos/device")
+                    if dev_resp.status_code == 200:
+                        dev_data = dev_resp.json()
+                        firmware = (
+                            dev_data.get("device", {}).get("firmware_version")
+                            or dev_data.get("firmware_version")
+                            or "unknown"
+                        )
+                except Exception:
+                    pass
+
+                return ConnectionResult(success=True, latency_ms=latency, firmware_version=firmware)
         except Exception as exc:
             return ConnectionResult(success=False, error=str(exc))
 
