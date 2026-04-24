@@ -15,6 +15,8 @@ from app.connectors.base import (
     ExecutionResult,
     FirewallRule,
     GroupSpec,
+    NatPolicy,
+    NatSpec,
     RuleSpec,
 )
 
@@ -373,3 +375,92 @@ class SonicWallConnector(BaseConnector):
             resp = await client.get("/api/sonicos/access-rules/ipv4")
             resp.raise_for_status()
             return json.dumps(resp.json(), indent=2)
+
+    # ------------------------------------------------------------------
+    # NAT Policies
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _addr_field(value: str) -> dict:
+        if value.lower() in ("any", ""):
+            return {"any": True}
+        return {"name": value}
+
+    @staticmethod
+    def _translated_field(value: str) -> dict:
+        if value.lower() in ("original", ""):
+            return {"original": True}
+        return {"name": value}
+
+    def _parse_nat_addr(self, field: dict) -> str:
+        if field.get("any"):
+            return "Any"
+        if field.get("original"):
+            return "Original"
+        return field.get("name") or field.get("group") or "Any"
+
+    def _parse_nat_policies(self, data: dict) -> list[NatPolicy]:
+        raw_list = data.get("nat_policies", [])
+        policies = []
+        for item in raw_list:
+            if not isinstance(item, dict):
+                continue
+            r = item.get("ipv4", item)
+            policies.append(
+                NatPolicy(
+                    rule_id=str(r.get("uuid", "")),
+                    name=r.get("name", ""),
+                    inbound=r.get("inbound", ""),
+                    outbound=r.get("outbound", ""),
+                    source=self._parse_nat_addr(r.get("source", {})),
+                    translated_source=self._parse_nat_addr(r.get("translated_source", {})),
+                    destination=self._parse_nat_addr(r.get("destination", {})),
+                    translated_destination=self._parse_nat_addr(r.get("translated_destination", {})),
+                    service=self._parse_nat_addr(r.get("service", {})),
+                    translated_service=self._parse_nat_addr(r.get("translated_service", {})),
+                    enabled=r.get("enable", True),
+                    comment=r.get("comment", ""),
+                    raw=r,
+                )
+            )
+        return policies
+
+    async def list_nat_policies(self) -> list[NatPolicy]:
+        async with self._session() as client:
+            resp = await client.get("/api/sonicos/nat-policies/ipv4")
+            resp.raise_for_status()
+            return self._parse_nat_policies(resp.json())
+
+    def _nat_payload(self, spec: NatSpec) -> dict:
+        body = {
+            "name": spec.name,
+            "inbound": spec.inbound_interface,
+            "outbound": spec.outbound_interface,
+            "source": self._addr_field(spec.source),
+            "translated_source": self._translated_field(spec.translated_source),
+            "destination": self._addr_field(spec.destination),
+            "translated_destination": self._translated_field(spec.translated_destination),
+            "service": self._addr_field(spec.service),
+            "translated_service": self._translated_field(spec.translated_service),
+            "enable": spec.enable,
+            "priority": {"auto": True},
+            "comment": spec.comment or "",
+        }
+        return {"nat_policies": [{"ipv4": body}]}
+
+    async def create_nat_policy(self, spec: NatSpec) -> ExecutionResult:
+        async with self._session() as client:
+            payload = self._nat_payload(spec)
+            resp = await client.post("/api/sonicos/nat-policies/ipv4", json=payload)
+            await self._commit(client)
+            if resp.status_code in (200, 201):
+                return ExecutionResult(success=True, raw_response=resp.json())
+            return ExecutionResult(success=False, error=resp.text)
+
+    async def delete_nat_policy(self, rule_id: str) -> ExecutionResult:
+        async with self._session() as client:
+            resp = await client.delete(f"/api/sonicos/nat-policies/ipv4/uuid/{rule_id}")
+            await self._commit(client)
+            if resp.status_code in (200, 204):
+                return ExecutionResult(success=True, rule_id=rule_id)
+            return ExecutionResult(success=False, error=resp.text)

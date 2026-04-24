@@ -11,6 +11,9 @@ class IntentType(str, Enum):
     edit_rule = "edit_rule"
     create_group = "create_group"
     list_rules = "list_rules"
+    list_nat_policies = "list_nat_policies"
+    create_nat_policy = "create_nat_policy"
+    delete_nat_policy = "delete_nat_policy"
     health_check = "health_check"
     get_snapshot = "get_snapshot"
     unknown = "unknown"
@@ -26,6 +29,20 @@ class RuleSpecModel(BaseModel):
     action: str = "accept"
     comment: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class NatSpecModel(BaseModel):
+    name: str
+    inbound_interface: str = "X1"
+    outbound_interface: str = "X1"
+    source: str = "Any"
+    translated_source: str = "Original"
+    destination: str = "Any"
+    translated_destination: str = "Original"
+    service: str = "Any"
+    translated_service: str = "Original"
+    comment: str | None = None
+    enable: bool = True
 
 
 class GroupSpecModel(BaseModel):
@@ -45,5 +62,6 @@ class ActionPlan(BaseModel):
     device_id: UUID
     steps: list[ActionStep]
     rule_spec: RuleSpecModel | None = None
+    nat_spec: NatSpecModel | None = None
     group_spec: GroupSpecModel | None = None
     raw_intent_data: dict[str, Any] = Field(default_factory=dict)

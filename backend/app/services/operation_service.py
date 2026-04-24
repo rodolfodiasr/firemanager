@@ -91,7 +91,7 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
         await db.refresh(operation)
         return operation
 
-    rule_spec, group_spec = translate_to_connector_spec(plan, device)
+    rule_spec, group_spec, nat_spec = translate_to_connector_spec(plan, device)
     operation.status = OperationStatus.executing
     await db.flush()
     await db.refresh(operation)
@@ -122,6 +122,18 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
             exec_result = await connector.edit_rule(str(rule_id), rule_spec)
         elif plan.intent == IntentType.create_group and group_spec:
             exec_result = await connector.create_group(group_spec)
+        elif plan.intent == IntentType.list_nat_policies:
+            policies = await connector.list_nat_policies()
+            operation.action_plan = {
+                **(operation.action_plan or {}),
+                "result": [dataclasses.asdict(p) for p in policies],
+            }
+            operation.status = OperationStatus.completed
+        elif plan.intent == IntentType.create_nat_policy and nat_spec:
+            exec_result = await connector.create_nat_policy(nat_spec)
+        elif plan.intent == IntentType.delete_nat_policy:
+            rule_id = plan.raw_intent_data.get("rule_id", "")
+            exec_result = await connector.delete_nat_policy(str(rule_id))
 
         if exec_result is not None:
             if exec_result.success:

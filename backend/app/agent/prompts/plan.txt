@@ -10,6 +10,8 @@ Dispositivo alvo:
 
 Intenção identificada: {intent}
 
+Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, health_check, get_snapshot
+
 Gere o ActionPlan no seguinte formato JSON (sem markdown):
 {
   "intent": "<intent_type>",
@@ -32,9 +34,28 @@ Gere o ActionPlan no seguinte formato JSON (sem markdown):
     "comment": "<comentário>",
     "extra": {}
   },
+  "nat_spec": {
+    "name": "<nome da política NAT>",
+    "inbound_interface": "<interface de entrada, ex: X1, X0>",
+    "outbound_interface": "<interface de saída, ex: X1, X0>",
+    "source": "<objeto de endereço origem ou 'Any'>",
+    "translated_source": "<objeto traduzido ou 'Original'>",
+    "destination": "<objeto de endereço destino ou 'Any'>",
+    "translated_destination": "<objeto traduzido ou 'Original'>",
+    "service": "<serviço ou 'Any'>",
+    "translated_service": "<serviço traduzido ou 'Original'>",
+    "comment": "<comentário>",
+    "enable": true
+  },
   "group_spec": null,
   "raw_intent_data": {}
 }
 
-Se a intenção for create_group, preencha group_spec em vez de rule_spec.
-Para delete_rule e list_rules, rule_spec pode ser null.
+Regras de preenchimento:
+- Para create_rule ou edit_rule: preencha rule_spec, nat_spec=null
+- Para create_nat_policy: preencha nat_spec, rule_spec=null
+- Para delete_nat_policy: nat_spec=null, rule_spec=null, coloque rule_id em raw_intent_data
+- Para create_group: preencha group_spec, rule_spec=null, nat_spec=null
+- Para list_rules: rule_spec=null, nat_spec=null; coloque src_zone/dst_zone em raw_intent_data se mencionado
+- Para list_nat_policies: rule_spec=null, nat_spec=null
+- Para delete_rule: rule_spec=null, nat_spec=null, coloque rule_id em raw_intent_data

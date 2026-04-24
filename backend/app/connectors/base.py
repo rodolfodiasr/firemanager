@@ -24,6 +24,23 @@ class FirewallRule:
 
 
 @dataclass
+class NatPolicy:
+    rule_id: str
+    name: str
+    inbound: str
+    outbound: str
+    source: str
+    translated_source: str
+    destination: str
+    translated_destination: str
+    service: str
+    translated_service: str
+    enabled: bool
+    comment: str
+    raw: dict = field(default_factory=dict)
+
+
+@dataclass
 class ExecutionResult:
     success: bool
     rule_id: str | None = None
@@ -42,6 +59,21 @@ class RuleSpec:
     action: str = "accept"
     comment: str | None = None
     extra: dict = field(default_factory=dict)
+
+
+@dataclass
+class NatSpec:
+    name: str
+    inbound_interface: str = "X1"
+    outbound_interface: str = "X1"
+    source: str = "Any"
+    translated_source: str = "Original"
+    destination: str = "Any"
+    translated_destination: str = "Original"
+    service: str = "Any"
+    translated_service: str = "Original"
+    comment: str | None = None
+    enable: bool = True
 
 
 @dataclass
@@ -74,3 +106,12 @@ class BaseConnector(ABC):
 
     @abstractmethod
     async def get_config_snapshot(self) -> str: ...
+
+    @abstractmethod
+    async def list_nat_policies(self) -> list[NatPolicy]: ...
+
+    @abstractmethod
+    async def create_nat_policy(self, spec: NatSpec) -> ExecutionResult: ...
+
+    @abstractmethod
+    async def delete_nat_policy(self, rule_id: str) -> ExecutionResult: ...
