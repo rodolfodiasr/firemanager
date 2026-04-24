@@ -37,6 +37,8 @@ class RuleSpec:
     src_address: str
     dst_address: str
     service: str
+    src_zone: str = "LAN"
+    dst_zone: str = "WAN"
     action: str = "accept"
     comment: str | None = None
     extra: dict = field(default_factory=dict)

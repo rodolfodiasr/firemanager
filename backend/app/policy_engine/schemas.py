@@ -20,6 +20,8 @@ class RuleSpecModel(BaseModel):
     name: str
     src_address: str
     dst_address: str
+    src_zone: str = "LAN"
+    dst_zone: str = "WAN"
     service: str
     action: str = "accept"
     comment: str | None = None

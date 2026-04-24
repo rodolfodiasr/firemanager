@@ -14,6 +14,8 @@ def translate_to_connector_spec(plan: ActionPlan, device: Device) -> tuple[RuleS
             name=r.name,
             src_address=r.src_address,
             dst_address=r.dst_address,
+            src_zone=r.src_zone,
+            dst_zone=r.dst_zone,
             service=r.service,
             action=r.action,
             comment=r.comment,

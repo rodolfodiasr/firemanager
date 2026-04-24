@@ -25,6 +25,8 @@ Gere o ActionPlan no seguinte formato JSON (sem markdown):
     "name": "<nome da regra>",
     "src_address": "<endereço origem>",
     "dst_address": "<endereço destino>",
+    "src_zone": "<zona de origem, ex: LAN, WAN, DMZ>",
+    "dst_zone": "<zona de destino, ex: LAN, WAN, DMZ>",
     "service": "<serviço/porta>",
     "action": "accept|deny",
     "comment": "<comentário>",

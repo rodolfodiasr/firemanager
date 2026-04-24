@@ -232,39 +232,22 @@ class SonicWallConnector(BaseConnector):
         self, spec: RuleSpec, src_name: str, dst_name: str, svc_name: str
     ) -> dict[str, Any]:
         action = self._normalize_action(spec.action)
+        rule_body: dict[str, Any] = {
+            "name": spec.name,
+            "enable": True,
+            "action": action,
+            "from": spec.src_zone,
+            "to": spec.dst_zone,
+            "source": {"address": {"name": src_name}},
+            "destination": {"address": {"name": dst_name}},
+            "service": {"name": svc_name},
+            "comment": spec.comment or "",
+        }
         if self._v6:
-            return {
-                "access_rules": [
-                    {
-                        "name": spec.name,
-                        "enable": True,
-                        "action": action,
-                        "from": "LAN",
-                        "to": "WAN",
-                        "source": {"address": {"name": src_name}},
-                        "destination": {"address": {"name": dst_name}},
-                        "service": {"name": svc_name},
-                        "comment": spec.comment or "",
-                    }
-                ]
-            }
-        # v7/v8: {"ipv4": {...}} wrapper per entry; inner fields same strings as v6
+            return {"access_rules": [rule_body]}
+        # v7/v8: per-entry {"ipv4": {...}} wrapper
         return {
-            "access_rules": [
-                {
-                    "ipv4": {
-                        "name": spec.name,
-                        "enable": True,
-                        "action": action,
-                        "from": "LAN",
-                        "to": "WAN",
-                        "source": {"address": {"name": src_name}},
-                        "destination": {"address": {"name": dst_name}},
-                        "service": {"name": svc_name},
-                        "comment": spec.comment or "",
-                    }
-                }
-            ]
+            "access_rules": [{"ipv4": rule_body}]
         }
 
     # ------------------------------------------------------------------
@@ -329,9 +312,8 @@ class SonicWallConnector(BaseConnector):
 
     async def create_rule(self, spec: RuleSpec) -> ExecutionResult:
         async with self._session() as client:
-            # Ensure address objects exist for raw IPs
-            src_name = await self._ensure_address_object(client, spec.src_address, "LAN")
-            dst_name = await self._ensure_address_object(client, spec.dst_address, "WAN")
+            src_name = await self._ensure_address_object(client, spec.src_address, spec.src_zone)
+            dst_name = await self._ensure_address_object(client, spec.dst_address, spec.dst_zone)
             svc_name = await self._ensure_service_object(client, spec.service)
 
             payload = self._rule_payload(spec, src_name, dst_name, svc_name)
@@ -373,8 +355,8 @@ class SonicWallConnector(BaseConnector):
 
     async def edit_rule(self, rule_id: str, spec: RuleSpec) -> ExecutionResult:
         async with self._session() as client:
-            src_name = await self._ensure_address_object(client, spec.src_address, "LAN")
-            dst_name = await self._ensure_address_object(client, spec.dst_address, "WAN")
+            src_name = await self._ensure_address_object(client, spec.src_address, spec.src_zone)
+            dst_name = await self._ensure_address_object(client, spec.dst_address, spec.dst_zone)
             svc_name = await self._ensure_service_object(client, spec.service)
             payload = self._rule_payload(spec, src_name, dst_name, svc_name)
             resp = await client.put(
