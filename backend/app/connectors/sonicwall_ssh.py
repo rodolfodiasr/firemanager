@@ -121,32 +121,41 @@ class SonicWallSSHConnector:
         )
 
     def _exit_configure(self, shell) -> str:
-        """Send 'end' to leave configure mode."""
+        """Send 'end'; handle the uncommitted-changes yes/no/cancel dialog."""
         self._send(shell, "end")
-        time.sleep(_CMD_DELAY)
-        return self._recv_all(shell)
+        out = self._wait_for(shell, [">", "cancel]:"], timeout=10)
+        print(f"[SSH end recv] {out!r}", flush=True)
+        if "cancel]:" in out or ("yes" in out and "no" in out and "cancel" in out):
+            self._send(shell, "yes")
+            out += self._wait_for(shell, [">"], timeout=15)
+        return out
 
     # ------------------------------------------------------------------
     # Command execution
     # ------------------------------------------------------------------
 
     def _run_cmd(self, shell, cmd: str) -> str:
-        """Send one command, handle password prompts, return output."""
+        """Send one command, handle password/confirmation prompts, return output."""
         self._send(shell, cmd)
-        time.sleep(_CMD_DELAY)
 
-        # For 'commit' SonicOS asks for the admin password
+        if cmd.strip() == "commit":
+            # commit may take several seconds before prompting for password
+            out = self._wait_for(shell, ["assword:", "config(", "%", "Error"], timeout=10)
+            print(f"[SSH commit recv] {out!r}", flush=True)
+            if "assword:" in out:
+                self._send(shell, self.password)
+                out += self._wait_for(shell, ["config(", "ommitted", "Error", "%"], timeout=15)
+                print(f"[SSH commit after-pwd] {out!r}", flush=True)
+                if "ccess denied" in out or "ession terminated" in out:
+                    raise RuntimeError(
+                        "Senha rejeitada pelo SonicWall ao executar 'commit'. "
+                        "Verifique as credenciais do dispositivo."
+                    )
+            return out
+
+        time.sleep(_CMD_DELAY)
         out = self._recv_all(shell)
-        if "assword:" in out:
-            self._send(shell, self.password)
-            time.sleep(_CMD_DELAY)
-            extra = self._recv_all(shell)
-            out += extra
-            if "ccess denied" in extra or "ession terminated" in extra:
-                raise RuntimeError(
-                    f"Senha rejeitada pelo SonicWall ao executar '{cmd}'. "
-                    "Verifique as credenciais do dispositivo."
-                )
+        print(f"[SSH cmd {cmd!r}] {out!r}", flush=True)
         return out
 
     # ------------------------------------------------------------------
