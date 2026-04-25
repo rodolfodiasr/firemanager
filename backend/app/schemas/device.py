@@ -12,6 +12,7 @@ class DeviceCredentials(BaseModel):
     username: str | None = None
     password: str | None = None
     ssh_port: int = 22  # SSH port for CLI fallback (default 22)
+    configure_password: str | None = None  # SonicWall CLI enable/configure password (if different from password)
 
 
 class DeviceCreate(BaseModel):

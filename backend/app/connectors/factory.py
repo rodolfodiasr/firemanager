@@ -9,10 +9,14 @@ from app.utils.crypto import decrypt_credentials
 def get_ssh_connector(device: Device) -> SonicWallSSHConnector:
     """Return an SSH connector using stored credentials (username/password)."""
     creds = decrypt_credentials(device.encrypted_credentials)
+    password = creds.get("password", "")
+    # configure_password is optional; falls back to the main password if not set
+    configure_password = creds.get("configure_password") or password
     return SonicWallSSHConnector(
         host=device.host,
         username=creds.get("username", ""),
-        password=creds.get("password", ""),
+        password=password,
+        configure_password=configure_password,
         ssh_port=int(creds.get("ssh_port", 22)),
     )
 
