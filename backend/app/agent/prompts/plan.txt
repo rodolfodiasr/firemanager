@@ -99,6 +99,6 @@ Regras de preenchimento:
   - filter_object: "<nome>" se o usuário pedir rotas que contenham um objeto específico em origem, destino ou gateway
   - filter_interface: "<interface>" se o usuário pedir rotas por interface (ex: X1, X0)
   - filter_type: "<tipo>" se o usuário pedir por tipo de rota (ex: standard)
-- Para configure_content_filter: defina execution_mode="ssh"; preencha content_filter_spec com os dados do filtro; em ssh_commands forneça a lista exata de comandos CLI SonicOS 7.x para configurar o CFS — inclua apenas as linhas de comando (sem o prompt), começando após entrar em modo configure. Exemplo de sequência para bloquear categorias:
+- Para configure_content_filter: defina execution_mode="ssh"; preencha content_filter_spec com os dados do filtro; em ssh_commands forneça APENAS os comandos de configuração (NÃO inclua "configure" nem "end" — o sistema entra e sai do modo configure automaticamente). Inclua "commit" ao final para salvar. Exemplo para bloquear categorias:
   ["content-filter profile add fm-cfs-adult", "content-filter profile edit fm-cfs-adult", "block Adult/Mature Content", "exit", "content-filter policy add fm-cfs-policy", "content-filter policy edit fm-cfs-policy", "profile fm-cfs-adult", "zones LAN", "enable", "exit", "commit"]
   Use nomes com prefixo "fm-" para perfis e políticas criados pela plataforma. Demais specs=null.

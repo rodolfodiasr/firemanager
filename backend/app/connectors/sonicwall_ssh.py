@@ -1,15 +1,21 @@
-"""SonicWall SSH connector — executes CLI commands via paramiko interactive shell."""
-import asyncio
+"""SonicWall SSH connector — executes CLI commands via paramiko interactive shell.
+
+Flow handled automatically:
+  connect → wait for '>' → 'configure' → handle preempt → run commands
+  → handle 'commit' password prompt → 'end'
+"""
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
+import asyncio
+
 logger = logging.getLogger(__name__)
 
-_READ_DELAY = 0.5   # seconds to wait after each command
-_FINAL_DELAY = 1.0  # seconds for final drain
 _RECV_SIZE = 65535
+_CMD_DELAY = 0.6    # seconds to wait after each command
+_POLL_SLEEP = 0.1   # polling interval while waiting for prompt
 
 
 @dataclass
@@ -27,31 +33,87 @@ class SonicWallSSHConnector:
         self.password = password
         self.ssh_port = ssh_port
 
-    def _read_output(self, shell) -> str:
-        """Drain available output from shell."""
-        time.sleep(_READ_DELAY)
+    # ------------------------------------------------------------------
+    # Low-level shell helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _recv_all(shell) -> str:
         buf = b""
         while shell.recv_ready():
             buf += shell.recv(_RECV_SIZE)
         return buf.decode("utf-8", errors="replace")
 
-    def _send_cmd(self, shell, cmd: str) -> str:
-        """Send one command and return output, handling password prompts automatically."""
-        shell.sendall((cmd + "\n").encode())
-        out = self._read_output(shell)
+    @staticmethod
+    def _wait_for(shell, patterns: list[str], timeout: float = 15.0) -> str:
+        """Read output until one of the patterns appears or timeout."""
+        buf = b""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if shell.recv_ready():
+                buf += shell.recv(_RECV_SIZE)
+                decoded = buf.decode("utf-8", errors="replace")
+                if any(p in decoded for p in patterns):
+                    return decoded
+            time.sleep(_POLL_SLEEP)
+        return buf.decode("utf-8", errors="replace")
 
-        # SonicWall prompts for admin password on commit — respond automatically
+    def _send(self, shell, text: str) -> None:
+        shell.sendall((text + "\n").encode())
+
+    # ------------------------------------------------------------------
+    # Configure-mode lifecycle
+    # ------------------------------------------------------------------
+
+    def _enter_configure(self, shell) -> str:
+        """Send 'configure', handle preempt prompt, confirm config( prompt."""
+        self._send(shell, "configure")
+        out = self._wait_for(shell, ["config(", "preempt", "no]:"], timeout=15)
+
+        if "preempt" in out.lower() or "no]:" in out:
+            self._send(shell, "yes")
+            extra = self._wait_for(shell, ["config("], timeout=10)
+            out += extra
+
+        if "config(" not in out:
+            raise RuntimeError(
+                "Não foi possível entrar no modo de configuração do SonicWall. "
+                f"Resposta recebida: {out[-300:]!r}"
+            )
+        return out
+
+    def _exit_configure(self, shell) -> str:
+        """Send 'end' to leave configure mode."""
+        self._send(shell, "end")
+        time.sleep(_CMD_DELAY)
+        return self._recv_all(shell)
+
+    # ------------------------------------------------------------------
+    # Command execution
+    # ------------------------------------------------------------------
+
+    def _run_cmd(self, shell, cmd: str) -> str:
+        """Send one command, handle password prompts, return output."""
+        self._send(shell, cmd)
+        time.sleep(_CMD_DELAY)
+
+        # For 'commit' SonicOS asks for the admin password
+        out = self._recv_all(shell)
         if "assword:" in out:
-            shell.sendall((self.password + "\n").encode())
-            extra = self._read_output(shell)
+            self._send(shell, self.password)
+            time.sleep(_CMD_DELAY)
+            extra = self._recv_all(shell)
             out += extra
             if "ccess denied" in extra or "ession terminated" in extra:
                 raise RuntimeError(
                     f"Senha rejeitada pelo SonicWall ao executar '{cmd}'. "
-                    "Verifique as credenciais armazenadas para o dispositivo."
+                    "Verifique as credenciais do dispositivo."
                 )
-
         return out
+
+    # ------------------------------------------------------------------
+    # Main entry point (runs in thread executor)
+    # ------------------------------------------------------------------
 
     def _connect_and_run(self, commands: list[str]) -> tuple[bool, str]:
         import paramiko
@@ -71,44 +133,39 @@ class SonicWallSSHConnector:
             )
 
             shell = client.invoke_shell(width=200, height=50)
-            time.sleep(1.0)  # wait for banner
 
-            # drain welcome message
-            if shell.recv_ready():
-                shell.recv(_RECV_SIZE)
+            # Wait for initial user-exec prompt  admin@hostname>
+            out_banner = self._wait_for(shell, [">"], timeout=15)
+            parts: list[str] = [out_banner]
 
-            output_parts: list[str] = []
+            # Enter configure mode
+            parts.append(self._enter_configure(shell))
 
+            # Execute each command
             for cmd in commands:
-                chunk = self._send_cmd(shell, cmd)
-                if chunk:
-                    output_parts.append(chunk)
+                parts.append(self._run_cmd(shell, cmd))
 
-            # final drain
-            time.sleep(_FINAL_DELAY)
-            buf = b""
-            while shell.recv_ready():
-                buf += shell.recv(_RECV_SIZE)
-            if buf:
-                output_parts.append(buf.decode("utf-8", errors="replace"))
+            # Exit configure mode gracefully
+            parts.append(self._exit_configure(shell))
 
             shell.close()
             client.close()
 
-            full_output = "".join(output_parts)
-            logger.info("SSH commands executed on %s:%s", self.host, self.ssh_port)
-            return True, full_output
+            full = "".join(parts)
+            logger.info("SSH session completed on %s:%s", self.host, self.ssh_port)
+            return True, full
 
         except RuntimeError as exc:
             return False, str(exc)
-        except paramiko.AuthenticationException as exc:
-            return False, f"Falha de autenticação SSH em {self.host}:{self.ssh_port}: {exc}"
-        except paramiko.SSHException as exc:
-            return False, f"Erro SSH em {self.host}:{self.ssh_port}: {exc}"
-        except OSError as exc:
-            return False, f"Conexão SSH recusada em {self.host}:{self.ssh_port}: {exc}"
         except Exception as exc:
-            return False, f"Erro inesperado SSH ({type(exc).__name__}): {exc}"
+            import paramiko as _p
+            if isinstance(exc, _p.AuthenticationException):
+                return False, f"Falha de autenticação SSH em {self.host}:{self.ssh_port}: {exc}"
+            if isinstance(exc, _p.SSHException):
+                return False, f"Erro SSH em {self.host}:{self.ssh_port}: {exc}"
+            if isinstance(exc, OSError):
+                return False, f"Conexão SSH recusada em {self.host}:{self.ssh_port}: {exc}"
+            return False, f"Erro SSH ({type(exc).__name__}): {exc}"
         finally:
             try:
                 client.close()
@@ -116,7 +173,7 @@ class SonicWallSSHConnector:
                 pass
 
     async def execute_commands(self, commands: list[str]) -> SSHResult:
-        """Execute a list of CLI commands via SSH interactive shell."""
+        """Execute a list of config-mode CLI commands via SSH."""
         if not commands:
             return SSHResult(success=False, error="Nenhum comando SSH fornecido")
 
