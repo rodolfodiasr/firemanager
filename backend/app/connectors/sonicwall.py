@@ -105,6 +105,35 @@ class SonicWallConnector(BaseConnector):
         # Both v6 and v7 require POST /config/pending to persist staged changes
         await client.post("/api/sonicos/config/pending")
 
+    @contextlib.asynccontextmanager
+    async def hold_session(self) -> AsyncGenerator[None, None]:
+        """Open an authenticated API session without committing.
+
+        Keeps SonicWall in 'admin at SonicOS API is editing' state so that
+        a concurrent SSH 'configure' shows the preempt dialog instead of
+        requiring a separate enable password.
+        """
+        async with httpx.AsyncClient(
+            base_url=self.base_url,
+            verify=self.verify_ssl,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            timeout=30.0,
+        ) as client:
+            resp = await client.post(
+                "/api/sonicos/auth",
+                json={"override": True},
+                auth=httpx.DigestAuth(self.username, self.password),
+            )
+            if not resp.is_success:
+                logger.warning("hold_session auth failed: %s", resp.status_code)
+            try:
+                yield
+            finally:
+                try:
+                    await client.delete("/api/sonicos/auth")
+                except Exception:
+                    pass
+
     # ------------------------------------------------------------------
     # Firmware retrieval
     # ------------------------------------------------------------------

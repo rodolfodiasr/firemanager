@@ -27,18 +27,10 @@ class SSHResult:
 
 
 class SonicWallSSHConnector:
-    def __init__(
-        self,
-        host: str,
-        username: str,
-        password: str,
-        configure_password: str | None = None,
-        ssh_port: int = 22,
-    ):
+    def __init__(self, host: str, username: str, password: str, ssh_port: int = 22):
         self.host = host
         self.username = username
         self.password = password
-        self.configure_password = configure_password or password
         self.ssh_port = ssh_port
 
     # ------------------------------------------------------------------
@@ -98,9 +90,9 @@ class SonicWallSSHConnector:
                     buf = b""
                     continue
 
-                # Password prompt — respond with configure_password
+                # Password prompt — respond with admin password
                 if not password_sent and "assword:" in decoded:
-                    self._send(shell, self.configure_password)
+                    self._send(shell, self.password)
                     password_sent = True
                     buf = b""
                     continue
