@@ -72,6 +72,10 @@ Regras de preenchimento:
 - Para delete_route_policy: coloque rule_id em raw_intent_data, specs=null
 - Para delete_rule: coloque rule_id em raw_intent_data, specs=null
 - Para create_group: preencha group_spec, demais specs=null
-- Para list_rules: specs=null; coloque src_zone/dst_zone em raw_intent_data se mencionado
+- Para list_rules: specs=null; em raw_intent_data coloque:
+  - src_zone/dst_zone se o usuário mencionar zona de origem/destino
+  - filter_any: true se o usuário pedir regras com objeto "any" ou "qualquer" em origem ou destino
+  - filter_action: "allow" ou "deny" se o usuário pedir por ação específica
+  - filter_enabled: true/false se o usuário pedir regras ativas/inativas
 - Para list_nat_policies: specs=null
 - Para list_route_policies: specs=null

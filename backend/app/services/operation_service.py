@@ -100,13 +100,21 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
     try:
         if plan.intent == IntentType.list_rules:
             rules = await connector.list_rules()
-            # Apply optional zone filter from raw_intent_data
             src_zone = plan.raw_intent_data.get("src_zone")
             dst_zone = plan.raw_intent_data.get("dst_zone")
+            filter_any = plan.raw_intent_data.get("filter_any", False)
+            filter_action = plan.raw_intent_data.get("filter_action")
+            filter_enabled = plan.raw_intent_data.get("filter_enabled")
             if src_zone:
                 rules = [r for r in rules if r.raw.get("from", "").upper() == src_zone.upper()]
             if dst_zone:
                 rules = [r for r in rules if r.raw.get("to", "").upper() == dst_zone.upper()]
+            if filter_any:
+                rules = [r for r in rules if r.src.lower() == "any" or r.dst.lower() == "any"]
+            if filter_action:
+                rules = [r for r in rules if r.action.lower() == filter_action.lower()]
+            if filter_enabled is not None:
+                rules = [r for r in rules if r.enabled == bool(filter_enabled)]
             operation.action_plan = {
                 **(operation.action_plan or {}),
                 "result": [dataclasses.asdict(r) for r in rules],
