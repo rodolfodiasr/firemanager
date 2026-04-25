@@ -48,11 +48,11 @@ Gere o ActionPlan no seguinte formato JSON (sem markdown):
     "enable": true
   },
   "route_spec": {
-    "interface": "<interface de saída, ex: X1, X0>",
-    "destination": "<rede destino ou 'Any'>",
-    "source": "<rede origem ou 'Any'>",
+    "interface": "<interface de saída, ex: X1, X0. Use X1 para WAN, X0 para LAN>",
+    "destination": "<CIDR da rede destino, ex: 10.10.10.0/24, ou 'Any'>",
+    "source": "<IP ou CIDR de origem, ex: 192.168.1.0/24, ou 'Any'>",
     "service": "<serviço ou 'Any'>",
-    "gateway": "<IP do gateway ou 'default'>",
+    "gateway": "<IP do próximo salto obrigatório, ex: 192.168.168.2. Use 'default' apenas se não houver gateway específico>",
     "metric": 20,
     "distance": 20,
     "name": "<nome da rota>",

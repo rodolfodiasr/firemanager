@@ -508,33 +508,39 @@ class SonicWallConnector(BaseConnector):
             resp.raise_for_status()
             return self._parse_route_policies(resp.json())
 
-    def _route_payload(self, spec: RouteSpec) -> dict:
-        if spec.gateway.lower() == "default":
-            gateway: dict = {"default": True}
-        else:
-            gateway = {"ip": spec.gateway}
-
-        body: dict = {
-            "interface": spec.interface,
-            "source": self._addr_field(spec.source),
-            "destination": self._addr_field(spec.destination),
-            "service": self._addr_field(spec.service),
-            "gateway": gateway,
-            "metric": spec.metric,
-            "distance": {"value": spec.distance},
-            "name": spec.name,
-            "type": spec.route_type,
-            "comment": spec.comment or "",
-            "disable_on_interface_down": spec.disable_on_interface_down,
-            "vpn_precedence": False,
-            "tcp_acceleration": False,
-            "probe": "",
-        }
-        return {"route_policies": [{"ipv4": body}]}
+    def _gateway_field(self, gateway: str) -> dict:
+        if not gateway or gateway.lower() in ("default", "any", ""):
+            return {"default": True}
+        return {"ip": gateway}
 
     async def create_route_policy(self, spec: RouteSpec) -> ExecutionResult:
         async with self._session() as client:
-            payload = self._route_payload(spec)
+            # Auto-create address object if destination is a raw CIDR
+            dst_name = spec.destination
+            if self._obj_name_for_ip(spec.destination):
+                zone = "WAN" if spec.interface.upper() in ("X1",) else "LAN"
+                dst_name = await self._ensure_address_object(client, spec.destination, zone)
+
+            src_field = self._addr_field(spec.source)
+            dst_field = {"name": dst_name} if dst_name.lower() not in ("any", "") else {"any": True}
+
+            body: dict = {
+                "interface": spec.interface,
+                "source": src_field,
+                "destination": dst_field,
+                "service": self._addr_field(spec.service),
+                "gateway": self._gateway_field(spec.gateway),
+                "metric": spec.metric,
+                "distance": {"value": spec.distance},
+                "name": spec.name,
+                "type": spec.route_type,
+                "comment": spec.comment or "",
+                "disable_on_interface_down": spec.disable_on_interface_down,
+                "vpn_precedence": False,
+                "tcp_acceleration": False,
+                "probe": "",
+            }
+            payload = {"route_policies": [{"ipv4": body}]}
             resp = await client.post("/api/sonicos/route-policies/ipv4", json=payload)
             await self._commit(client)
             if resp.status_code in (200, 201):
