@@ -70,9 +70,10 @@ Gere o ActionPlan no seguinte formato JSON (sem markdown):
     "country_action": "block"
   },
   "security_exclusion_spec": {
-    "group": "<GRP-EXCLUSION-GEO-IP|GRP-EXCLUSION-BOOTNET|GRP-EXCLUSION-CFS>",
+    "services": ["<gateway-antivirus|anti-spyware|intrusion-prevention|app-control|geo-ip|botnet|dpi-ssl-client|dpi-ssl-server|dpi-ssl>"],
     "ip_addresses": [],
-    "zone": "LAN"
+    "zone": "LAN",
+    "group": ""
   },
   "app_rules_spec": {
     "policy_name": "<nome da política>",
@@ -186,15 +187,14 @@ Regras de preenchimento:
   Para application-category-list, substitua "application id" por "application-category id".
   Demais specs=null.
 
-- Para add_security_exclusion: defina execution_mode="ssh"; preencha security_exclusion_spec com group e ip_addresses; o grupo deve ser:
-  - "GRP-EXCLUSION-GEO-IP" para exclusão de geo-ip
-  - "GRP-EXCLUSION-BOOTNET" para exclusão de botnet (atenção: "BOOTNET" não "BOTNET")
-  - "GRP-EXCLUSION-CFS" para exclusão de content filter
-  Para cada IP, crie um address-object com prefixo "fm-excl-" e adicione ao grupo; em ssh_commands:
-  Exemplo para adicionar 1.2.3.4 ao grupo GRP-EXCLUSION-GEO-IP:
-  ["address-object ipv4 fm-excl-1-2-3-4", "name fm-excl-1-2-3-4", "zone LAN", "host 1.2.3.4", "exit", "address-group ipv4 GRP-EXCLUSION-GEO-IP", "address-object ipv4 fm-excl-1-2-3-4", "exit", "commit"]
-  Para múltiplos IPs: repita o bloco address-object para cada IP antes do address-group, depois adicione todos no address-group com um único commit ao final.
-  Substitua pontos por hífens no nome do objeto (ex: 10.0.0.1 → fm-excl-10-0-0-1).
+- Para add_security_exclusion: defina execution_mode="ssh"; preencha security_exclusion_spec com ip_addresses (lista de IPs) e services (lista de serviços alvo); deixe ssh_commands=null (o sistema detecta o grupo de exclusão automaticamente via show e configura o serviço).
+  Serviços válidos em "services": "gateway-antivirus", "anti-spyware", "intrusion-prevention", "app-control", "geo-ip", "botnet", "dpi-ssl-client", "dpi-ssl-server", "dpi-ssl" (ambos client e server).
+  Se o usuário pedir "todos os serviços", use todos eles. Se pedir serviços específicos, use apenas os mencionados.
+  O campo "group" pode ser deixado vazio "" — o sistema detecta o grupo configurado no dispositivo e usa o default se não houver.
+  Exemplo para adicionar 1.2.3.4 ao Intrusion Prevention:
+  security_exclusion_spec: {"services": ["intrusion-prevention"], "ip_addresses": ["1.2.3.4"], "zone": "LAN", "group": ""}
+  Exemplo para adicionar ao Gateway AV e Anti-Spyware:
+  security_exclusion_spec: {"services": ["gateway-antivirus", "anti-spyware"], "ip_addresses": ["10.0.0.5"], "zone": "LAN", "group": ""}
   Demais specs=null.
 
 - Para get_security_status: defina execution_mode="ssh"; em ssh_commands liste os comandos show desejados (sem "configure", sem "end"). O sistema executa em modo user exec (sem entrar em configure). Se o usuário não especificar quais serviços, inclua todos:

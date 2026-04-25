@@ -112,6 +112,21 @@ export function useAgent(deviceId: string | null) {
               ],
               rows: result,
             };
+          } else if (intent === "add_security_exclusion") {
+            const ips = (result[0] as Record<string, unknown>)?.ips;
+            const ipList = Array.isArray(ips) ? (ips as string[]).join(", ") : String(ips ?? "");
+            summary = `IP(s) ${ipList} adicionado(s) às exclusões:`;
+            tableData = {
+              columns: [
+                { key: "service", label: "Serviço" },
+                { key: "group", label: "Grupo" },
+                { key: "success", label: "Status" },
+              ],
+              rows: result.map((r) => ({
+                ...r,
+                success: (r as Record<string, unknown>).success,
+              })),
+            };
           } else {
             summary = "Operação executada com sucesso!";
           }

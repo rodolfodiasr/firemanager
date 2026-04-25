@@ -46,6 +46,19 @@ function ResultTable({ tableData }: { tableData: TableData }) {
                     </td>
                   );
                 }
+                if (col.key === "success") {
+                  return (
+                    <td key={col.key} className="px-3 py-2">
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                          val ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {val ? "OK" : "Erro"}
+                      </span>
+                    </td>
+                  );
+                }
                 if (col.key === "action") {
                   const action = String(val ?? "").toLowerCase();
                   const color =

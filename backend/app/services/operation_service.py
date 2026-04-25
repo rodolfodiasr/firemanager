@@ -6,6 +6,84 @@ from uuid import UUID
 # ANSI escape sequence pattern (for cleaning SSH terminal output)
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 
+_SERVICE_EXCLUSION_CONFIG: dict[str, dict] = {
+    "gateway-antivirus": {
+        "show_cmd": "show gateway-antivirus",
+        "pattern": re.compile(r"exclusion\s+group\s+(\S+)", re.IGNORECASE),
+        "default_group": "fm-excl-gateway-av",
+        "config_cmds": lambda g: ["gateway-antivirus", f"exclusion group {g}", "exit"],
+    },
+    "anti-spyware": {
+        "show_cmd": "show anti-spyware",
+        "pattern": re.compile(r"exclusion\s+group\s+(\S+)", re.IGNORECASE),
+        "default_group": "fm-excl-anti-spyware",
+        "config_cmds": lambda g: ["anti-spyware", f"exclusion group {g}", "exit"],
+    },
+    "intrusion-prevention": {
+        "show_cmd": "show intrusion-prevention",
+        "pattern": re.compile(r"exclusion\s+group\s+(\S+)", re.IGNORECASE),
+        "default_group": "fm-excl-ips",
+        "config_cmds": lambda g: ["intrusion-prevention", f"exclusion group {g}", "exit"],
+    },
+    "app-control": {
+        "show_cmd": "show app-control",
+        "pattern": re.compile(r"exclusion\s+group\s+(\S+)", re.IGNORECASE),
+        "default_group": "fm-excl-app-control",
+        "config_cmds": lambda g: ["app-control", f"exclusion group {g}", "exit"],
+    },
+    "geo-ip": {
+        "show_cmd": "show geo-ip",
+        "pattern": re.compile(r"exclude\s+group\s+(\S+)", re.IGNORECASE),
+        "default_group": "GRP-EXCLUSION-GEO-IP",
+        "config_cmds": lambda g: ["geo-ip", f"exclude group {g}", "exit"],
+    },
+    "botnet": {
+        "show_cmd": "show botnet",
+        "pattern": re.compile(r"exclude\s+group\s+(\S+)", re.IGNORECASE),
+        "default_group": "GRP-EXCLUSION-BOOTNET",
+        "config_cmds": lambda g: ["botnet", f"exclude group {g}", "exit"],
+    },
+    "dpi-ssl-client": {
+        "show_cmd": "show dpi-ssl client",
+        "pattern": re.compile(r"exclusion\s+group\s+(\S+)", re.IGNORECASE),
+        "default_group": "fm-excl-dpi-ssl-client",
+        "config_cmds": lambda g: ["dpi-ssl client", f"exclusion group {g}", "exit"],
+    },
+    "dpi-ssl-server": {
+        "show_cmd": "show dpi-ssl server",
+        "pattern": re.compile(r"exclusion\s+group\s+(\S+)", re.IGNORECASE),
+        "default_group": "fm-excl-dpi-ssl-server",
+        "config_cmds": lambda g: ["dpi-ssl server", f"exclusion group {g}", "exit"],
+    },
+    "dpi-ssl": {
+        "show_cmd": "show dpi-ssl client",
+        "pattern": re.compile(r"exclusion\s+group\s+(\S+)", re.IGNORECASE),
+        "default_group": "fm-excl-dpi-ssl",
+        "config_cmds": lambda g: ["dpi-ssl client", f"exclusion group {g}", "exit", "dpi-ssl server", f"exclusion group {g}", "exit"],
+    },
+}
+
+
+def _build_service_exclusion_commands(
+    ip_addresses: list[str],
+    group_name: str,
+    config_cmds: list[str],
+    zone: str = "LAN",
+) -> list[str]:
+    """Build SSH commands to add IPs to an address group and link it to a service."""
+    cmds: list[str] = []
+    for ip in ip_addresses:
+        obj_name = "fm-excl-" + ip.replace(".", "-")
+        cmds += [f"address-object ipv4 {obj_name}", f"name {obj_name}", f"zone {zone}", f"host {ip}", "exit"]
+    cmds.append(f"address-group ipv4 {group_name}")
+    for ip in ip_addresses:
+        cmds.append("address-object ipv4 " + "fm-excl-" + ip.replace(".", "-"))
+    cmds.append("exit")
+    cmds.extend(config_cmds)
+    cmds.append("commit")
+    return cmds
+
+
 _SECURITY_SERVICE_LABELS: dict[str, str] = {
     "show gateway-antivirus":    "Gateway Anti-Virus",
     "show anti-spyware":         "Anti-Spyware",
@@ -296,6 +374,41 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
                 operation.status = OperationStatus.failed
                 operation.error_message = ssh_result.error
 
+        elif plan.intent == IntentType.add_security_exclusion:
+            spec = plan.security_exclusion_spec
+            if not spec or not spec.ip_addresses:
+                raise ValueError("security_exclusion_spec com ip_addresses é obrigatório")
+            services = spec.services or list(_SERVICE_EXCLUSION_CONFIG.keys())
+            ssh_connector = get_ssh_connector(device)
+            results = []
+            all_success = True
+            for svc_key in services:
+                svc_config = _SERVICE_EXCLUSION_CONFIG.get(svc_key)
+                if not svc_config:
+                    results.append({"service": svc_key, "group": "", "ips": spec.ip_addresses, "success": False, "error": f"Serviço '{svc_key}' não reconhecido"})
+                    all_success = False
+                    continue
+                group_name = spec.group if spec.group else svc_config["default_group"]
+                show_result = await ssh_connector.execute_show_commands([svc_config["show_cmd"]])
+                if show_result.success:
+                    clean_show = _ANSI_RE.sub('', show_result.output).replace('\r', '')
+                    m = svc_config["pattern"].search(clean_show)
+                    if m:
+                        group_name = m.group(1)
+                config_cmds = svc_config["config_cmds"](group_name)
+                cmds = _build_service_exclusion_commands(spec.ip_addresses, group_name, config_cmds, spec.zone)
+                exec_result = await ssh_connector.execute_commands(cmds)
+                results.append({"service": svc_key, "group": group_name, "ips": spec.ip_addresses, "success": exec_result.success, "error": exec_result.error})
+                if not exec_result.success:
+                    all_success = False
+            operation.action_plan = {**(operation.action_plan or {}), "result": results}
+            if all_success:
+                operation.status = OperationStatus.completed
+            else:
+                operation.status = OperationStatus.failed
+                failed = [r["service"] for r in results if not r["success"]]
+                operation.error_message = f"Falha na exclusão dos serviços: {', '.join(failed)}"
+
         elif plan.intent in (
             IntentType.configure_content_filter,
             IntentType.toggle_gateway_av,
@@ -306,7 +419,6 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
             IntentType.toggle_botnet,
             IntentType.toggle_dpi_ssl,
             IntentType.configure_app_rules,
-            IntentType.add_security_exclusion,
         ):
             ssh_commands = plan.ssh_commands or []
             if not ssh_commands:

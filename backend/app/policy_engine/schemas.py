@@ -101,9 +101,10 @@ class SecurityServiceSpec(BaseModel):
 
 
 class SecurityExclusionSpec(BaseModel):
-    group: str  # GRP-EXCLUSION-GEO-IP | GRP-EXCLUSION-BOOTNET | GRP-EXCLUSION-CFS
+    services: list[str] = Field(default_factory=list)  # gateway-antivirus | anti-spyware | intrusion-prevention | app-control | geo-ip | botnet | dpi-ssl-client | dpi-ssl-server | dpi-ssl
     ip_addresses: list[str]
     zone: str = "LAN"
+    group: str = ""  # override exclusion group name (auto-detected if empty)
 
 
 class AppRulesSpec(BaseModel):
