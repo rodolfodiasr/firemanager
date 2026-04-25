@@ -223,10 +223,10 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
             if not ssh_commands:
                 raise ValueError("Nenhum comando SSH foi gerado pelo agente para configure_content_filter")
             ssh_connector = get_ssh_connector(device)
-            # Hold an API session so SSH 'configure' triggers the preempt dialog
-            # (SonicWall requires no separate password when an API session is active)
-            async with connector.hold_session():
-                ssh_result = await ssh_connector.execute_commands(ssh_commands)
+            # Run SSH with NO active API session — SonicWall blocks configure with
+            # "Access denied\r\nPassword:" when an API session is open.
+            # With no session active, SSH configure enters directly without password.
+            ssh_result = await ssh_connector.execute_commands(ssh_commands)
             operation.action_plan = {
                 **(operation.action_plan or {}),
                 "result": {

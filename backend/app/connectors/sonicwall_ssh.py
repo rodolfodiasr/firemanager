@@ -78,16 +78,12 @@ class SonicWallSSHConnector:
             if shell.recv_ready():
                 buf += shell.recv(_RECV_SIZE)
                 decoded = buf.decode("utf-8", errors="replace")
-                print(f"[SSH configure] recv: {decoded[-400:]!r}", flush=True)
-
                 # Success
                 if "config(" in decoded:
-                    print("[SSH configure] SUCCESS — entered configure mode", flush=True)
                     return decoded
 
                 # Preempt yes/no prompt — respond immediately
                 if not preempt_sent and ("no]:" in decoded or "preempt" in decoded.lower()):
-                    print("[SSH configure] preempt dialog detected — sending 'yes'", flush=True)
                     self._send(shell, "yes")
                     preempt_sent = True
                     buf = b""
@@ -95,7 +91,6 @@ class SonicWallSSHConnector:
 
                 # Password prompt — respond with admin password
                 if not password_sent and "assword:" in decoded:
-                    print("[SSH configure] password prompt detected — sending password", flush=True)
                     self._send(shell, self.password)
                     password_sent = True
                     buf = b""
@@ -105,7 +100,6 @@ class SonicWallSSHConnector:
                 # (output ending with ">", not just ">" anywhere in intermediate text)
                 at_prompt = decoded.rstrip().endswith(">") and "config(" not in decoded
                 if at_prompt:
-                    print(f"[SSH configure] back at user prompt — preempt_sent={preempt_sent} password_sent={password_sent}", flush=True)
                     if password_sent:
                         raise RuntimeError(
                             "Senha rejeitada ao entrar em configure mode no SonicWall. "

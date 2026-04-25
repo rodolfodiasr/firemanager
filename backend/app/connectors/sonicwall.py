@@ -125,11 +125,8 @@ class SonicWallConnector(BaseConnector):
                 "/api/sonicos/auth",
                 auth=httpx.DigestAuth(self.username, self.password),
             )
-            if resp.is_success:
-                print(f"[hold_session] API session opened (HTTP {resp.status_code}) — SSH will see preempt dialog", flush=True)
-            else:
-                # Auth failed (existing session active) — that session is preemptable too
-                print(f"[hold_session] auth returned HTTP {resp.status_code} body={resp.text[:200]!r} — existing session, SSH will preempt", flush=True)
+            if not resp.is_success:
+                logger.debug("hold_session: auth returned HTTP %s", resp.status_code)
             try:
                 yield
             finally:
