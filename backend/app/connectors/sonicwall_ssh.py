@@ -78,7 +78,6 @@ class SonicWallSSHConnector:
             if shell.recv_ready():
                 buf += shell.recv(_RECV_SIZE)
                 decoded = buf.decode("utf-8", errors="replace")
-                print(f"[SSH configure recv] {decoded!r}", flush=True)
                 # Success
                 if "config(" in decoded:
                     return decoded
@@ -124,7 +123,6 @@ class SonicWallSSHConnector:
         """Send 'end'; handle the uncommitted-changes yes/no/cancel dialog."""
         self._send(shell, "end")
         out = self._wait_for(shell, [">", "cancel]:"], timeout=10)
-        print(f"[SSH end recv] {out!r}", flush=True)
         if "cancel]:" in out or ("yes" in out and "no" in out and "cancel" in out):
             self._send(shell, "yes")
             out += self._wait_for(shell, [">"], timeout=15)
@@ -139,25 +137,21 @@ class SonicWallSSHConnector:
         self._send(shell, cmd)
         time.sleep(_CMD_DELAY)
         out = self._recv_all(shell)
-        print(f"[SSH cmd {cmd!r}] {out!r}", flush=True)
 
         # If 'exit' left configure mode and shows uncommitted-changes dialog,
         # send 'cancel' to return to configure mode so remaining commands run.
         if "cancel]:" in out:
             self._send(shell, "cancel")
             out += self._wait_for(shell, ["config("], timeout=10)
-            print(f"[SSH cancel-return] {out!r}", flush=True)
             return out
 
         if cmd.strip() == "commit":
             # commit prompts for the admin password; wait longer for it to appear
             if "assword:" not in out:
                 out += self._wait_for(shell, ["assword:", "config(", "%"], timeout=10)
-                print(f"[SSH commit-wait] {out!r}", flush=True)
             if "assword:" in out:
                 self._send(shell, self.password)
                 out += self._wait_for(shell, ["config(", "ommitted", "Error", "%"], timeout=15)
-                print(f"[SSH commit-pwd] {out!r}", flush=True)
                 if "ccess denied" in out or "ession terminated" in out:
                     raise RuntimeError(
                         "Senha rejeitada pelo SonicWall ao executar 'commit'. "
@@ -193,12 +187,9 @@ class SonicWallSSHConnector:
             # Paramiko handles SSH-protocol auth; this separate prompt must be
             # answered manually before the CLI ">" appears.
             out_banner = self._wait_for(shell, [">", "assword:"], timeout=15)
-            print(f"[SSH banner] {out_banner!r}", flush=True)
             if "assword:" in out_banner and ">" not in out_banner:
                 self._send(shell, self.password)
-                extra = self._wait_for(shell, [">"], timeout=10)
-                print(f"[SSH shell-auth] {extra!r}", flush=True)
-                out_banner += extra
+                out_banner += self._wait_for(shell, [">"], timeout=10)
 
             parts: list[str] = [out_banner]
 
