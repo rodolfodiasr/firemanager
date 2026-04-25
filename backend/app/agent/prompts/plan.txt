@@ -10,7 +10,7 @@ Dispositivo alvo:
 
 Intenção identificada: {intent}
 
-Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, health_check, get_snapshot
+Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, toggle_gateway_av, toggle_anti_spyware, toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl, configure_app_rules, add_security_exclusion, health_check, get_snapshot
 
 Gere o ActionPlan no seguinte formato JSON (sem markdown):
 {
@@ -61,6 +61,30 @@ Gere o ActionPlan no seguinte formato JSON (sem markdown):
     "disable_on_interface_down": false
   },
   "group_spec": null,
+  "security_service_spec": {
+    "service": "<gateway-antivirus|anti-spyware|intrusion-prevention|app-control|geo-ip|botnet|dpi-ssl-client|dpi-ssl-server>",
+    "enabled": true,
+    "category_ids": [],
+    "category_block": true,
+    "countries": [],
+    "country_action": "block"
+  },
+  "security_exclusion_spec": {
+    "group": "<GRP-EXCLUSION-GEO-IP|GRP-EXCLUSION-BOOTNET|GRP-EXCLUSION-CFS>",
+    "ip_addresses": [],
+    "zone": "LAN"
+  },
+  "app_rules_spec": {
+    "policy_name": "<nome da política>",
+    "enabled": true,
+    "source_address": "any",
+    "destination_address": "any",
+    "match_object_name": "<nome do match object>",
+    "match_type": "<application-list|application-category-list>",
+    "match_ids": [],
+    "action_object": "Reset/Drop",
+    "zone": "LAN"
+  },
   "content_filter_spec": {
     "profile_name": "<nome do perfil CFS>",
     "policy_name": "<nome da política CFS>",
@@ -111,3 +135,64 @@ Regras de preenchimento:
   ["content-filter", "profile fm-cfs-adult", "name fm-cfs-adult", "uri-list search-order allowed-first", "uri-list forbidden-operation block", "no reputation active", "categories default", "no https-filtering", "no smart-filter", "no safe-search", "no threat-api", "no google-force-safe-search", "no youtube-restrict-mode", "no bing-force-safe-search", "no consent required", "no custom-header insertion", "no custom-header entries", "exit", "exit", "content-filter", "cfs", "policy fm-cfs-policy-adult", "name fm-cfs-policy-adult", "source zone LAN", "source address included any", "source address excluded none", "destination zone WAN", "user included all", "user excluded none", "schedule always-on", "profile fm-cfs-adult", "action \"CFS Default Action\"", "enable", "priority 10", "exit", "exit", "exit", "commit"]
 
   Use nomes com prefixo "fm-" para perfis e políticas criados pela plataforma. Demais specs=null.
+
+- Para toggle_gateway_av: defina execution_mode="ssh"; preencha security_service_spec com service="gateway-antivirus" e enabled=true/false; em ssh_commands gere os comandos abaixo (NÃO inclua "configure" nem "end"):
+  Ativar:   ["gateway-antivirus", "enable", "exit", "commit"]
+  Desativar: ["gateway-antivirus", "no enable", "exit", "commit"]
+  Demais specs=null.
+
+- Para toggle_anti_spyware: defina execution_mode="ssh"; preencha security_service_spec com service="anti-spyware" e enabled=true/false; em ssh_commands:
+  Ativar:   ["anti-spyware", "enable", "exit", "commit"]
+  Desativar: ["anti-spyware", "no enable", "exit", "commit"]
+  Demais specs=null.
+
+- Para toggle_ips: defina execution_mode="ssh"; preencha security_service_spec com service="intrusion-prevention" e enabled=true/false; em ssh_commands:
+  Ativar:   ["intrusion-prevention", "enable", "exit", "commit"]
+  Desativar: ["intrusion-prevention", "no enable", "exit", "commit"]
+  Demais specs=null.
+
+- Para toggle_app_control: defina execution_mode="ssh"; preencha security_service_spec com service="app-control", enabled e category_ids/category_block quando o usuário mencionar categorias; em ssh_commands:
+  Ativar app-control geral: ["app-control", "enable", "exit", "commit"]
+  Desativar app-control geral: ["app-control", "no enable", "exit", "commit"]
+  Bloquear categoria 22: ["app-control", "category id 22", "block", "exit", "exit", "commit"]
+  Liberar categoria 22: ["app-control", "category id 22", "no block", "exit", "exit", "commit"]
+  Demais specs=null.
+
+- Para toggle_geo_ip: defina execution_mode="ssh"; preencha security_service_spec com service="geo-ip", enabled e countries/country_action quando mencionados; em ssh_commands:
+  Ativar geo-ip: ["geo-ip", "block connections", "exit", "commit"]
+  Desativar geo-ip: ["geo-ip", "no block connections", "exit", "commit"]
+  Bloquear país: ["geo-ip", "block country <País>", "exit", "commit"]
+  Desbloquear país: ["geo-ip", "no block country <País>", "exit", "commit"]
+  Múltiplos países: inclua um "block country <País>" por país na lista.
+  Nome do país em inglês conforme SonicWall (ex: "China", "Russia", "North Korea").
+  Demais specs=null.
+
+- Para toggle_botnet: defina execution_mode="ssh"; preencha security_service_spec com service="botnet" e enabled=true/false; em ssh_commands:
+  Ativar:   ["botnet", "block connections enable", "exit", "commit"]
+  Desativar: ["botnet", "no block connections", "exit", "commit"]
+  Demais specs=null.
+
+- Para toggle_dpi_ssl: defina execution_mode="ssh"; preencha security_service_spec com service="dpi-ssl-client" ou "dpi-ssl-server" conforme o usuário mencionar; em ssh_commands:
+  Ativar DPI-SSL cliente:   ["dpi-ssl client", "enable", "exit", "commit"]
+  Desativar DPI-SSL cliente: ["dpi-ssl client", "no enable", "exit", "commit"]
+  Ativar DPI-SSL servidor:   ["dpi-ssl server", "enable", "exit", "commit"]
+  Desativar DPI-SSL servidor: ["dpi-ssl server", "no enable", "exit", "commit"]
+  Se usuário mencionar "ambos" ou "client e server": gere dois blocos combinados (client e server) em um só ssh_commands com um único "commit" ao final.
+  Demais specs=null.
+
+- Para configure_app_rules: defina execution_mode="ssh"; preencha app_rules_spec com os dados da política; gere um nome para match-object com prefixo "fm-mo-" e para a policy com prefixo "fm-ar-"; em ssh_commands:
+  Exemplo para bloquear uma lista de apps (IDs 100, 200) na zona LAN com Reset/Drop:
+  ["match-object fm-mo-<nome>", "type application-list", "application id 100", "application id 200", "exit", "app-rules", "policy fm-ar-<nome>", "name fm-ar-<nome>", "enable", "type app-control", "source address any", "destination address any", "match-object included fm-mo-<nome>", "action-object Reset/Drop", "zone name LAN", "exit", "exit", "commit"]
+  Para application-category-list, substitua "application id" por "application-category id".
+  Demais specs=null.
+
+- Para add_security_exclusion: defina execution_mode="ssh"; preencha security_exclusion_spec com group e ip_addresses; o grupo deve ser:
+  - "GRP-EXCLUSION-GEO-IP" para exclusão de geo-ip
+  - "GRP-EXCLUSION-BOOTNET" para exclusão de botnet (atenção: "BOOTNET" não "BOTNET")
+  - "GRP-EXCLUSION-CFS" para exclusão de content filter
+  Para cada IP, crie um address-object com prefixo "fm-excl-" e adicione ao grupo; em ssh_commands:
+  Exemplo para adicionar 1.2.3.4 ao grupo GRP-EXCLUSION-GEO-IP:
+  ["address-object ipv4 fm-excl-1-2-3-4", "name fm-excl-1-2-3-4", "zone LAN", "host 1.2.3.4", "exit", "address-group ipv4 GRP-EXCLUSION-GEO-IP", "address-object ipv4 fm-excl-1-2-3-4", "exit", "commit"]
+  Para múltiplos IPs: repita o bloco address-object para cada IP antes do address-group, depois adicione todos no address-group com um único commit ao final.
+  Substitua pontos por hífens no nome do objeto (ex: 10.0.0.1 → fm-excl-10-0-0-1).
+  Demais specs=null.

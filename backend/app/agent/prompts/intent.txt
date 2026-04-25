@@ -13,6 +13,15 @@ Analise a solicitação do usuário e identifique:
    - create_route_policy: Criar nova política de rota/rota estática
    - delete_route_policy: Deletar/remover uma política de rota existente
    - configure_content_filter: Configurar filtro de conteúdo/content filter (bloquear/liberar categorias de sites, criar perfil ou política de CFS)
+   - toggle_gateway_av: Ativar ou desativar o Gateway Anti-Virus (GAV/antivírus de gateway)
+   - toggle_anti_spyware: Ativar ou desativar o Anti-Spyware / anti-spyware
+   - toggle_ips: Ativar ou desativar o IPS / Intrusion Prevention System / prevenção de intrusão
+   - toggle_app_control: Ativar ou desativar App Control / controle de aplicativos, ou bloquear/liberar categorias de aplicações
+   - toggle_geo_ip: Ativar ou desativar Geo-IP Filter / filtro geográfico, ou bloquear/liberar países
+   - toggle_botnet: Ativar ou desativar Botnet Filter / filtro de botnet
+   - toggle_dpi_ssl: Ativar ou desativar DPI-SSL (Deep Packet Inspection para SSL, inspeção SSL cliente ou servidor)
+   - configure_app_rules: Criar ou configurar política de App Rules / regra de aplicação
+   - add_security_exclusion: Adicionar endereço IP a grupo de exclusão (Geo-IP, Botnet ou CFS)
    - health_check: Verificar status/conectividade do dispositivo
    - get_snapshot: Obter snapshot da configuração atual
    - unknown: Solicitação não reconhecida

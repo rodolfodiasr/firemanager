@@ -218,14 +218,22 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
         elif plan.intent == IntentType.delete_route_policy:
             rule_id = plan.raw_intent_data.get("rule_id", "")
             exec_result = await connector.delete_route_policy(str(rule_id))
-        elif plan.intent == IntentType.configure_content_filter:
+        elif plan.intent in (
+            IntentType.configure_content_filter,
+            IntentType.toggle_gateway_av,
+            IntentType.toggle_anti_spyware,
+            IntentType.toggle_ips,
+            IntentType.toggle_app_control,
+            IntentType.toggle_geo_ip,
+            IntentType.toggle_botnet,
+            IntentType.toggle_dpi_ssl,
+            IntentType.configure_app_rules,
+            IntentType.add_security_exclusion,
+        ):
             ssh_commands = plan.ssh_commands or []
             if not ssh_commands:
-                raise ValueError("Nenhum comando SSH foi gerado pelo agente para configure_content_filter")
+                raise ValueError(f"Nenhum comando SSH foi gerado pelo agente para {plan.intent.value}")
             ssh_connector = get_ssh_connector(device)
-            # Run SSH with NO active API session — SonicWall blocks configure with
-            # "Access denied\r\nPassword:" when an API session is open.
-            # With no session active, SSH configure enters directly without password.
             ssh_result = await ssh_connector.execute_commands(ssh_commands)
             operation.action_plan = {
                 **(operation.action_plan or {}),

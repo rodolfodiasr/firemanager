@@ -18,6 +18,15 @@ class IntentType(str, Enum):
     create_route_policy = "create_route_policy"
     delete_route_policy = "delete_route_policy"
     configure_content_filter = "configure_content_filter"
+    toggle_gateway_av = "toggle_gateway_av"
+    toggle_anti_spyware = "toggle_anti_spyware"
+    toggle_ips = "toggle_ips"
+    toggle_app_control = "toggle_app_control"
+    toggle_geo_ip = "toggle_geo_ip"
+    toggle_botnet = "toggle_botnet"
+    toggle_dpi_ssl = "toggle_dpi_ssl"
+    configure_app_rules = "configure_app_rules"
+    add_security_exclusion = "add_security_exclusion"
     health_check = "health_check"
     get_snapshot = "get_snapshot"
     unknown = "unknown"
@@ -79,6 +88,36 @@ class GroupSpecModel(BaseModel):
     comment: str | None = None
 
 
+class SecurityServiceSpec(BaseModel):
+    service: str  # gateway-antivirus | anti-spyware | intrusion-prevention | app-control | geo-ip | botnet | dpi-ssl-client | dpi-ssl-server
+    enabled: bool = True
+    # app-control: category IDs to block/unblock
+    category_ids: list[int] = Field(default_factory=list)
+    category_block: bool = True
+    # geo-ip: countries to block/unblock
+    countries: list[str] = Field(default_factory=list)
+    country_action: str = "block"  # "block" | "unblock"
+
+
+class SecurityExclusionSpec(BaseModel):
+    group: str  # GRP-EXCLUSION-GEO-IP | GRP-EXCLUSION-BOOTNET | GRP-EXCLUSION-CFS
+    ip_addresses: list[str]
+    zone: str = "LAN"
+
+
+class AppRulesSpec(BaseModel):
+    policy_name: str
+    enabled: bool = True
+    source_address: str = "any"
+    destination_address: str = "any"
+    match_object_name: str = ""
+    match_type: str = "application-list"  # "application-list" | "application-category-list"
+    match_ids: list[int] = Field(default_factory=list)
+    action_object: str = "Reset/Drop"
+    zone: str = "LAN"
+    comment: str | None = None
+
+
 class ActionStep(BaseModel):
     sequence: int
     action: str
@@ -95,5 +134,8 @@ class ActionPlan(BaseModel):
     route_spec: RouteSpecModel | None = None
     group_spec: GroupSpecModel | None = None
     content_filter_spec: ContentFilterSpecModel | None = None
+    security_service_spec: SecurityServiceSpec | None = None
+    security_exclusion_spec: SecurityExclusionSpec | None = None
+    app_rules_spec: AppRulesSpec | None = None
     ssh_commands: list[str] | None = None
     raw_intent_data: dict[str, Any] = Field(default_factory=dict)
