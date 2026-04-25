@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import toast from "react-hot-toast";
 import { operationsApi } from "../api/operations";
-import { useAgentStore } from "../store/agentStore";
+import { useAgentStore, type TableData } from "../store/agentStore";
 
 export function useAgent(deviceId: string | null) {
   const {
@@ -54,20 +54,64 @@ export function useAgent(deviceId: string | null) {
     try {
       const operation = await operationsApi.execute(currentOperationId);
       if (operation.status === "completed") {
-        const rules = operation.action_plan?.result as Array<{
-          rule_id: string; name: string; src: string; dst: string;
-          service: string; action: string; enabled: boolean;
-        }> | undefined;
+        const result = operation.action_plan?.result as Record<string, unknown>[] | undefined;
+        const intent = operation.intent;
 
-        if (rules && rules.length > 0) {
-          const lines = rules.map(
-            (r) => `• [${r.enabled ? "ON" : "OFF"}] **${r.name || r.rule_id}** — ${r.src} → ${r.dst} (${r.service}) [${r.action}]`
-          );
-          addMessage("assistant", `Encontrei ${rules.length} regra(s):\n\n${lines.join("\n")}`);
-        } else if (rules && rules.length === 0) {
-          addMessage("assistant", "Nenhuma regra encontrada.");
+        if (result && result.length > 0) {
+          let tableData: TableData | undefined;
+          let summary = "";
+
+          if (intent === "list_rules") {
+            summary = `${result.length} regra(s) encontrada(s):`;
+            tableData = {
+              columns: [
+                { key: "enabled", label: "Status" },
+                { key: "name", label: "Nome" },
+                { key: "src", label: "Origem" },
+                { key: "dst", label: "Destino" },
+                { key: "service", label: "Serviço" },
+                { key: "action", label: "Ação" },
+              ],
+              rows: result,
+            };
+          } else if (intent === "list_nat_policies") {
+            summary = `${result.length} política(s) NAT encontrada(s):`;
+            tableData = {
+              columns: [
+                { key: "name", label: "Nome" },
+                { key: "inbound", label: "Entrada" },
+                { key: "outbound", label: "Saída" },
+                { key: "source", label: "Origem" },
+                { key: "translated_source", label: "Orig. Traduzida" },
+                { key: "destination", label: "Destino" },
+                { key: "translated_destination", label: "Dest. Traduzido" },
+                { key: "service", label: "Serviço" },
+              ],
+              rows: result,
+            };
+          } else if (intent === "list_route_policies") {
+            summary = `${result.length} rota(s) encontrada(s):`;
+            tableData = {
+              columns: [
+                { key: "interface", label: "Interface" },
+                { key: "destination", label: "Destino" },
+                { key: "source", label: "Origem" },
+                { key: "gateway", label: "Gateway" },
+                { key: "metric", label: "Métrica" },
+                { key: "route_type", label: "Tipo" },
+                { key: "enabled", label: "Status" },
+              ],
+              rows: result,
+            };
+          } else {
+            summary = "Operação executada com sucesso!";
+          }
+
+          addMessage("assistant", summary, tableData);
+        } else if (result && result.length === 0) {
+          addMessage("assistant", "Nenhum resultado encontrado.");
         } else {
-          addMessage("assistant", "Operação executada com sucesso! Documentos sendo gerados...");
+          addMessage("assistant", "Operação executada com sucesso!");
         }
         toast.success("Operação concluída!");
       } else {

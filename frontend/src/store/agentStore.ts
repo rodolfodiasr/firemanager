@@ -1,8 +1,19 @@
 import { create } from "zustand";
 
+export interface TableColumn {
+  key: string;
+  label: string;
+}
+
+export interface TableData {
+  columns: TableColumn[];
+  rows: Record<string, unknown>[];
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  tableData?: TableData;
   timestamp: Date;
 }
 
@@ -11,7 +22,7 @@ interface AgentState {
   currentOperationId: string | null;
   readyToExecute: boolean;
   loading: boolean;
-  addMessage: (role: "user" | "assistant", content: string) => void;
+  addMessage: (role: "user" | "assistant", content: string, tableData?: TableData) => void;
   setOperationId: (id: string | null) => void;
   setReadyToExecute: (ready: boolean) => void;
   setLoading: (loading: boolean) => void;
@@ -27,9 +38,9 @@ export const useAgentStore = create<AgentState>((set) => ({
   readyToExecute: false,
   loading: false,
 
-  addMessage: (role, content) =>
+  addMessage: (role, content, tableData?) =>
     set((state) => ({
-      messages: [...state.messages, { role, content, timestamp: new Date() }],
+      messages: [...state.messages, { role, content, tableData, timestamp: new Date() }],
     })),
 
   setOperationId: (id) => set({ currentOperationId: id }),
