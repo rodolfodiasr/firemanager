@@ -454,8 +454,15 @@ class SonicWallConnector(BaseConnector):
         """Return address object name, creating one if value is a raw IP/CIDR."""
         if not value or value.lower() in ("any", "original", ""):
             return value
+        # Direct IP/CIDR
         if self._obj_name_for_ip(value):
             return await self._ensure_address_object(client, value, zone)
+        # Fallback: extract embedded IP from LLM-invented names like "OBJ-192.168.1.1"
+        m = re.search(r"(\d{1,3}(?:\.\d{1,3}){3}(?:/\d{1,2})?)", value)
+        if m:
+            extracted = m.group(1)
+            if self._obj_name_for_ip(extracted):
+                return await self._ensure_address_object(client, extracted, zone)
         return value
 
     async def _resolve_nat_service(self, client: httpx.AsyncClient, value: str) -> str:
