@@ -1,10 +1,15 @@
-"""SonicWall SSH connector — executes CLI commands via netmiko."""
+"""SonicWall SSH connector — executes CLI commands via paramiko interactive shell."""
 import asyncio
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+_READ_DELAY = 0.5   # seconds to wait after each command
+_FINAL_DELAY = 1.0  # seconds for final drain
+_RECV_SIZE = 65535
 
 
 @dataclass
@@ -23,43 +28,71 @@ class SonicWallSSHConnector:
         self.ssh_port = ssh_port
 
     def _connect_and_run(self, commands: list[str]) -> tuple[bool, str]:
-        try:
-            from netmiko import ConnectHandler
-            from netmiko.exceptions import NetmikoAuthenticationException, NetmikoTimeoutException
-        except ImportError:
-            return False, "netmiko não instalado"
+        import paramiko
 
-        device_params = {
-            "device_type": "sonicwall_ssh",
-            "host": self.host,
-            "username": self.username,
-            "password": self.password,
-            "port": self.ssh_port,
-            "timeout": 30,
-            "session_timeout": 60,
-            "global_delay_factor": 2,
-        }
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         try:
-            with ConnectHandler(**device_params) as conn:
-                output = conn.send_config_set(commands, cmd_verify=False)
-                try:
-                    conn.save_config()
-                except Exception:
-                    pass
-            logger.info("SSH commands executed successfully on %s", self.host)
-            return True, output
+            client.connect(
+                hostname=self.host,
+                port=self.ssh_port,
+                username=self.username,
+                password=self.password,
+                timeout=30,
+                look_for_keys=False,
+                allow_agent=False,
+            )
+
+            shell = client.invoke_shell(width=200, height=50)
+            time.sleep(1.0)  # wait for banner
+
+            # drain welcome message
+            if shell.recv_ready():
+                shell.recv(_RECV_SIZE)
+
+            output_parts: list[str] = []
+
+            for cmd in commands:
+                shell.sendall((cmd + "\n").encode())
+                time.sleep(_READ_DELAY)
+                chunk = b""
+                while shell.recv_ready():
+                    chunk += shell.recv(_RECV_SIZE)
+                if chunk:
+                    output_parts.append(chunk.decode("utf-8", errors="replace"))
+
+            # final drain
+            time.sleep(_FINAL_DELAY)
+            chunk = b""
+            while shell.recv_ready():
+                chunk += shell.recv(_RECV_SIZE)
+            if chunk:
+                output_parts.append(chunk.decode("utf-8", errors="replace"))
+
+            shell.close()
+            client.close()
+
+            full_output = "".join(output_parts)
+            logger.info("SSH commands executed on %s:%s", self.host, self.ssh_port)
+            return True, full_output
+
+        except paramiko.AuthenticationException as exc:
+            return False, f"Falha de autenticação SSH em {self.host}:{self.ssh_port}: {exc}"
+        except paramiko.SSHException as exc:
+            return False, f"Erro SSH em {self.host}:{self.ssh_port}: {exc}"
+        except OSError as exc:
+            return False, f"Conexão SSH recusada em {self.host}:{self.ssh_port}: {exc}"
         except Exception as exc:
-            name = type(exc).__name__
-            msg = str(exc)
-            if "auth" in name.lower() or "authentication" in msg.lower():
-                return False, f"Falha de autenticação SSH: {msg}"
-            if "timeout" in name.lower() or "timed out" in msg.lower():
-                return False, f"Timeout na conexão SSH com {self.host}: {msg}"
-            return False, f"Erro SSH ({name}): {msg}"
+            return False, f"Erro inesperado SSH ({type(exc).__name__}): {exc}"
+        finally:
+            try:
+                client.close()
+            except Exception:
+                pass
 
     async def execute_commands(self, commands: list[str]) -> SSHResult:
-        """Execute a list of CLI commands via SSH. Returns SSHResult."""
+        """Execute a list of CLI commands via SSH interactive shell."""
         if not commands:
             return SSHResult(success=False, error="Nenhum comando SSH fornecido")
 

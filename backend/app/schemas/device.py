@@ -11,6 +11,7 @@ class DeviceCredentials(BaseModel):
     token: str | None = None
     username: str | None = None
     password: str | None = None
+    ssh_port: int = 22  # SSH port for CLI fallback (default 22)
 
 
 class DeviceCreate(BaseModel):
