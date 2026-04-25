@@ -66,14 +66,30 @@ class SonicWallSSHConnector:
     # ------------------------------------------------------------------
 
     def _enter_configure(self, shell) -> str:
-        """Send 'configure', handle preempt prompt, confirm config( prompt."""
+        """Send 'configure', handle preempt/password prompts, confirm config( prompt."""
         self._send(shell, "configure")
-        out = self._wait_for(shell, ["config(", "preempt", "no]:"], timeout=15)
+        out = self._wait_for(
+            shell,
+            ["config(", "preempt", "no]:", "assword:", "ccess denied"],
+            timeout=15,
+        )
 
+        # Preempt via yes/no dialog
         if "preempt" in out.lower() or "no]:" in out:
             self._send(shell, "yes")
-            extra = self._wait_for(shell, ["config("], timeout=10)
+            extra = self._wait_for(shell, ["config(", "assword:"], timeout=10)
             out += extra
+
+        # SonicWall sometimes prompts for password to confirm preempt
+        if "assword:" in out and "config(" not in out:
+            self._send(shell, self.password)
+            extra = self._wait_for(shell, ["config(", "ccess denied", "error"], timeout=10)
+            out += extra
+            if "ccess denied" in extra:
+                raise RuntimeError(
+                    "Senha rejeitada pelo SonicWall ao entrar em modo configure. "
+                    "Verifique as credenciais do dispositivo."
+                )
 
         if "config(" not in out:
             raise RuntimeError(
