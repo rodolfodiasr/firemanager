@@ -10,7 +10,7 @@ Dispositivo alvo:
 
 Intenção identificada: {intent}
 
-Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, toggle_gateway_av, toggle_anti_spyware, toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl, configure_app_rules, add_security_exclusion, health_check, get_snapshot
+Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, toggle_gateway_av, toggle_anti_spyware, toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl, configure_app_rules, add_security_exclusion, get_security_status, health_check, get_snapshot
 
 Gere o ActionPlan no seguinte formato JSON (sem markdown):
 {
@@ -196,3 +196,7 @@ Regras de preenchimento:
   Para múltiplos IPs: repita o bloco address-object para cada IP antes do address-group, depois adicione todos no address-group com um único commit ao final.
   Substitua pontos por hífens no nome do objeto (ex: 10.0.0.1 → fm-excl-10-0-0-1).
   Demais specs=null.
+
+- Para get_security_status: defina execution_mode="ssh"; em ssh_commands liste os comandos show desejados (sem "configure", sem "end"). O sistema executa em modo user exec (sem entrar em configure). Se o usuário não especificar quais serviços, inclua todos:
+  ["show gateway-antivirus", "show anti-spyware", "show intrusion-prevention", "show app-control", "show geo-ip", "show botnet", "show dpi-ssl"]
+  Se o usuário pedir apenas um serviço específico, inclua só o comando correspondente. Demais specs=null.

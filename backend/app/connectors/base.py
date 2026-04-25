@@ -156,3 +156,7 @@ class BaseConnector(ABC):
 
     @abstractmethod
     async def delete_route_policy(self, rule_id: str) -> ExecutionResult: ...
+
+    async def get_security_status(self) -> dict:
+        """Return status of security services. Vendors that support it override this."""
+        return {}

@@ -27,6 +27,7 @@ class IntentType(str, Enum):
     toggle_dpi_ssl = "toggle_dpi_ssl"
     configure_app_rules = "configure_app_rules"
     add_security_exclusion = "add_security_exclusion"
+    get_security_status = "get_security_status"
     health_check = "health_check"
     get_snapshot = "get_snapshot"
     unknown = "unknown"

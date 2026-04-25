@@ -244,3 +244,83 @@ class SonicWallSSHConnector:
             commands_executed=commands,
             error=None if success else output,
         )
+
+    # ------------------------------------------------------------------
+    # Show commands (user exec level — no configure mode)
+    # ------------------------------------------------------------------
+
+    def _connect_and_show(self, commands: list[str]) -> tuple[bool, str]:
+        """Run show commands at user exec level without entering configure mode."""
+        import paramiko
+
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        try:
+            client.connect(
+                hostname=self.host,
+                port=self.ssh_port,
+                username=self.username,
+                password=self.password,
+                timeout=30,
+                look_for_keys=False,
+                allow_agent=False,
+            )
+
+            shell = client.invoke_shell(width=200, height=200)
+
+            # Handle shell-level password prompt (same as _connect_and_run)
+            out_banner = self._wait_for(shell, [">", "assword:"], timeout=15)
+            if "assword:" in out_banner and ">" not in out_banner:
+                self._send(shell, self.password)
+                out_banner += self._wait_for(shell, [">"], timeout=10)
+
+            parts: list[str] = [out_banner]
+
+            for cmd in commands:
+                self._send(shell, cmd)
+                # Wait for prompt to return; show output can be several lines
+                out = self._wait_for(shell, [">"], timeout=15)
+                parts.append(out)
+
+            shell.close()
+            client.close()
+
+            full = "".join(parts)
+            logger.info("SSH show session completed on %s:%s", self.host, self.ssh_port)
+            return True, full
+
+        except RuntimeError as exc:
+            return False, str(exc)
+        except Exception as exc:
+            import paramiko as _p
+            if isinstance(exc, _p.AuthenticationException):
+                return False, f"Falha de autenticação SSH em {self.host}:{self.ssh_port}: {exc}"
+            if isinstance(exc, _p.SSHException):
+                return False, f"Erro SSH em {self.host}:{self.ssh_port}: {exc}"
+            if isinstance(exc, OSError):
+                return False, f"Conexão SSH recusada em {self.host}:{self.ssh_port}: {exc}"
+            return False, f"Erro SSH ({type(exc).__name__}): {exc}"
+        finally:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+    async def execute_show_commands(self, commands: list[str]) -> SSHResult:
+        """Execute read-only show commands at user exec level (no configure mode)."""
+        if not commands:
+            return SSHResult(success=False, error="Nenhum comando show fornecido")
+
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            success, output = await loop.run_in_executor(
+                executor, self._connect_and_show, commands
+            )
+
+        return SSHResult(
+            success=success,
+            output=output,
+            commands_executed=commands,
+            error=None if success else output,
+        )

@@ -663,3 +663,4 @@ class SonicWallConnector(BaseConnector):
             if resp.status_code in (200, 204):
                 return ExecutionResult(success=True, rule_id=rule_id)
             return ExecutionResult(success=False, error=resp.text)
+

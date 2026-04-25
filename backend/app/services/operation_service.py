@@ -218,6 +218,31 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
         elif plan.intent == IntentType.delete_route_policy:
             rule_id = plan.raw_intent_data.get("rule_id", "")
             exec_result = await connector.delete_route_policy(str(rule_id))
+        elif plan.intent == IntentType.get_security_status:
+            ssh_commands = plan.ssh_commands or [
+                "show gateway-antivirus",
+                "show anti-spyware",
+                "show intrusion-prevention",
+                "show app-control",
+                "show geo-ip",
+                "show botnet",
+                "show dpi-ssl",
+            ]
+            ssh_connector = get_ssh_connector(device)
+            ssh_result = await ssh_connector.execute_show_commands(ssh_commands)
+            operation.action_plan = {
+                **(operation.action_plan or {}),
+                "result": {
+                    "commands": ssh_result.commands_executed,
+                    "output": ssh_result.output,
+                },
+            }
+            if ssh_result.success:
+                operation.status = OperationStatus.completed
+            else:
+                operation.status = OperationStatus.failed
+                operation.error_message = ssh_result.error
+
         elif plan.intent in (
             IntentType.configure_content_filter,
             IntentType.toggle_gateway_av,
