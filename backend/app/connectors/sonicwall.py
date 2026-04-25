@@ -450,9 +450,48 @@ class SonicWallConnector(BaseConnector):
         }
         return {"nat_policies": [{"ipv4": body}]}
 
+    async def _resolve_nat_addr(self, client: httpx.AsyncClient, value: str, zone: str) -> str:
+        """Return address object name, creating one if value is a raw IP/CIDR."""
+        if not value or value.lower() in ("any", "original", ""):
+            return value
+        if self._obj_name_for_ip(value):
+            return await self._ensure_address_object(client, value, zone)
+        return value
+
+    async def _resolve_nat_service(self, client: httpx.AsyncClient, value: str) -> str:
+        """Return service object name, creating one if value is a port spec like TCP/8080."""
+        if not value or value.lower() in ("any", "original", ""):
+            return value
+        if self._parse_port_spec(value):
+            return await self._ensure_service_object(client, value)
+        return value
+
     async def create_nat_policy(self, spec: NatSpec) -> ExecutionResult:
         async with self._session() as client:
-            payload = self._nat_payload(spec)
+            inbound_zone = "WAN"
+            outbound_zone = "LAN"
+
+            src = await self._resolve_nat_addr(client, spec.source, inbound_zone)
+            t_src = await self._resolve_nat_addr(client, spec.translated_source, outbound_zone)
+            dst = await self._resolve_nat_addr(client, spec.destination, inbound_zone)
+            t_dst = await self._resolve_nat_addr(client, spec.translated_destination, outbound_zone)
+            svc = await self._resolve_nat_service(client, spec.service)
+            t_svc = await self._resolve_nat_service(client, spec.translated_service)
+
+            resolved = NatSpec(
+                name=spec.name,
+                inbound_interface=spec.inbound_interface,
+                outbound_interface=spec.outbound_interface,
+                source=src,
+                translated_source=t_src,
+                destination=dst,
+                translated_destination=t_dst,
+                service=svc,
+                translated_service=t_svc,
+                comment=spec.comment,
+                enable=spec.enable,
+            )
+            payload = self._nat_payload(resolved)
             resp = await client.post("/api/sonicos/nat-policies/ipv4", json=payload)
             await self._commit(client)
             if resp.status_code in (200, 201):
