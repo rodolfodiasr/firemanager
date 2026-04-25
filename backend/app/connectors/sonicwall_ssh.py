@@ -249,37 +249,38 @@ class SonicWallSSHConnector:
     # Show commands (user exec level — no configure mode)
     # ------------------------------------------------------------------
 
-    def _read_until_prompt(self, shell, timeout: float = 20.0) -> str:
-        """Read show command output handling --More-- pagination.
+    def _read_until_prompt(self, shell, timeout: float = 15.0) -> str:
+        """Read show command output, quit pager on first --MORE-- page.
 
-        Tracks how far we've scanned for --More-- so we don't re-trigger on
-        already-handled pages. Returns when last non-whitespace line ends with
-        '>' or '#', or when timeout is reached.
+        SonicWall uses '--MORE--' (uppercase). Sending 'q' quits the pager
+        immediately after the first page — enough to capture the enable status
+        without reading the full configuration dump.
         """
         all_output = b""
-        checked_up_to = 0  # byte offset already scanned for --More--
+        checked_up_to = 0
+        pager_quit_sent = False
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if shell.recv_ready():
                 chunk = shell.recv(_RECV_SIZE)
                 all_output += chunk
-                # Only scan new bytes for --More-- to avoid re-triggering
                 new_part = all_output[checked_up_to:].decode("utf-8", errors="replace")
-                if "--More--" in new_part or "-- More --" in new_part:
-                    shell.sendall(b" ")
+                # SonicWall pager is '--MORE--' (all caps); quit on first page
+                if not pager_quit_sent and "--MORE--" in new_part.upper():
+                    shell.sendall(b"q")
                     checked_up_to = len(all_output)
-                    logger.info("SSH show: --More-- detected, sent space to advance pager")
+                    pager_quit_sent = True
+                    logger.info("SSH show: pager detected, sent 'q' to quit (first page captured)")
                     continue
-                # Prompt detected: last non-empty line ends with > or #
                 decoded = all_output.decode("utf-8", errors="replace")
                 last_line = decoded.rstrip().rsplit("\n", 1)[-1].rstrip()
                 if last_line.endswith(">") or last_line.endswith("#"):
                     return decoded
             time.sleep(_POLL_SLEEP)
         logger.warning(
-            "SSH show: _read_until_prompt timed out after %.0fs, output so far: %r",
+            "SSH show: timed out after %.0fs — last output: %r",
             timeout,
-            all_output[-200:].decode("utf-8", errors="replace"),
+            all_output[-300:].decode("utf-8", errors="replace"),
         )
         return all_output.decode("utf-8", errors="replace")
 
