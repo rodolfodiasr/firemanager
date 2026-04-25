@@ -252,26 +252,36 @@ class SonicWallSSHConnector:
     def _read_until_prompt(self, shell, timeout: float = 20.0) -> str:
         """Read show command output handling --More-- pagination.
 
-        Returns when the last non-whitespace line ends with '>' (user exec prompt)
-        or '#' (configure prompt), or when timeout is reached.
-        Sending space advances SonicWall's --More-- pager.
+        Tracks how far we've scanned for --More-- so we don't re-trigger on
+        already-handled pages. Returns when last non-whitespace line ends with
+        '>' or '#', or when timeout is reached.
         """
-        buf = b""
+        all_output = b""
+        checked_up_to = 0  # byte offset already scanned for --More--
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if shell.recv_ready():
-                buf += shell.recv(_RECV_SIZE)
-                decoded = buf.decode("utf-8", errors="replace")
-                # Advance pager — keep accumulating so full output is preserved
-                if "--More--" in decoded or "-- More --" in decoded:
+                chunk = shell.recv(_RECV_SIZE)
+                all_output += chunk
+                # Only scan new bytes for --More-- to avoid re-triggering
+                new_part = all_output[checked_up_to:].decode("utf-8", errors="replace")
+                if "--More--" in new_part or "-- More --" in new_part:
                     shell.sendall(b" ")
+                    checked_up_to = len(all_output)
+                    logger.info("SSH show: --More-- detected, sent space to advance pager")
                     continue
-                # Prompt detected when last non-empty line ends with > or #
+                # Prompt detected: last non-empty line ends with > or #
+                decoded = all_output.decode("utf-8", errors="replace")
                 last_line = decoded.rstrip().rsplit("\n", 1)[-1].rstrip()
                 if last_line.endswith(">") or last_line.endswith("#"):
                     return decoded
             time.sleep(_POLL_SLEEP)
-        return buf.decode("utf-8", errors="replace")
+        logger.warning(
+            "SSH show: _read_until_prompt timed out after %.0fs, output so far: %r",
+            timeout,
+            all_output[-200:].decode("utf-8", errors="replace"),
+        )
+        return all_output.decode("utf-8", errors="replace")
 
     def _connect_and_show(self, commands: list[str]) -> tuple[bool, str]:
         """Run show commands at user exec level without entering configure mode."""
@@ -281,6 +291,7 @@ class SonicWallSSHConnector:
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         try:
+            logger.info("SSH show: connecting to %s:%s", self.host, self.ssh_port)
             client.connect(
                 hostname=self.host,
                 port=self.ssh_port,
@@ -290,41 +301,50 @@ class SonicWallSSHConnector:
                 look_for_keys=False,
                 allow_agent=False,
             )
+            logger.info("SSH show: connected, opening shell")
 
             # Large height tells SonicWall the terminal has many rows, reducing pagination
             shell = client.invoke_shell(width=250, height=1000)
 
             # Handle shell-level password prompt (same as _connect_and_run)
             out_banner = self._wait_for(shell, [">", "assword:"], timeout=15)
+            logger.info("SSH show: banner received: %r", out_banner[-200:])
             if "assword:" in out_banner and ">" not in out_banner:
                 self._send(shell, self.password)
                 out_banner += self._wait_for(shell, [">"], timeout=10)
+                logger.info("SSH show: shell password sent, at prompt")
 
             parts: list[str] = [out_banner]
 
             for cmd in commands:
+                logger.info("SSH show: sending command: %r", cmd)
                 self._send(shell, cmd)
                 out = self._read_until_prompt(shell, timeout=20)
+                logger.info("SSH show: response to %r: %r", cmd, out[-300:])
                 parts.append(out)
 
             shell.close()
             client.close()
 
             full = "".join(parts)
-            logger.info("SSH show session completed on %s:%s", self.host, self.ssh_port)
+            logger.info("SSH show: session completed on %s:%s", self.host, self.ssh_port)
             return True, full
 
         except RuntimeError as exc:
+            logger.error("SSH show: RuntimeError: %s", exc)
             return False, str(exc)
         except Exception as exc:
             import paramiko as _p
             if isinstance(exc, _p.AuthenticationException):
-                return False, f"Falha de autenticação SSH em {self.host}:{self.ssh_port}: {exc}"
-            if isinstance(exc, _p.SSHException):
-                return False, f"Erro SSH em {self.host}:{self.ssh_port}: {exc}"
-            if isinstance(exc, OSError):
-                return False, f"Conexão SSH recusada em {self.host}:{self.ssh_port}: {exc}"
-            return False, f"Erro SSH ({type(exc).__name__}): {exc}"
+                msg = f"Falha de autenticação SSH em {self.host}:{self.ssh_port}: {exc}"
+            elif isinstance(exc, _p.SSHException):
+                msg = f"Erro SSH em {self.host}:{self.ssh_port}: {exc}"
+            elif isinstance(exc, OSError):
+                msg = f"Conexão SSH recusada em {self.host}:{self.ssh_port}: {exc}"
+            else:
+                msg = f"Erro SSH ({type(exc).__name__}): {exc}"
+            logger.error("SSH show: exception: %s", msg)
+            return False, msg
         finally:
             try:
                 client.close()
