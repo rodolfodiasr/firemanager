@@ -77,5 +77,6 @@ Regras de preenchimento:
   - filter_any: true se o usuário pedir regras com objeto "any" ou "qualquer" em origem ou destino
   - filter_action: "allow" ou "deny" se o usuário pedir por ação específica
   - filter_enabled: true/false se o usuário pedir regras ativas/inativas
+  - filter_object: "<nome do objeto>" se o usuário pedir regras que contenham um objeto específico em origem, destino ou serviço
 - Para list_nat_policies: specs=null
 - Para list_route_policies: specs=null

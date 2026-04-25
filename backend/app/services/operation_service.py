@@ -105,6 +105,7 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
             filter_any = plan.raw_intent_data.get("filter_any", False)
             filter_action = plan.raw_intent_data.get("filter_action")
             filter_enabled = plan.raw_intent_data.get("filter_enabled")
+            filter_object = plan.raw_intent_data.get("filter_object")
             if src_zone:
                 rules = [r for r in rules if r.raw.get("from", "").upper() == src_zone.upper()]
             if dst_zone:
@@ -115,6 +116,12 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
                 rules = [r for r in rules if r.action.lower() == filter_action.lower()]
             if filter_enabled is not None:
                 rules = [r for r in rules if r.enabled == bool(filter_enabled)]
+            if filter_object:
+                obj_lower = filter_object.lower()
+                rules = [
+                    r for r in rules
+                    if obj_lower in r.src.lower() or obj_lower in r.dst.lower() or obj_lower in r.service.lower()
+                ]
             operation.action_plan = {
                 **(operation.action_plan or {}),
                 "result": [dataclasses.asdict(r) for r in rules],
