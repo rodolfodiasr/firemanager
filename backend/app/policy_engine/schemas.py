@@ -14,6 +14,9 @@ class IntentType(str, Enum):
     list_nat_policies = "list_nat_policies"
     create_nat_policy = "create_nat_policy"
     delete_nat_policy = "delete_nat_policy"
+    list_route_policies = "list_route_policies"
+    create_route_policy = "create_route_policy"
+    delete_route_policy = "delete_route_policy"
     health_check = "health_check"
     get_snapshot = "get_snapshot"
     unknown = "unknown"
@@ -45,6 +48,20 @@ class NatSpecModel(BaseModel):
     enable: bool = True
 
 
+class RouteSpecModel(BaseModel):
+    interface: str
+    destination: str = "Any"
+    source: str = "Any"
+    service: str = "Any"
+    gateway: str = "default"
+    metric: int = 20
+    distance: int = 20
+    name: str = ""
+    route_type: str = "standard"
+    comment: str | None = None
+    disable_on_interface_down: bool = False
+
+
 class GroupSpecModel(BaseModel):
     name: str
     members: list[str]
@@ -63,5 +80,6 @@ class ActionPlan(BaseModel):
     steps: list[ActionStep]
     rule_spec: RuleSpecModel | None = None
     nat_spec: NatSpecModel | None = None
+    route_spec: RouteSpecModel | None = None
     group_spec: GroupSpecModel | None = None
     raw_intent_data: dict[str, Any] = Field(default_factory=dict)

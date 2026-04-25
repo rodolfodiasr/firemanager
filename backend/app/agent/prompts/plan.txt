@@ -10,7 +10,7 @@ Dispositivo alvo:
 
 Intenção identificada: {intent}
 
-Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, health_check, get_snapshot
+Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, health_check, get_snapshot
 
 Gere o ActionPlan no seguinte formato JSON (sem markdown):
 {
@@ -47,15 +47,31 @@ Gere o ActionPlan no seguinte formato JSON (sem markdown):
     "comment": "<comentário>",
     "enable": true
   },
+  "route_spec": {
+    "interface": "<interface de saída, ex: X1, X0>",
+    "destination": "<rede destino ou 'Any'>",
+    "source": "<rede origem ou 'Any'>",
+    "service": "<serviço ou 'Any'>",
+    "gateway": "<IP do gateway ou 'default'>",
+    "metric": 20,
+    "distance": 20,
+    "name": "<nome da rota>",
+    "route_type": "standard",
+    "comment": "<comentário>",
+    "disable_on_interface_down": false
+  },
   "group_spec": null,
   "raw_intent_data": {}
 }
 
 Regras de preenchimento:
-- Para create_rule ou edit_rule: preencha rule_spec, nat_spec=null
-- Para create_nat_policy: preencha nat_spec, rule_spec=null
-- Para delete_nat_policy: nat_spec=null, rule_spec=null, coloque rule_id em raw_intent_data
-- Para create_group: preencha group_spec, rule_spec=null, nat_spec=null
-- Para list_rules: rule_spec=null, nat_spec=null; coloque src_zone/dst_zone em raw_intent_data se mencionado
-- Para list_nat_policies: rule_spec=null, nat_spec=null
-- Para delete_rule: rule_spec=null, nat_spec=null, coloque rule_id em raw_intent_data
+- Para create_rule ou edit_rule: preencha rule_spec, demais specs=null
+- Para create_nat_policy: preencha nat_spec, demais specs=null
+- Para create_route_policy: preencha route_spec, demais specs=null
+- Para delete_nat_policy: coloque rule_id em raw_intent_data, specs=null
+- Para delete_route_policy: coloque rule_id em raw_intent_data, specs=null
+- Para delete_rule: coloque rule_id em raw_intent_data, specs=null
+- Para create_group: preencha group_spec, demais specs=null
+- Para list_rules: specs=null; coloque src_zone/dst_zone em raw_intent_data se mencionado
+- Para list_nat_policies: specs=null
+- Para list_route_policies: specs=null

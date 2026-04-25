@@ -17,6 +17,8 @@ from app.connectors.base import (
     GroupSpec,
     NatPolicy,
     NatSpec,
+    RoutePolicy,
+    RouteSpec,
     RuleSpec,
 )
 
@@ -460,6 +462,88 @@ class SonicWallConnector(BaseConnector):
     async def delete_nat_policy(self, rule_id: str) -> ExecutionResult:
         async with self._session() as client:
             resp = await client.delete(f"/api/sonicos/nat-policies/ipv4/uuid/{rule_id}")
+            await self._commit(client)
+            if resp.status_code in (200, 204):
+                return ExecutionResult(success=True, rule_id=rule_id)
+            return ExecutionResult(success=False, error=resp.text)
+
+    # ------------------------------------------------------------------
+    # Route Policies
+    # ------------------------------------------------------------------
+
+    def _parse_route_policies(self, data: dict) -> list[RoutePolicy]:
+        raw_list = data.get("route_policies", [])
+        policies = []
+        for item in raw_list:
+            if not isinstance(item, dict):
+                continue
+            r = item.get("ipv4", item)
+            gw = r.get("gateway", {})
+            if gw.get("default"):
+                gateway = "default"
+            else:
+                gateway = gw.get("ip", "default")
+            policies.append(
+                RoutePolicy(
+                    rule_id=str(r.get("uuid", "")),
+                    name=r.get("name", ""),
+                    interface=r.get("interface", ""),
+                    source=self._parse_nat_addr(r.get("source", {})),
+                    destination=self._parse_nat_addr(r.get("destination", {})),
+                    service=self._parse_nat_addr(r.get("service", {})),
+                    gateway=gateway,
+                    metric=r.get("metric", 20),
+                    distance=r.get("distance", {}).get("value", 20),
+                    route_type=r.get("type", "standard"),
+                    comment=r.get("comment", ""),
+                    enabled=not r.get("disable_on_interface_down", False),
+                    raw=r,
+                )
+            )
+        return policies
+
+    async def list_route_policies(self) -> list[RoutePolicy]:
+        async with self._session() as client:
+            resp = await client.get("/api/sonicos/route-policies/ipv4")
+            resp.raise_for_status()
+            return self._parse_route_policies(resp.json())
+
+    def _route_payload(self, spec: RouteSpec) -> dict:
+        if spec.gateway.lower() == "default":
+            gateway: dict = {"default": True}
+        else:
+            gateway = {"ip": spec.gateway}
+
+        body: dict = {
+            "interface": spec.interface,
+            "source": self._addr_field(spec.source),
+            "destination": self._addr_field(spec.destination),
+            "service": self._addr_field(spec.service),
+            "gateway": gateway,
+            "metric": spec.metric,
+            "distance": {"value": spec.distance},
+            "name": spec.name,
+            "type": spec.route_type,
+            "comment": spec.comment or "",
+            "disable_on_interface_down": spec.disable_on_interface_down,
+            "vpn_precedence": False,
+            "tcp_acceleration": False,
+            "probe": "",
+        }
+        return {"route_policies": [{"ipv4": body}]}
+
+    async def create_route_policy(self, spec: RouteSpec) -> ExecutionResult:
+        async with self._session() as client:
+            payload = self._route_payload(spec)
+            resp = await client.post("/api/sonicos/route-policies/ipv4", json=payload)
+            await self._commit(client)
+            if resp.status_code in (200, 201):
+                return ExecutionResult(success=True, raw_response=resp.json())
+            return ExecutionResult(success=False, error=resp.text)
+
+    async def delete_route_policy(self, rule_id: str) -> ExecutionResult:
+        async with self._session() as client:
+            resp = await client.delete(f"/api/sonicos/route-policies/ipv4/uuid/{rule_id}")
             await self._commit(client)
             if resp.status_code in (200, 204):
                 return ExecutionResult(success=True, rule_id=rule_id)

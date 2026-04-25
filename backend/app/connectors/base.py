@@ -77,6 +77,38 @@ class NatSpec:
 
 
 @dataclass
+class RoutePolicy:
+    rule_id: str
+    name: str
+    interface: str
+    source: str
+    destination: str
+    service: str
+    gateway: str
+    metric: int
+    distance: int
+    route_type: str
+    comment: str
+    enabled: bool
+    raw: dict = field(default_factory=dict)
+
+
+@dataclass
+class RouteSpec:
+    interface: str
+    destination: str = "Any"
+    source: str = "Any"
+    service: str = "Any"
+    gateway: str = "default"
+    metric: int = 20
+    distance: int = 20
+    name: str = ""
+    route_type: str = "standard"
+    comment: str | None = None
+    disable_on_interface_down: bool = False
+
+
+@dataclass
 class GroupSpec:
     name: str
     members: list[str]
@@ -115,3 +147,12 @@ class BaseConnector(ABC):
 
     @abstractmethod
     async def delete_nat_policy(self, rule_id: str) -> ExecutionResult: ...
+
+    @abstractmethod
+    async def list_route_policies(self) -> list[RoutePolicy]: ...
+
+    @abstractmethod
+    async def create_route_policy(self, spec: RouteSpec) -> ExecutionResult: ...
+
+    @abstractmethod
+    async def delete_route_policy(self, rule_id: str) -> ExecutionResult: ...
