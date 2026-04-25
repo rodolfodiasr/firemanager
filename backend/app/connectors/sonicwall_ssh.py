@@ -27,6 +27,32 @@ class SonicWallSSHConnector:
         self.password = password
         self.ssh_port = ssh_port
 
+    def _read_output(self, shell) -> str:
+        """Drain available output from shell."""
+        time.sleep(_READ_DELAY)
+        buf = b""
+        while shell.recv_ready():
+            buf += shell.recv(_RECV_SIZE)
+        return buf.decode("utf-8", errors="replace")
+
+    def _send_cmd(self, shell, cmd: str) -> str:
+        """Send one command and return output, handling password prompts automatically."""
+        shell.sendall((cmd + "\n").encode())
+        out = self._read_output(shell)
+
+        # SonicWall prompts for admin password on commit — respond automatically
+        if "assword:" in out:
+            shell.sendall((self.password + "\n").encode())
+            extra = self._read_output(shell)
+            out += extra
+            if "ccess denied" in extra or "ession terminated" in extra:
+                raise RuntimeError(
+                    f"Senha rejeitada pelo SonicWall ao executar '{cmd}'. "
+                    "Verifique as credenciais armazenadas para o dispositivo."
+                )
+
+        return out
+
     def _connect_and_run(self, commands: list[str]) -> tuple[bool, str]:
         import paramiko
 
@@ -54,21 +80,17 @@ class SonicWallSSHConnector:
             output_parts: list[str] = []
 
             for cmd in commands:
-                shell.sendall((cmd + "\n").encode())
-                time.sleep(_READ_DELAY)
-                chunk = b""
-                while shell.recv_ready():
-                    chunk += shell.recv(_RECV_SIZE)
+                chunk = self._send_cmd(shell, cmd)
                 if chunk:
-                    output_parts.append(chunk.decode("utf-8", errors="replace"))
+                    output_parts.append(chunk)
 
             # final drain
             time.sleep(_FINAL_DELAY)
-            chunk = b""
+            buf = b""
             while shell.recv_ready():
-                chunk += shell.recv(_RECV_SIZE)
-            if chunk:
-                output_parts.append(chunk.decode("utf-8", errors="replace"))
+                buf += shell.recv(_RECV_SIZE)
+            if buf:
+                output_parts.append(buf.decode("utf-8", errors="replace"))
 
             shell.close()
             client.close()
@@ -77,6 +99,8 @@ class SonicWallSSHConnector:
             logger.info("SSH commands executed on %s:%s", self.host, self.ssh_port)
             return True, full_output
 
+        except RuntimeError as exc:
+            return False, str(exc)
         except paramiko.AuthenticationException as exc:
             return False, f"Falha de autenticação SSH em {self.host}:{self.ssh_port}: {exc}"
         except paramiko.SSHException as exc:
