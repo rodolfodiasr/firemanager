@@ -508,28 +508,42 @@ class SonicWallConnector(BaseConnector):
             resp.raise_for_status()
             return self._parse_route_policies(resp.json())
 
-    def _gateway_field(self, gateway: str) -> dict:
-        if not gateway or gateway.lower() in ("default", "any", ""):
-            return {"default": True}
-        return {"ip": gateway}
-
     async def create_route_policy(self, spec: RouteSpec) -> ExecutionResult:
         async with self._session() as client:
-            # Auto-create address object if destination is a raw CIDR
+            iface_upper = spec.interface.upper()
+            iface_zone = "WAN" if iface_upper == "X1" else "LAN"
+
+            # Auto-create address object for destination CIDR
             dst_name = spec.destination
             if self._obj_name_for_ip(spec.destination):
-                zone = "WAN" if spec.interface.upper() in ("X1",) else "LAN"
-                dst_name = await self._ensure_address_object(client, spec.destination, zone)
+                dst_name = await self._ensure_address_object(client, spec.destination, iface_zone)
+            dst_field = self._addr_field(dst_name)
 
-            src_field = self._addr_field(spec.source)
-            dst_field = {"name": dst_name} if dst_name.lower() not in ("any", "") else {"any": True}
+            # Auto-create address object for source CIDR
+            src_name = spec.source
+            if self._obj_name_for_ip(spec.source):
+                src_name = await self._ensure_address_object(client, spec.source, "LAN")
+            src_field = self._addr_field(src_name)
+
+            # Gateway: default or named address object (SonicOS requires named object, not raw IP)
+            gw = spec.gateway
+            if not gw or gw.lower() in ("default", "any", ""):
+                gw_field: dict = {"default": True}
+            else:
+                # Auto-create host address object for the gateway IP
+                gw_obj = self._obj_name_for_ip(gw)
+                if gw_obj:
+                    await self._ensure_address_object(client, gw, iface_zone)
+                    gw_field = {"name": gw_obj}
+                else:
+                    gw_field = {"name": gw}
 
             body: dict = {
                 "interface": spec.interface,
                 "source": src_field,
                 "destination": dst_field,
                 "service": self._addr_field(spec.service),
-                "gateway": self._gateway_field(spec.gateway),
+                "gateway": gw_field,
                 "metric": spec.metric,
                 "distance": {"value": spec.distance},
                 "name": spec.name,
