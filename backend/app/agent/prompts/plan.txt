@@ -78,5 +78,12 @@ Regras de preenchimento:
   - filter_action: "allow" ou "deny" se o usuário pedir por ação específica
   - filter_enabled: true/false se o usuário pedir regras ativas/inativas
   - filter_object: "<nome do objeto>" se o usuário pedir regras que contenham um objeto específico em origem, destino ou serviço
-- Para list_nat_policies: specs=null
-- Para list_route_policies: specs=null
+- Para list_nat_policies: specs=null; em raw_intent_data coloque:
+  - filter_object: "<nome>" se o usuário pedir NATs que contenham um objeto específico em origem, destino ou serviço
+  - filter_inbound: "<interface>" se o usuário pedir por interface de entrada (ex: X1)
+  - filter_outbound: "<interface>" se o usuário pedir por interface de saída (ex: X0)
+  - filter_enabled: true/false se o usuário pedir NATs ativos/inativos
+- Para list_route_policies: specs=null; em raw_intent_data coloque:
+  - filter_object: "<nome>" se o usuário pedir rotas que contenham um objeto específico em origem, destino ou gateway
+  - filter_interface: "<interface>" se o usuário pedir rotas por interface (ex: X1, X0)
+  - filter_type: "<tipo>" se o usuário pedir por tipo de rota (ex: standard)

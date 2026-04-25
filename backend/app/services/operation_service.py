@@ -139,6 +139,27 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
             exec_result = await connector.create_group(group_spec)
         elif plan.intent == IntentType.list_nat_policies:
             policies = await connector.list_nat_policies()
+            filter_object = plan.raw_intent_data.get("filter_object")
+            filter_inbound = plan.raw_intent_data.get("filter_inbound")
+            filter_outbound = plan.raw_intent_data.get("filter_outbound")
+            filter_enabled = plan.raw_intent_data.get("filter_enabled")
+            if filter_object:
+                obj_lower = filter_object.lower()
+                policies = [
+                    p for p in policies
+                    if obj_lower in p.source.lower()
+                    or obj_lower in p.translated_source.lower()
+                    or obj_lower in p.destination.lower()
+                    or obj_lower in p.translated_destination.lower()
+                    or obj_lower in p.service.lower()
+                    or obj_lower in p.translated_service.lower()
+                ]
+            if filter_inbound:
+                policies = [p for p in policies if p.inbound.upper() == filter_inbound.upper()]
+            if filter_outbound:
+                policies = [p for p in policies if p.outbound.upper() == filter_outbound.upper()]
+            if filter_enabled is not None:
+                policies = [p for p in policies if p.enabled == bool(filter_enabled)]
             operation.action_plan = {
                 **(operation.action_plan or {}),
                 "result": [dataclasses.asdict(p) for p in policies],
@@ -151,6 +172,21 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
             exec_result = await connector.delete_nat_policy(str(rule_id))
         elif plan.intent == IntentType.list_route_policies:
             routes = await connector.list_route_policies()
+            filter_object = plan.raw_intent_data.get("filter_object")
+            filter_interface = plan.raw_intent_data.get("filter_interface")
+            filter_type = plan.raw_intent_data.get("filter_type")
+            if filter_object:
+                obj_lower = filter_object.lower()
+                routes = [
+                    r for r in routes
+                    if obj_lower in r.source.lower()
+                    or obj_lower in r.destination.lower()
+                    or obj_lower in r.gateway.lower()
+                ]
+            if filter_interface:
+                routes = [r for r in routes if r.interface.upper() == filter_interface.upper()]
+            if filter_type:
+                routes = [r for r in routes if r.route_type.lower() == filter_type.lower()]
             operation.action_plan = {
                 **(operation.action_plan or {}),
                 "result": [dataclasses.asdict(r) for r in routes],
