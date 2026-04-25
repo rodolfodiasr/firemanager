@@ -65,7 +65,8 @@ Gere o ActionPlan no seguinte formato JSON (sem markdown):
 }
 
 Regras de preenchimento:
-- Para create_rule ou edit_rule: preencha rule_spec, demais specs=null
+- Para create_rule: preencha rule_spec com todos os campos, demais specs=null
+- Para edit_rule: coloque o nome ou ID da regra em raw_intent_data["rule_id"]; em rule_spec preencha APENAS os campos que o usuário quer alterar — deixe os demais campos como "Any" ou vazio para que o sistema preserve os valores atuais; demais specs=null
 - Para create_nat_policy: preencha nat_spec, demais specs=null
 - Para create_route_policy: preencha route_spec, demais specs=null
 - Para delete_nat_policy: coloque rule_id em raw_intent_data, specs=null

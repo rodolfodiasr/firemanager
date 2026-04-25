@@ -1,4 +1,5 @@
 import dataclasses
+import re
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -6,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.agent import AgentSession
+from app.connectors.base import RuleSpec
 from app.connectors.factory import get_connector
 from app.models.operation import Operation, OperationStatus
 from app.models.operation_step import OperationStep, StepStatus
@@ -17,6 +19,8 @@ from app.services.device_service import get_device
 from app.utils.integrity import compute_record_hash
 
 import hashlib
+
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
 
 
 class OperationNotFoundError(Exception):
@@ -134,6 +138,23 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
             exec_result = await connector.delete_rule(str(rule_id))
         elif plan.intent == IntentType.edit_rule and rule_spec:
             rule_id = plan.raw_intent_data.get("rule_id", "")
+            if rule_id and not _UUID_RE.match(str(rule_id)):
+                # rule_id is a name — resolve to UUID and fill missing fields from current rule
+                all_rules = await connector.list_rules()
+                matched = next((r for r in all_rules if r.name.lower() == str(rule_id).lower()), None)
+                if matched:
+                    rule_id = matched.rule_id
+                    rule_spec = dataclasses.replace(
+                        rule_spec,
+                        src_address=rule_spec.src_address if rule_spec.src_address not in ("", "Any") else matched.src,
+                        dst_address=rule_spec.dst_address if rule_spec.dst_address not in ("", "Any") else matched.dst,
+                        service=rule_spec.service if rule_spec.service not in ("", "Any") else matched.service,
+                        src_zone=rule_spec.src_zone if rule_spec.src_zone not in ("", "LAN") else matched.raw.get("from", "LAN"),
+                        dst_zone=rule_spec.dst_zone if rule_spec.dst_zone not in ("", "WAN") else matched.raw.get("to", "WAN"),
+                        action=rule_spec.action if rule_spec.action not in ("", "accept") else matched.action,
+                    )
+                else:
+                    raise ValueError(f"Regra '{rule_id}' não encontrada")
             exec_result = await connector.edit_rule(str(rule_id), rule_spec)
         elif plan.intent == IntentType.create_group and group_spec:
             exec_result = await connector.create_group(group_spec)

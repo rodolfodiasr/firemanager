@@ -11,9 +11,15 @@ from app.policy_engine.schemas import ActionPlan, IntentType
 _REQUIRED_FIELDS_BY_INTENT: dict[str, list[str]] = {
     "create_rule": ["name", "src_address", "dst_address", "service", "action"],
     "delete_rule": ["rule_id"],
-    "edit_rule": ["rule_id", "src_address", "dst_address", "service", "action"],
+    "edit_rule": ["rule_id"],
     "create_group": ["name", "members"],
     "list_rules": [],
+    "list_nat_policies": [],
+    "create_nat_policy": ["name", "destination", "translated_destination"],
+    "delete_nat_policy": ["rule_id"],
+    "list_route_policies": [],
+    "create_route_policy": ["interface", "destination", "gateway"],
+    "delete_route_policy": ["rule_id"],
     "health_check": [],
     "get_snapshot": [],
 }
@@ -102,11 +108,31 @@ class AgentSession:
             r = self.plan.rule_spec
             lines += [
                 f"- **Regra:** {r.name}",
-                f"- **Origem:** {r.src_address}",
-                f"- **Destino:** {r.dst_address}",
+                f"- **Origem:** {r.src_address} (zona: {r.src_zone})",
+                f"- **Destino:** {r.dst_address} (zona: {r.dst_zone})",
                 f"- **Serviço:** {r.service}",
                 f"- **Ação:** {r.action}",
                 f"- **Comentário:** {r.comment or '(nenhum)'}",
+            ]
+
+        if self.plan.nat_spec:
+            n = self.plan.nat_spec
+            lines += [
+                f"- **NAT:** {n.name}",
+                f"- **Entrada:** {n.inbound_interface} → Saída: {n.outbound_interface}",
+                f"- **Origem:** {n.source} → {n.translated_source}",
+                f"- **Destino:** {n.destination} → {n.translated_destination}",
+                f"- **Serviço:** {n.service} → {n.translated_service}",
+            ]
+
+        if self.plan.route_spec:
+            rt = self.plan.route_spec
+            lines += [
+                f"- **Rota:** {rt.name or '(sem nome)'}",
+                f"- **Interface:** {rt.interface}",
+                f"- **Destino:** {rt.destination}",
+                f"- **Gateway:** {rt.gateway}",
+                f"- **Métrica:** {rt.metric}",
             ]
 
         if self.plan.group_spec:
