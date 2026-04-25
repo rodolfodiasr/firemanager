@@ -66,37 +66,53 @@ class SonicWallSSHConnector:
     # ------------------------------------------------------------------
 
     def _enter_configure(self, shell) -> str:
-        """Send 'configure', handle preempt/password prompts, confirm config( prompt."""
+        """Enter configure mode with real-time prompt handling (50ms poll)."""
         self._send(shell, "configure")
-        out = self._wait_for(
-            shell,
-            ["config(", "preempt", "no]:", "assword:", "ccess denied"],
-            timeout=15,
+
+        buf = b""
+        preempt_sent = False
+        password_sent = False
+        deadline = time.monotonic() + 25
+
+        while time.monotonic() < deadline:
+            if shell.recv_ready():
+                buf += shell.recv(_RECV_SIZE)
+                decoded = buf.decode("utf-8", errors="replace")
+
+                # Success
+                if "config(" in decoded:
+                    return decoded
+
+                # Preempt yes/no prompt — respond immediately
+                if not preempt_sent and ("no]:" in decoded or "preempt" in decoded.lower()):
+                    self._send(shell, "yes")
+                    preempt_sent = True
+                    buf = b""
+                    continue
+
+                # Password prompt — respond immediately with admin password
+                if not password_sent and "assword:" in decoded:
+                    self._send(shell, self.password)
+                    password_sent = True
+                    buf = b""
+                    continue
+
+                # Back at user prompt after failed auth
+                if ("admin@" in decoded or ">" in decoded) and "config(" not in decoded:
+                    if password_sent:
+                        raise RuntimeError(
+                            "Senha rejeitada ao entrar em modo configure. "
+                            "Verifique as credenciais do dispositivo."
+                        )
+                    if preempt_sent:
+                        raise RuntimeError("Falha no preempt do modo configure.")
+
+            time.sleep(0.05)  # fast poll
+
+        raise RuntimeError(
+            "Timeout ao entrar em modo configure. "
+            f"Última resposta: {buf[-300:].decode('utf-8', errors='replace')!r}"
         )
-
-        # Preempt via yes/no dialog
-        if "preempt" in out.lower() or "no]:" in out:
-            self._send(shell, "yes")
-            extra = self._wait_for(shell, ["config(", "assword:"], timeout=10)
-            out += extra
-
-        # SonicWall sometimes prompts for password to confirm preempt
-        if "assword:" in out and "config(" not in out:
-            self._send(shell, self.password)
-            extra = self._wait_for(shell, ["config(", "ccess denied", "error"], timeout=10)
-            out += extra
-            if "ccess denied" in extra:
-                raise RuntimeError(
-                    "Senha rejeitada pelo SonicWall ao entrar em modo configure. "
-                    "Verifique as credenciais do dispositivo."
-                )
-
-        if "config(" not in out:
-            raise RuntimeError(
-                "Não foi possível entrar no modo de configuração do SonicWall. "
-                f"Resposta recebida: {out[-300:]!r}"
-            )
-        return out
 
     def _exit_configure(self, shell) -> str:
         """Send 'end' to leave configure mode."""
