@@ -97,13 +97,14 @@ class SonicWallSSHConnector:
                     buf = b""
                     continue
 
-                # Back at user prompt after failed auth
-                if ("admin@" in decoded or ">" in decoded) and "config(" not in decoded:
+                # Back at user prompt after failed auth — only trigger on a real prompt
+                # (output ending with ">", not just ">" anywhere in intermediate text)
+                at_prompt = decoded.rstrip().endswith(">") and "config(" not in decoded
+                if at_prompt:
                     if password_sent:
                         raise RuntimeError(
-                            "Senha de configure rejeitada pelo SonicWall. "
-                            "Verifique o campo 'configure_password' nas credenciais do dispositivo. "
-                            "No SonicWall: Device → Administration → Firewall Administrator → CLI."
+                            "Senha rejeitada ao entrar em configure mode no SonicWall. "
+                            "Verifique se o usuário/senha do dispositivo estão corretos."
                         )
                     if preempt_sent:
                         raise RuntimeError("Falha no preempt do modo configure.")
