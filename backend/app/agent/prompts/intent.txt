@@ -12,6 +12,7 @@ Analise a solicitação do usuário e identifique:
    - list_route_policies: Listar políticas de rota/rotas estáticas
    - create_route_policy: Criar nova política de rota/rota estática
    - delete_route_policy: Deletar/remover uma política de rota existente
+   - configure_content_filter: Configurar filtro de conteúdo/content filter (bloquear/liberar categorias de sites, criar perfil ou política de CFS)
    - health_check: Verificar status/conectividade do dispositivo
    - get_snapshot: Obter snapshot da configuração atual
    - unknown: Solicitação não reconhecida

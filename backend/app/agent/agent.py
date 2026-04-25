@@ -20,6 +20,7 @@ _REQUIRED_FIELDS_BY_INTENT: dict[str, list[str]] = {
     "list_route_policies": [],
     "create_route_policy": ["interface", "destination", "gateway"],
     "delete_route_policy": ["rule_id"],
+    "configure_content_filter": ["profile_name"],
     "health_check": [],
     "get_snapshot": [],
 }
@@ -141,6 +142,21 @@ class AgentSession:
                 f"- **Grupo:** {g.name}",
                 f"- **Membros:** {', '.join(g.members)}",
             ]
+
+        if self.plan.content_filter_spec:
+            cf = self.plan.content_filter_spec
+            lines += [
+                f"- **Perfil CFS:** {cf.profile_name}",
+                f"- **Política CFS:** {cf.policy_name or '(automático)'}",
+                f"- **Categorias bloqueadas:** {', '.join(cf.blocked_categories) or '(nenhuma)'}",
+                f"- **Zonas:** {', '.join(cf.zones)}",
+                f"- **Modo de execução:** SSH CLI",
+            ]
+
+        if self.plan.ssh_commands:
+            lines.append("- **Comandos SSH:**")
+            for cmd in self.plan.ssh_commands:
+                lines.append(f"  `{cmd}`")
 
         lines.append("\nDigite **confirmar** para executar ou **cancelar** para abortar.")
         return "\n".join(lines)

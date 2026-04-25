@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.agent import AgentSession
 from app.connectors.base import RuleSpec
-from app.connectors.factory import get_connector
+from app.connectors.factory import get_connector, get_ssh_connector
 from app.models.operation import Operation, OperationStatus
 from app.models.operation_step import OperationStep, StepStatus
 from app.models.snapshot import Snapshot
@@ -218,6 +218,24 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
         elif plan.intent == IntentType.delete_route_policy:
             rule_id = plan.raw_intent_data.get("rule_id", "")
             exec_result = await connector.delete_route_policy(str(rule_id))
+        elif plan.intent == IntentType.configure_content_filter:
+            ssh_commands = plan.ssh_commands or []
+            if not ssh_commands:
+                raise ValueError("Nenhum comando SSH foi gerado pelo agente para configure_content_filter")
+            ssh_connector = get_ssh_connector(device)
+            ssh_result = await ssh_connector.execute_commands(ssh_commands)
+            operation.action_plan = {
+                **(operation.action_plan or {}),
+                "result": {
+                    "commands": ssh_result.commands_executed,
+                    "output": ssh_result.output,
+                },
+            }
+            if ssh_result.success:
+                operation.status = OperationStatus.completed
+            else:
+                operation.status = OperationStatus.failed
+                operation.error_message = ssh_result.error
 
         if exec_result is not None:
             if exec_result.success:

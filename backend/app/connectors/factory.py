@@ -1,8 +1,20 @@
 from app.connectors.base import BaseConnector
 from app.connectors.fortinet import FortinetConnector
 from app.connectors.sonicwall import SonicWallConnector
+from app.connectors.sonicwall_ssh import SonicWallSSHConnector
 from app.models.device import Device, VendorEnum
 from app.utils.crypto import decrypt_credentials
+
+
+def get_ssh_connector(device: Device) -> SonicWallSSHConnector:
+    """Return an SSH connector using stored credentials (username/password)."""
+    creds = decrypt_credentials(device.encrypted_credentials)
+    return SonicWallSSHConnector(
+        host=device.host,
+        username=creds.get("username", ""),
+        password=creds.get("password", ""),
+        ssh_port=int(creds.get("ssh_port", 22)),
+    )
 
 
 def get_connector(device: Device) -> BaseConnector:

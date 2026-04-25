@@ -17,6 +17,7 @@ class IntentType(str, Enum):
     list_route_policies = "list_route_policies"
     create_route_policy = "create_route_policy"
     delete_route_policy = "delete_route_policy"
+    configure_content_filter = "configure_content_filter"
     health_check = "health_check"
     get_snapshot = "get_snapshot"
     unknown = "unknown"
@@ -62,6 +63,16 @@ class RouteSpecModel(BaseModel):
     disable_on_interface_down: bool = False
 
 
+class ContentFilterSpecModel(BaseModel):
+    profile_name: str
+    policy_name: str = ""
+    blocked_categories: list[str] = Field(default_factory=list)
+    allowed_categories: list[str] = Field(default_factory=list)
+    zones: list[str] = Field(default_factory=lambda: ["LAN"])
+    action: str = "block"
+    comment: str | None = None
+
+
 class GroupSpecModel(BaseModel):
     name: str
     members: list[str]
@@ -78,8 +89,11 @@ class ActionPlan(BaseModel):
     intent: IntentType
     device_id: UUID
     steps: list[ActionStep]
+    execution_mode: str = "api"  # "api" | "ssh"
     rule_spec: RuleSpecModel | None = None
     nat_spec: NatSpecModel | None = None
     route_spec: RouteSpecModel | None = None
     group_spec: GroupSpecModel | None = None
+    content_filter_spec: ContentFilterSpecModel | None = None
+    ssh_commands: list[str] | None = None
     raw_intent_data: dict[str, Any] = Field(default_factory=dict)
