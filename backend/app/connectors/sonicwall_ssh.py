@@ -78,6 +78,7 @@ class SonicWallSSHConnector:
             if shell.recv_ready():
                 buf += shell.recv(_RECV_SIZE)
                 decoded = buf.decode("utf-8", errors="replace")
+                print(f"[SSH configure recv] {decoded!r}", flush=True)
                 # Success
                 if "config(" in decoded:
                     return decoded
@@ -96,8 +97,7 @@ class SonicWallSSHConnector:
                     buf = b""
                     continue
 
-                # Back at user prompt after failed auth — only trigger on a real prompt
-                # (output ending with ">", not just ">" anywhere in intermediate text)
+                # Back at user prompt — configure failed
                 at_prompt = decoded.rstrip().endswith(">") and "config(" not in decoded
                 if at_prompt:
                     if password_sent:
@@ -107,6 +107,11 @@ class SonicWallSSHConnector:
                         )
                     if preempt_sent:
                         raise RuntimeError("Falha no preempt do modo configure.")
+                    # Returned to prompt without any dialog — unexpected failure
+                    raise RuntimeError(
+                        f"SonicWall retornou ao prompt sem entrar em configure mode. "
+                        f"Resposta: {decoded!r}"
+                    )
 
             time.sleep(0.05)  # fast poll
 
@@ -167,14 +172,10 @@ class SonicWallSSHConnector:
 
             shell = client.invoke_shell(width=200, height=50)
 
-            # SonicWall SSH has two auth stages:
-            # 1. SSH protocol auth (handled by paramiko above)
-            # 2. Shell-level password prompt before the CLI prompt appears
-            # We must respond to the shell password before sending any commands.
-            out_banner = self._wait_for(shell, [">", "assword:"], timeout=15)
-            if "assword:" in out_banner and ">" not in out_banner:
-                self._send(shell, self.password)
-                out_banner += self._wait_for(shell, [">"], timeout=10)
+            # Paramiko handles SSH auth (including keyboard-interactive Password:).
+            # After connect(), the shell emits the CLI banner ending with ">".
+            out_banner = self._wait_for(shell, [">"], timeout=15)
+            print(f"[SSH banner] {out_banner!r}", flush=True)
 
             parts: list[str] = [out_banner]
 
