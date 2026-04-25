@@ -107,11 +107,12 @@ class SonicWallConnector(BaseConnector):
 
     @contextlib.asynccontextmanager
     async def hold_session(self) -> AsyncGenerator[None, None]:
-        """Open an authenticated API session without committing.
+        """Open a regular (non-override) API session without committing.
 
-        Keeps SonicWall in 'admin at SonicOS API is editing' state so that
-        a concurrent SSH 'configure' shows the preempt dialog instead of
-        requiring a separate enable password.
+        Creates a preemptable 'admin at SonicOS API is editing' state so that
+        SSH 'configure' shows the yes/no preempt dialog instead of requiring
+        a separate enable password. Intentionally does NOT use override=True,
+        which would create a privileged lock that SSH cannot preempt normally.
         """
         async with httpx.AsyncClient(
             base_url=self.base_url,
@@ -119,13 +120,14 @@ class SonicWallConnector(BaseConnector):
             headers={"Content-Type": "application/json", "Accept": "application/json"},
             timeout=30.0,
         ) as client:
+            # No {"override": True} — regular session that SSH can preempt with 'yes'
             resp = await client.post(
                 "/api/sonicos/auth",
-                json={"override": True},
                 auth=httpx.DigestAuth(self.username, self.password),
             )
             if not resp.is_success:
-                logger.warning("hold_session auth failed: %s", resp.status_code)
+                # Auth failed (existing session active) — that session is preemptable too
+                logger.debug("hold_session: existing session detected (HTTP %s), SSH will preempt it", resp.status_code)
             try:
                 yield
             finally:
