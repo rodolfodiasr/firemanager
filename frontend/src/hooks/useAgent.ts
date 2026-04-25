@@ -103,6 +103,15 @@ export function useAgent(deviceId: string | null) {
               ],
               rows: result,
             };
+          } else if (intent === "get_security_status") {
+            summary = "Status dos serviços de segurança:";
+            tableData = {
+              columns: [
+                { key: "service", label: "Serviço" },
+                { key: "enabled", label: "Status" },
+              ],
+              rows: result,
+            };
           } else {
             summary = "Operação executada com sucesso!";
           }

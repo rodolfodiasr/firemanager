@@ -27,6 +27,13 @@ function ResultTable({ tableData }: { tableData: TableData }) {
               {tableData.columns.map((col) => {
                 const val = row[col.key];
                 if (col.key === "enabled") {
+                  if (val === null || val === undefined) {
+                    return (
+                      <td key={col.key} className="px-3 py-2">
+                        <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">—</span>
+                      </td>
+                    );
+                  }
                   return (
                     <td key={col.key} className="px-3 py-2">
                       <span
@@ -34,7 +41,7 @@ function ResultTable({ tableData }: { tableData: TableData }) {
                           val ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                         }`}
                       >
-                        {val ? "ON" : "OFF"}
+                        {val ? "Ativo" : "Inativo"}
                       </span>
                     </td>
                   );

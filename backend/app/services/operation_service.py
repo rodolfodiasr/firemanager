@@ -3,6 +3,61 @@ import re
 from datetime import datetime, timezone
 from uuid import UUID
 
+# ANSI escape sequence pattern (for cleaning SSH terminal output)
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+
+_SECURITY_SERVICE_LABELS: dict[str, str] = {
+    "show gateway-antivirus":    "Gateway Anti-Virus",
+    "show anti-spyware":         "Anti-Spyware",
+    "show intrusion-prevention": "Intrusion Prevention (IPS)",
+    "show app-control":          "App Control",
+    "show geo-ip":               "Geo-IP Filter",
+    "show botnet":               "Botnet Filter",
+    "show dpi-ssl":              "DPI-SSL",
+    "show dpi-ssl client":       "DPI-SSL (Client)",
+    "show dpi-ssl server":       "DPI-SSL (Server)",
+}
+
+
+def _detect_service_enabled(cmd: str, section: str) -> bool | None:
+    if "geo-ip" in cmd or "botnet" in cmd:
+        if re.search(r'no\s+block\s+connections', section):
+            return False
+        if re.search(r'block\s+connections', section):
+            return True
+        return None
+    no_m = re.search(r'^\s+no\s+enable\b', section, re.MULTILINE)
+    yes_m = re.search(r'^\s+enable\b', section, re.MULTILINE)
+    if no_m and yes_m:
+        return yes_m.start() < no_m.start()
+    if yes_m:
+        return True
+    if no_m:
+        return False
+    return None
+
+
+def _parse_security_status(commands: list[str], raw_output: str) -> list[dict]:
+    """Parse concatenated SSH show output into structured service status list."""
+    clean = _ANSI_RE.sub('', raw_output).replace('\r', '')
+    services = []
+    for cmd in commands:
+        label = _SECURITY_SERVICE_LABELS.get(cmd, cmd)
+        start = clean.find(cmd)
+        if start == -1:
+            services.append({"service": label, "enabled": None})
+            continue
+        end = len(clean)
+        for other_cmd in commands:
+            if other_cmd == cmd:
+                continue
+            pos = clean.find(other_cmd, start + len(cmd))
+            if 0 < pos < end:
+                end = pos
+        section = clean[start:end]
+        services.append({"service": label, "enabled": _detect_service_enabled(cmd, section)})
+    return services
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -230,12 +285,10 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
             ]
             ssh_connector = get_ssh_connector(device)
             ssh_result = await ssh_connector.execute_show_commands(ssh_commands)
+            services = _parse_security_status(ssh_commands, ssh_result.output)
             operation.action_plan = {
                 **(operation.action_plan or {}),
-                "result": {
-                    "commands": ssh_result.commands_executed,
-                    "output": ssh_result.output,
-                },
+                "result": services,
             }
             if ssh_result.success:
                 operation.status = OperationStatus.completed
