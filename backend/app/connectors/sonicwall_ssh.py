@@ -135,27 +135,35 @@ class SonicWallSSHConnector:
     # ------------------------------------------------------------------
 
     def _run_cmd(self, shell, cmd: str) -> str:
-        """Send one command, handle password/confirmation prompts, return output."""
+        """Send one command, handle password/confirm prompts, return output."""
         self._send(shell, cmd)
+        time.sleep(_CMD_DELAY)
+        out = self._recv_all(shell)
+        print(f"[SSH cmd {cmd!r}] {out!r}", flush=True)
+
+        # If 'exit' left configure mode and shows uncommitted-changes dialog,
+        # send 'cancel' to return to configure mode so remaining commands run.
+        if "cancel]:" in out:
+            self._send(shell, "cancel")
+            out += self._wait_for(shell, ["config("], timeout=10)
+            print(f"[SSH cancel-return] {out!r}", flush=True)
+            return out
 
         if cmd.strip() == "commit":
-            # commit may take several seconds before prompting for password
-            out = self._wait_for(shell, ["assword:", "config(", "%", "Error"], timeout=10)
-            print(f"[SSH commit recv] {out!r}", flush=True)
+            # commit prompts for the admin password; wait longer for it to appear
+            if "assword:" not in out:
+                out += self._wait_for(shell, ["assword:", "config(", "%"], timeout=10)
+                print(f"[SSH commit-wait] {out!r}", flush=True)
             if "assword:" in out:
                 self._send(shell, self.password)
                 out += self._wait_for(shell, ["config(", "ommitted", "Error", "%"], timeout=15)
-                print(f"[SSH commit after-pwd] {out!r}", flush=True)
+                print(f"[SSH commit-pwd] {out!r}", flush=True)
                 if "ccess denied" in out or "ession terminated" in out:
                     raise RuntimeError(
                         "Senha rejeitada pelo SonicWall ao executar 'commit'. "
                         "Verifique as credenciais do dispositivo."
                     )
-            return out
 
-        time.sleep(_CMD_DELAY)
-        out = self._recv_all(shell)
-        print(f"[SSH cmd {cmd!r}] {out!r}", flush=True)
         return out
 
     # ------------------------------------------------------------------

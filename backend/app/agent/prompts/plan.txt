@@ -99,6 +99,15 @@ Regras de preenchimento:
   - filter_object: "<nome>" se o usuário pedir rotas que contenham um objeto específico em origem, destino ou gateway
   - filter_interface: "<interface>" se o usuário pedir rotas por interface (ex: X1, X0)
   - filter_type: "<tipo>" se o usuário pedir por tipo de rota (ex: standard)
-- Para configure_content_filter: defina execution_mode="ssh"; preencha content_filter_spec com os dados do filtro; em ssh_commands forneça APENAS os comandos de configuração (NÃO inclua "configure" nem "end" — o sistema entra e sai do modo configure automaticamente). Inclua "commit" ao final para salvar. Exemplo para bloquear categorias:
-  ["content-filter profile add fm-cfs-adult", "content-filter profile edit fm-cfs-adult", "block Adult/Mature Content", "exit", "content-filter policy add fm-cfs-policy", "content-filter policy edit fm-cfs-policy", "profile fm-cfs-adult", "zones LAN", "enable", "exit", "commit"]
+- Para configure_content_filter: defina execution_mode="ssh"; preencha content_filter_spec com os dados do filtro; em ssh_commands forneça APENAS os comandos de configuração (NÃO inclua "configure" nem "end" — o sistema entra e sai do modo configure automaticamente). Inclua "commit" ao final para salvar.
+
+  IMPORTANTE — estrutura correta dos comandos CLI SonicWall (baseada no output real do dispositivo):
+  "content-filter" é um MODO (como "configure") — deve ser enviado sozinho, sem argumentos.
+  Dentro do modo content-filter, use "profile <nome>" para criar/editar perfil e "cfs" para entrar no modo CFS.
+  Dentro do modo CFS, use "policy <nome>" para criar/editar política.
+  Cada bloco encerra com "exit". Use dois "exit" para sair do profile (profile → content-filter → config) e três para policy (policy → cfs → content-filter → config).
+
+  Exemplo para bloquear categorias padrão (adult, gambling) na zona LAN:
+  ["content-filter", "profile fm-cfs-adult", "name fm-cfs-adult", "uri-list search-order allowed-first", "uri-list forbidden-operation block", "no reputation active", "categories default", "no https-filtering", "no smart-filter", "no safe-search", "no threat-api", "no google-force-safe-search", "no youtube-restrict-mode", "no bing-force-safe-search", "no consent required", "no custom-header insertion", "no custom-header entries", "exit", "exit", "content-filter", "cfs", "policy fm-cfs-policy-adult", "name fm-cfs-policy-adult", "source zone LAN", "source address included any", "source address excluded none", "destination zone WAN", "user included all", "user excluded none", "schedule always-on", "profile fm-cfs-adult", "action \"CFS Default Action\"", "enable", "priority 10", "exit", "exit", "exit", "commit"]
+
   Use nomes com prefixo "fm-" para perfis e políticas criados pela plataforma. Demais specs=null.
