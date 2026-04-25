@@ -1,11 +1,17 @@
 Analise a solicitação do usuário e identifique:
 
 1. **intent**: A intenção principal. Deve ser um dos valores:
-   - create_rule: Criar nova regra de firewall
-   - delete_rule: Deletar/remover uma regra existente
-   - edit_rule: Editar/modificar uma regra existente
+   - create_rule: Criar nova regra de firewall/acesso
+   - delete_rule: Deletar/remover uma regra de firewall/acesso existente
+   - edit_rule: Editar/modificar uma regra de firewall/acesso existente
    - create_group: Criar grupo de endereços/serviços
-   - list_rules: Listar regras existentes
+   - list_rules: Listar regras de firewall/acesso existentes
+   - list_nat_policies: Listar políticas de NAT
+   - create_nat_policy: Criar nova política de NAT
+   - delete_nat_policy: Deletar/remover uma política de NAT existente
+   - list_route_policies: Listar políticas de rota/rotas estáticas
+   - create_route_policy: Criar nova política de rota/rota estática
+   - delete_route_policy: Deletar/remover uma política de rota existente
    - health_check: Verificar status/conectividade do dispositivo
    - get_snapshot: Obter snapshot da configuração atual
    - unknown: Solicitação não reconhecida
