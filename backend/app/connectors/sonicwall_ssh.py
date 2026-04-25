@@ -167,8 +167,15 @@ class SonicWallSSHConnector:
 
             shell = client.invoke_shell(width=200, height=50)
 
-            # Wait for initial user-exec prompt  admin@hostname>
-            out_banner = self._wait_for(shell, [">"], timeout=15)
+            # SonicWall SSH has two auth stages:
+            # 1. SSH protocol auth (handled by paramiko above)
+            # 2. Shell-level password prompt before the CLI prompt appears
+            # We must respond to the shell password before sending any commands.
+            out_banner = self._wait_for(shell, [">", "assword:"], timeout=15)
+            if "assword:" in out_banner and ">" not in out_banner:
+                self._send(shell, self.password)
+                out_banner += self._wait_for(shell, [">"], timeout=10)
+
             parts: list[str] = [out_banner]
 
             # Enter configure mode
