@@ -172,10 +172,16 @@ class SonicWallSSHConnector:
 
             shell = client.invoke_shell(width=200, height=50)
 
-            # Paramiko handles SSH auth (including keyboard-interactive Password:).
-            # After connect(), the shell emits the CLI banner ending with ">".
-            out_banner = self._wait_for(shell, [">"], timeout=15)
+            # SonicWall shows a shell-level "Password:" prompt after SSH connect.
+            # Paramiko handles SSH-protocol auth; this separate prompt must be
+            # answered manually before the CLI ">" appears.
+            out_banner = self._wait_for(shell, [">", "assword:"], timeout=15)
             print(f"[SSH banner] {out_banner!r}", flush=True)
+            if "assword:" in out_banner and ">" not in out_banner:
+                self._send(shell, self.password)
+                extra = self._wait_for(shell, [">"], timeout=10)
+                print(f"[SSH shell-auth] {extra!r}", flush=True)
+                out_banner += extra
 
             parts: list[str] = [out_banner]
 
