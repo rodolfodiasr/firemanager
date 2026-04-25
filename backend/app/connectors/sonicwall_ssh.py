@@ -249,6 +249,30 @@ class SonicWallSSHConnector:
     # Show commands (user exec level — no configure mode)
     # ------------------------------------------------------------------
 
+    def _read_until_prompt(self, shell, timeout: float = 20.0) -> str:
+        """Read show command output handling --More-- pagination.
+
+        Returns when the last non-whitespace line ends with '>' (user exec prompt)
+        or '#' (configure prompt), or when timeout is reached.
+        Sending space advances SonicWall's --More-- pager.
+        """
+        buf = b""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if shell.recv_ready():
+                buf += shell.recv(_RECV_SIZE)
+                decoded = buf.decode("utf-8", errors="replace")
+                # Advance pager — keep accumulating so full output is preserved
+                if "--More--" in decoded or "-- More --" in decoded:
+                    shell.sendall(b" ")
+                    continue
+                # Prompt detected when last non-empty line ends with > or #
+                last_line = decoded.rstrip().rsplit("\n", 1)[-1].rstrip()
+                if last_line.endswith(">") or last_line.endswith("#"):
+                    return decoded
+            time.sleep(_POLL_SLEEP)
+        return buf.decode("utf-8", errors="replace")
+
     def _connect_and_show(self, commands: list[str]) -> tuple[bool, str]:
         """Run show commands at user exec level without entering configure mode."""
         import paramiko
@@ -267,7 +291,8 @@ class SonicWallSSHConnector:
                 allow_agent=False,
             )
 
-            shell = client.invoke_shell(width=200, height=200)
+            # Large height tells SonicWall the terminal has many rows, reducing pagination
+            shell = client.invoke_shell(width=250, height=1000)
 
             # Handle shell-level password prompt (same as _connect_and_run)
             out_banner = self._wait_for(shell, [">", "assword:"], timeout=15)
@@ -279,8 +304,7 @@ class SonicWallSSHConnector:
 
             for cmd in commands:
                 self._send(shell, cmd)
-                # Wait for prompt to return; show output can be several lines
-                out = self._wait_for(shell, [">"], timeout=15)
+                out = self._read_until_prompt(shell, timeout=20)
                 parts.append(out)
 
             shell.close()
