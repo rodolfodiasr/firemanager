@@ -141,6 +141,19 @@ class SonicWallConnector(BaseConnector):
             return None  # already a named object
 
     @staticmethod
+    def _decode_fm_name(name: str) -> str | None:
+        """If name follows fm- convention, extract and return the original IP/CIDR, else None."""
+        if not name.startswith("fm-"):
+            return None
+        body = name[3:]  # strip "fm-"
+        ip_str = body.replace("_", "/").replace("-", ".")
+        try:
+            ipaddress.ip_network(ip_str, strict=False)
+            return ip_str
+        except ValueError:
+            return None
+
+    @staticmethod
     def _parse_port_spec(service: str) -> tuple[str, int, int] | None:
         """Parse 'TCP/1060' or 'UDP/53' → (proto, begin, end) or None."""
         m = re.match(r"^(TCP|UDP)/(\d+)(?:-(\d+))?$", service, re.IGNORECASE)
@@ -154,10 +167,16 @@ class SonicWallConnector(BaseConnector):
     async def _ensure_address_object(
         self, client: httpx.AsyncClient, ip_str: str, zone: str
     ) -> str:
-        """Create a host/network address object if ip_str is an IP. Returns object name."""
+        """Create a host/network address object if ip_str is an IP or fm- name. Returns object name."""
         obj_name = self._obj_name_for_ip(ip_str)
         if obj_name is None:
-            return ip_str  # already named
+            # Check if it's an fm- encoded name — decode and (re)create the object
+            decoded = self._decode_fm_name(ip_str)
+            if decoded:
+                ip_str = decoded
+                obj_name = self._obj_name_for_ip(decoded)
+            if obj_name is None:
+                return ip_str  # truly a pre-existing named object
 
         net = ipaddress.ip_network(ip_str, strict=False)
         is_host = net.prefixlen == (32 if net.version == 4 else 128)
