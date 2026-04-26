@@ -78,8 +78,20 @@ class ContentFilterSpecModel(BaseModel):
     policy_name: str = ""
     blocked_categories: list[str] = Field(default_factory=list)
     allowed_categories: list[str] = Field(default_factory=list)
+    allowed_sites: list[str] = Field(default_factory=list)
+    blocked_sites: list[str] = Field(default_factory=list)
     zones: list[str] = Field(default_factory=lambda: ["LAN"])
+    source_address: str = "any"
     action: str = "block"
+    https_filtering: bool = False
+    smart_filter: bool = False
+    safe_search: bool = False
+    threat_api: bool = False
+    google_safe_search: bool = False
+    youtube_restrict_mode: bool = False
+    bing_safe_search: bool = False
+    reputation_enabled: bool = False
+    reputation_action: str = "default"
     comment: str | None = None
 
 

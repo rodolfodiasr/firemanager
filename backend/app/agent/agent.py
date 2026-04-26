@@ -149,9 +149,26 @@ class AgentSession:
                 f"- **Perfil CFS:** {cf.profile_name}",
                 f"- **Política CFS:** {cf.policy_name or '(automático)'}",
                 f"- **Categorias bloqueadas:** {', '.join(cf.blocked_categories) or '(nenhuma)'}",
-                f"- **Zonas:** {', '.join(cf.zones)}",
-                f"- **Modo de execução:** SSH CLI",
+                f"- **Sites permitidos:** {', '.join(cf.allowed_sites) or '(nenhum)'}",
+                f"- **Sites bloqueados:** {', '.join(cf.blocked_sites) or '(nenhum)'}",
+                f"- **Origem:** {cf.source_address}",
+                f"- **Zonas:** {', '.join(cf.zones)} → WAN",
             ]
+            flags_on = [
+                label for flag, label in [
+                    (cf.https_filtering, "HTTPS Filtering"),
+                    (cf.smart_filter, "Smart Filtering"),
+                    (cf.safe_search, "Safe Search"),
+                    (cf.threat_api, "Threat API"),
+                    (cf.google_safe_search, "Google Force Safe Search"),
+                    (cf.youtube_restrict_mode, "YouTube Restrict Mode"),
+                    (cf.bing_safe_search, "Bing Force Safe Search"),
+                    (cf.reputation_enabled, f"Reputation ({cf.reputation_action})"),
+                ] if flag
+            ]
+            if flags_on:
+                lines.append(f"- **Recursos ativos:** {', '.join(flags_on)}")
+            lines.append("- **Modo de execução:** SSH CLI")
 
         if self.plan.security_service_spec:
             svc = self.plan.security_service_spec
