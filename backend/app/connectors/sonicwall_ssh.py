@@ -17,6 +17,18 @@ _RECV_SIZE = 65535
 _CMD_DELAY = 0.6    # seconds to wait after each command
 _POLL_SLEEP = 0.1   # polling interval while waiting for prompt
 
+# SonicWall CLI error patterns — if any appear in the full output, the session failed
+_CLI_ERROR_PATTERNS = [
+    "% Error",
+    "% Unknown",
+    "Invalid input detected",
+    "Command not found",
+    "No such object",
+    "invalid command",
+    "Unknown command",
+    "Syntax error",
+]
+
 
 @dataclass
 class SSHResult:
@@ -207,7 +219,18 @@ class SonicWallSSHConnector:
             client.close()
 
             full = "".join(parts)
+            print(f"[SSH-OUTPUT] {self.host}:\n{full}", flush=True)
             logger.info("SSH session completed on %s:%s", self.host, self.ssh_port)
+
+            # Check for CLI-level errors even when the connection itself succeeded
+            for pattern in _CLI_ERROR_PATTERNS:
+                if pattern.lower() in full.lower():
+                    idx = full.lower().find(pattern.lower())
+                    snippet = full[max(0, idx - 80):idx + 200].strip()
+                    error_msg = f"Erro CLI SonicWall detectado ({pattern!r}): {snippet!r}"
+                    logger.error("SSH CLI error on %s: %s", self.host, error_msg)
+                    return False, f"[SSH output]\n{full}\n\n[Erro detectado]\n{error_msg}"
+
             return True, full
 
         except RuntimeError as exc:

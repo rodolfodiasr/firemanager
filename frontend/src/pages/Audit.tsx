@@ -311,6 +311,32 @@ function HistoryTab() {
                   </div>
                 )}
 
+                {(() => {
+                  const result = op.action_plan?.result as Record<string, unknown> | undefined;
+                  const sshOutput = result?.output as string | undefined;
+                  const sshCmds = result?.commands as string[] | undefined;
+                  if (!sshOutput && !sshCmds) return null;
+                  return (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                        Output SSH do Dispositivo
+                      </p>
+                      {sshCmds && sshCmds.length > 0 && (
+                        <p className="text-xs text-gray-500 mb-1">
+                          Comandos enviados: <code className="bg-gray-100 px-1 rounded">{sshCmds.join(" → ")}</code>
+                        </p>
+                      )}
+                      <pre className={`text-xs rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap border ${
+                        op.status === "failed"
+                          ? "bg-red-50 border-red-200 text-red-800"
+                          : "bg-gray-900 border-gray-700 text-green-300"
+                      }`}>
+                        {sshOutput ?? "(sem output)"}
+                      </pre>
+                    </div>
+                  );
+                })()}
+
                 {op.review_comment && (
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
