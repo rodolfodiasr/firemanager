@@ -153,6 +153,28 @@ class AgentSession:
                 f"- **Modo de execução:** SSH CLI",
             ]
 
+        if self.plan.security_service_spec:
+            svc = self.plan.security_service_spec
+            lines += [
+                f"- **Serviço:** {svc.service}",
+                f"- **Ação:** {'Ativar' if svc.enabled else 'Desativar'}",
+            ]
+
+        if self.plan.security_exclusion_spec:
+            exc = self.plan.security_exclusion_spec
+            lines += [
+                f"- **IPs para exclusão:** {', '.join(exc.ip_addresses)}",
+                f"- **Serviços:** {', '.join(exc.services) if exc.services else 'todos'}",
+                f"- **Zona:** {exc.zone}",
+            ]
+
+        if self.plan.app_rules_spec:
+            ar = self.plan.app_rules_spec
+            lines += [
+                f"- **Política App Rules:** {ar.policy_name}",
+                f"- **Ação:** {ar.action_object}",
+            ]
+
         if self.plan.ssh_commands:
             lines.append("- **Comandos SSH:**")
             for cmd in self.plan.ssh_commands:
