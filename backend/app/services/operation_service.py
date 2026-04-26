@@ -6,74 +6,71 @@ from uuid import UUID
 # ANSI escape sequence pattern (for cleaning SSH terminal output)
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 
-# Broad pattern that matches variants found in SonicWall show output:
-#   "exclusion group <name>", "exclusion-group <name>",
-#   "exclusion address-group <name>", "exclude group <name>"
-_EXCL_GROUP_RE = re.compile(
-    r"exclusion[\s\-]+(?:address[\s\-]+)?group\s+(\S+)", re.IGNORECASE
-)
-_EXCL_GEO_RE = re.compile(
-    r"exclude[\s\-]+(?:address[\s\-]+)?group\s+(\S+)", re.IGNORECASE
-)
-_EXCL_BOTNET_RE = re.compile(
-    r"block\s+connections\s+exclude[\s\-]+(?:address[\s\-]+)?group\s+(\S+)", re.IGNORECASE
-)
-
 _SERVICE_EXCLUSION_CONFIG: dict[str, dict] = {
     "gateway-antivirus": {
         "show_cmd": "show gateway-antivirus",
-        "pattern": _EXCL_GROUP_RE,
+        # Exclusion group line is on page 2+ of the show output (after --MORE--) — detection
+        # will usually fall back to default. The configure command is confirmed working.
+        "pattern": re.compile(r"exclusion\s+group\s+(\S+)", re.IGNORECASE),
         "default_group": "fm-excl-gateway-av",
         "config_cmds": lambda g: ["gateway-antivirus", f"exclusion group {g}", "exit"],
     },
     "anti-spyware": {
         "show_cmd": "show anti-spyware",
-        "pattern": _EXCL_GROUP_RE,
+        # show: "exclusion address-object group GRP-EXCLUSION-SPYWARE"
+        "pattern": re.compile(r"exclusion\s+address-object\s+group\s+(\S+)", re.IGNORECASE),
         "default_group": "fm-excl-anti-spyware",
-        "config_cmds": lambda g: ["anti-spyware", f"exclusion group {g}", "exit"],
+        "config_cmds": lambda g: ["anti-spyware", f"exclusion address-object group {g}", "exit"],
     },
     "intrusion-prevention": {
         "show_cmd": "show intrusion-prevention",
-        "pattern": _EXCL_GROUP_RE,
+        # show: "exclusion group GRP-EXCLUSION-IPS"
+        "pattern": re.compile(r"exclusion\s+group\s+(\S+)", re.IGNORECASE),
         "default_group": "fm-excl-ips",
         "config_cmds": lambda g: ["intrusion-prevention", f"exclusion group {g}", "exit"],
     },
     "app-control": {
         "show_cmd": "show app-control",
-        "pattern": _EXCL_GROUP_RE,
+        # show: "exclusion list object group GRP-EXCLUSION-APP-CONTROL"
+        "pattern": re.compile(r"exclusion\s+list\s+object\s+group\s+(\S+)", re.IGNORECASE),
         "default_group": "fm-excl-app-control",
-        "config_cmds": lambda g: ["app-control", f"exclusion group {g}", "exit"],
+        "config_cmds": lambda g: ["app-control", f"exclusion list object group {g}", "exit"],
     },
     "geo-ip": {
         "show_cmd": "show geo-ip",
-        "pattern": _EXCL_GEO_RE,
+        # show: "exclude group GRP-EXCLUSION-GEO-IP"
+        "pattern": re.compile(r"exclude\s+group\s+(\S+)", re.IGNORECASE),
         "default_group": "GRP-EXCLUSION-GEO-IP",
         "config_cmds": lambda g: ["geo-ip", f"exclude group {g}", "exit"],
     },
     "botnet": {
         "show_cmd": "show botnet",
-        "pattern": _EXCL_BOTNET_RE,
+        # Exclusion group info is on page 2+ (cut by pager). Show pattern left for future use.
+        "pattern": re.compile(r"exclude\s+group\s+(\S+)", re.IGNORECASE),
         "default_group": "GRP-EXCLUSION-BOOTNET",
-        # SonicWall botnet exclusion uses "block connections exclude group" — same namespace as enable/disable
-        "config_cmds": lambda g: ["botnet", f"block connections exclude group {g}", "exit"],
+        # Both "block connections exclude group" and "exclude group" fail on this device —
+        # adding the IP to the address-group is sufficient when the group is already
+        # configured as botnet exclusion in the device. No service config cmd needed.
+        "config_cmds": lambda g: [],
     },
     "dpi-ssl-client": {
         "show_cmd": "show dpi-ssl client",
-        "pattern": _EXCL_GROUP_RE,
+        # show: "exclude address group <name>" (bypass/exclusion list, not the include list)
+        "pattern": re.compile(r"exclude\s+address\s+group\s+(\S+)", re.IGNORECASE),
         "default_group": "fm-excl-dpi-ssl-client",
-        "config_cmds": lambda g: ["dpi-ssl client", f"exclusion group {g}", "exit"],
+        "config_cmds": lambda g: ["dpi-ssl client", f"exclude address group {g}", "exit"],
     },
     "dpi-ssl-server": {
         "show_cmd": "show dpi-ssl server",
-        "pattern": _EXCL_GROUP_RE,
+        "pattern": re.compile(r"exclude\s+address\s+group\s+(\S+)", re.IGNORECASE),
         "default_group": "fm-excl-dpi-ssl-server",
-        "config_cmds": lambda g: ["dpi-ssl server", f"exclusion group {g}", "exit"],
+        "config_cmds": lambda g: ["dpi-ssl server", f"exclude address group {g}", "exit"],
     },
     "dpi-ssl": {
         "show_cmd": "show dpi-ssl client",
-        "pattern": _EXCL_GROUP_RE,
+        "pattern": re.compile(r"exclude\s+address\s+group\s+(\S+)", re.IGNORECASE),
         "default_group": "fm-excl-dpi-ssl",
-        "config_cmds": lambda g: ["dpi-ssl client", f"exclusion group {g}", "exit", "dpi-ssl server", f"exclusion group {g}", "exit"],
+        "config_cmds": lambda g: ["dpi-ssl client", f"exclude address group {g}", "exit", "dpi-ssl server", f"exclude address group {g}", "exit"],
     },
 }
 
@@ -417,10 +414,16 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
                 config_cmds = svc_config["config_cmds"](group_name)
                 cmds = _build_service_exclusion_commands(spec.ip_addresses, group_name, config_cmds, spec.zone)
                 print(f"[EXCL-CMDS] {svc_key}: {cmds}", flush=True)
-                exec_result = await ssh_connector.execute_commands(cmds)
-                exec_tail = (exec_result.output or "")[-500:]
-                print(f"[EXCL-RESULT] {svc_key}: success={exec_result.success} tail={exec_tail!r}", flush=True)
-                results.append({"service": svc_key, "group": group_name, "detected": detected_group, "ips": spec.ip_addresses, "success": exec_result.success, "error": exec_result.error, "show_tail": show_tail[-200:], "exec_tail": exec_tail[-200:]})
+                exec_result = await ssh_connector.execute_commands(cmds) if cmds else None
+                exec_tail = (exec_result.output if exec_result else "") or ""
+                exec_tail = exec_tail[-500:]
+                # Detect SonicWall CLI errors that don't raise Python exceptions
+                cli_error = None
+                if exec_result and exec_result.success and "No matching command found" in (exec_result.output or ""):
+                    cli_error = "SonicWall: No matching command found — check CLI syntax"
+                svc_success = (exec_result.success if exec_result else True) and not cli_error
+                print(f"[EXCL-RESULT] {svc_key}: success={svc_success} cli_error={cli_error!r} tail={exec_tail!r}", flush=True)
+                results.append({"service": svc_key, "group": group_name, "detected": detected_group, "ips": spec.ip_addresses, "success": svc_success, "error": cli_error or (exec_result.error if exec_result else None)})
                 if not exec_result.success:
                     all_success = False
             operation.action_plan = {**(operation.action_plan or {}), "result": results}
