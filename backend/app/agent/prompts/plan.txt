@@ -153,8 +153,13 @@ Regras de preenchimento:
 
   CONSTRUÇÃO DOS ssh_commands — siga esta ordem exata:
 
-  PASSO 1 — Se source_address for IP específico (não "any"), crie address-object:
-  ["address-object ipv4 fm-host-<ip-sem-pontos>", "host <ip>", "zone LAN", "exit"]
+  PASSO 1 — Se source_address for IP específico (não "any"), crie address-object E address-group:
+  (CRÍTICO: CFS policy source address só aceita "any" ou um address-group — objetos individuais são inválidos)
+  ["address-object ipv4 fm-host-<ip-sem-pontos>", "host <ip>", "zone LAN", "exit",
+   "address-group IPv4 fm-grp-<ip-sem-pontos>", "address-object fm-host-<ip-sem-pontos>", "exit"]
+  Exemplo para 192.168.168.10:
+  ["address-object ipv4 fm-host-192-168-168-10", "host 192.168.168.10", "zone LAN", "exit",
+   "address-group IPv4 fm-grp-192-168-168-10", "address-object fm-host-192-168-168-10", "exit"]
 
   PASSO 2 — Se allowed_sites não estiver vazio, crie uri-list-object para sites permitidos:
   (CRÍTICO: o perfil NÃO aceita URLs diretamente — deve referenciar um objeto criado aqui)
@@ -198,15 +203,15 @@ Regras de preenchimento:
    "exit", "exit", "exit", "commit"]
 
   REGRAS DE ASPAS nos comandos SSH:
-  - Nomes SEM espaço → sem aspas: "profile fm-cfs-filtro-geral", "source address included fm-host-192-168-168-10"
+  - Nomes SEM espaço → sem aspas: "profile fm-cfs-filtro-geral", "source address included fm-grp-192-168-168-10"
   - Nomes COM espaço → com aspas: "action \"CFS Default Action\"", "profile \"CFS Default Profile\""
   - Todos os nomes gerados pela plataforma (prefixo fm-) têm hífens, NUNCA espaços → NUNCA use aspas neles
   - Se source_address="any" → "source address included any" (sem aspas)
-  - Se source_address é IP específico → "source address included fm-host-<ip-sem-pontos>" (sem aspas)
+  - Se source_address é IP específico → "source address included fm-grp-<ip-sem-pontos>" (referencia o ADDRESS-GROUP, não o object)
   - NÃO inclua "enable" nem "priority <n>" na política — não são comandos válidos neste contexto.
 
   EXEMPLO COMPLETO (todas as flags ativas, sites permitidos/bloqueados, source 192.168.168.10):
-  ["address-object ipv4 fm-host-192-168-168-10", "host 192.168.168.10", "zone LAN", "exit", "content-filter", "uri-list-object fm-uri-allowed-filtro-geral", "type uri", "uri *.eternitysolucoes.com.br", "uri qualitysi.com.br", "exit", "exit", "content-filter", "uri-list-object fm-uri-blocked-filtro-geral", "type uri", "uri xxx.com", "uri xnx.com", "exit", "exit", "content-filter", "reputation active", "exit", "exit", "content-filter", "profile fm-cfs-filtro-geral", "name fm-cfs-filtro-geral", "uri-list allowed fm-uri-allowed-filtro-geral", "uri-list forbidden fm-uri-blocked-filtro-geral", "https-filtering", "smart-filter", "safe-search", "threat-api", "google-force-safe-search", "youtube-restrict-mode", "bing-force-safe-search", "categories default", "no consent required", "no custom-header insertion", "no custom-header entries", "exit", "exit", "content-filter", "cfs", "policy fm-cfs-policy-filtro-geral", "name fm-cfs-policy-filtro-geral", "source zone LAN", "source address included fm-host-192-168-168-10", "source address excluded none", "destination zone WAN", "user included all", "user excluded none", "schedule always-on", "profile fm-cfs-filtro-geral", "action \"CFS Default Action\"", "exit", "exit", "exit", "commit"]
+  ["address-object ipv4 fm-host-192-168-168-10", "host 192.168.168.10", "zone LAN", "exit", "address-group IPv4 fm-grp-192-168-168-10", "address-object fm-host-192-168-168-10", "exit", "content-filter", "uri-list-object fm-uri-allowed-filtro-geral", "type uri", "uri *.eternitysolucoes.com.br", "uri qualitysi.com.br", "exit", "exit", "content-filter", "uri-list-object fm-uri-blocked-filtro-geral", "type uri", "uri xxx.com", "uri xnx.com", "exit", "exit", "content-filter", "reputation active", "exit", "exit", "content-filter", "profile fm-cfs-filtro-geral", "name fm-cfs-filtro-geral", "uri-list allowed fm-uri-allowed-filtro-geral", "uri-list forbidden fm-uri-blocked-filtro-geral", "https-filtering", "smart-filter", "safe-search", "threat-api", "google-force-safe-search", "youtube-restrict-mode", "bing-force-safe-search", "categories default", "no consent required", "no custom-header insertion", "no custom-header entries", "exit", "exit", "content-filter", "cfs", "policy fm-cfs-policy-filtro-geral", "name fm-cfs-policy-filtro-geral", "source zone LAN", "source address included fm-grp-192-168-168-10", "source address excluded none", "destination zone WAN", "user included all", "user excluded none", "schedule always-on", "profile fm-cfs-filtro-geral", "action \"CFS Default Action\"", "exit", "exit", "exit", "commit"]
 
   Use prefixo "fm-" e hífens em todos os nomes CLI gerados pela plataforma. Demais specs=null.
 
