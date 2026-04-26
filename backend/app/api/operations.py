@@ -151,3 +151,37 @@ async def get_operation(
     if not op:
         raise HTTPException(status_code=404, detail="Operation not found")
     return OperationRead.model_validate(op)
+
+
+@router.get("/{operation_id}/tutorial")
+async def get_tutorial(
+    operation_id: UUID,
+    _: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Return a step-by-step manual tutorial for an executed operation. Cached after first generation."""
+    result = await db.execute(select(Operation).where(Operation.id == operation_id))
+    op = result.scalar_one_or_none()
+    if not op:
+        raise HTTPException(status_code=404, detail="Operation not found")
+
+    if op.status not in (OperationStatus.completed, OperationStatus.failed):
+        raise HTTPException(status_code=400, detail="Tutorial disponível apenas para operações concluídas.")
+
+    if op.tutorial:
+        return {"tutorial": op.tutorial}
+
+    if not op.action_plan or not op.intent:
+        raise HTTPException(status_code=400, detail="Plano de ação não disponível para gerar tutorial.")
+
+    from app.agent.tutorial_generator import generate_tutorial
+    tutorial = await generate_tutorial(
+        intent=op.intent,
+        natural_language_input=op.natural_language_input,
+        action_plan=op.action_plan,
+    )
+
+    op.tutorial = tutorial
+    await db.commit()
+
+    return {"tutorial": tutorial}

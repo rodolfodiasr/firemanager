@@ -24,4 +24,7 @@ export const operationsApi = {
   list: () => apiClient.get<Operation[]>("/operations").then((r) => r.data),
 
   get: (id: string) => apiClient.get<Operation>(`/operations/${id}`).then((r) => r.data),
+
+  getTutorial: (id: string) =>
+    apiClient.get<{ tutorial: string }>(`/operations/${id}/tutorial`).then((r) => r.data),
 };
