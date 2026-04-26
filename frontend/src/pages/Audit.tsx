@@ -243,41 +243,94 @@ function HistoryTab() {
     queryKey: ["audit-history"],
     queryFn: auditApi.getHistory,
   });
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (isLoading) return <div className="py-10 text-center text-gray-400">Carregando...</div>;
   if (ops.length === 0)
     return <div className="py-10 text-center text-gray-400 text-sm">Nenhuma operação no histórico.</div>;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-100">
-            {["Solicitante", "Dispositivo", "Intenção", "Revisor", "Status", "Revisado em"].map((h) => (
-              <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {ops.map((op) => (
-            <tr key={op.id} className="hover:bg-gray-50">
-              <td className="px-4 py-3">
-                <p className="font-medium text-gray-900">{op.requester_name ?? "—"}</p>
-                <p className="text-xs text-gray-400">{op.requester_email}</p>
-              </td>
-              <td className="px-4 py-3 text-gray-700">{op.device_name ?? "—"}</td>
-              <td className="px-4 py-3 text-gray-700">{op.intent ? intentLabel(op.intent) : "—"}</td>
-              <td className="px-4 py-3 text-gray-700">{op.reviewer_name ?? "—"}</td>
-              <td className="px-4 py-3">
+    <div className="divide-y divide-gray-100">
+      {ops.map((op) => (
+        <Fragment key={op.id}>
+          <button
+            className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-start gap-3"
+            onClick={() => setExpandedId(expandedId === op.id ? null : op.id)}
+          >
+            <span className="mt-1 shrink-0 text-gray-400">
+              {expandedId === op.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </span>
+            <div className="flex-1 grid grid-cols-5 gap-4 items-center min-w-0">
+              <div>
+                <p className="text-sm font-medium text-gray-900 truncate">{op.requester_name ?? "—"}</p>
+                <p className="text-xs text-gray-400 truncate">{op.requester_email}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-700 truncate">{op.device_name ?? "—"}</p>
+                <p className="text-xs text-gray-400">{op.device_vendor}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-700">{op.intent ? intentLabel(op.intent) : "—"}</p>
+                <p className="text-xs text-gray-400">{op.reviewer_name ? `Revisor: ${op.reviewer_name}` : ""}</p>
+              </div>
+              <div>
                 <StatusBadge status={op.status} />
-              </td>
-              <td className="px-4 py-3 text-xs text-gray-400">{fmtDate(op.reviewed_at)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-400">{fmtDate(op.reviewed_at ?? op.created_at)}</p>
+              </div>
+            </div>
+          </button>
+
+          {expandedId === op.id && (
+            <div className="px-6 pb-5 bg-gray-50 border-t border-gray-100">
+              <div className="pt-4 space-y-4 max-w-3xl">
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                    Solicitação Original
+                  </p>
+                  <p className="text-sm text-gray-800 bg-white border border-gray-200 rounded-lg p-3">
+                    {op.natural_language_input}
+                  </p>
+                </div>
+
+                {op.action_plan && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                      Plano de Ação
+                    </p>
+                    <pre className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">
+                      {JSON.stringify(
+                        Object.fromEntries(
+                          Object.entries(op.action_plan).filter(([k]) => k !== "result")
+                        ),
+                        null,
+                        2
+                      )}
+                    </pre>
+                  </div>
+                )}
+
+                {op.review_comment && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                      Parecer do Revisor
+                      {op.reviewer_name && (
+                        <span className="ml-2 font-normal normal-case text-gray-400">
+                          — {op.reviewer_name} em {fmtDate(op.reviewed_at)}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-sm text-gray-800 bg-white border border-gray-200 rounded-lg p-3">
+                      {op.review_comment}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </Fragment>
+      ))}
     </div>
   );
 }
