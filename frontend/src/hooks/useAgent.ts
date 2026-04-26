@@ -144,8 +144,9 @@ export function useAgent(deviceId: string | null) {
       }
       // Keep messages visible — only reset the active operation context
       resetSession();
-    } catch {
+    } catch (err) {
       toast.error("Erro ao executar operação");
+      resetSession();
     } finally {
       setLoading(false);
     }
