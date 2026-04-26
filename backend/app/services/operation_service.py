@@ -19,9 +19,6 @@ _EXCL_BOTNET_RE = re.compile(
     r"block\s+connections\s+exclude[\s\-]+(?:address[\s\-]+)?group\s+(\S+)", re.IGNORECASE
 )
 
-import logging as _logging
-_svc_log = _logging.getLogger(__name__)
-
 _SERVICE_EXCLUSION_CONFIG: dict[str, dict] = {
     "gateway-antivirus": {
         "show_cmd": "show gateway-antivirus",
@@ -408,21 +405,22 @@ async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
                 group_name = spec.group if spec.group else svc_config["default_group"]
                 show_result = await ssh_connector.execute_show_commands([svc_config["show_cmd"]])
                 detected_group = False
+                show_tail = ""
                 if show_result.success:
                     clean_show = _ANSI_RE.sub('', show_result.output).replace('\r', '')
+                    show_tail = clean_show[-600:]
                     m = svc_config["pattern"].search(clean_show)
                     if m:
                         group_name = m.group(1)
                         detected_group = True
-                    _svc_log.info("exclusion show [%s] detected_group=%s group=%r output_tail=%r",
-                                  svc_key, detected_group, group_name, clean_show[-500:])
+                print(f"[EXCL-SHOW] {svc_key}: detected_group={detected_group} group={group_name!r} tail={show_tail!r}", flush=True)
                 config_cmds = svc_config["config_cmds"](group_name)
                 cmds = _build_service_exclusion_commands(spec.ip_addresses, group_name, config_cmds, spec.zone)
-                _svc_log.info("exclusion cmds [%s]: %s", svc_key, cmds)
+                print(f"[EXCL-CMDS] {svc_key}: {cmds}", flush=True)
                 exec_result = await ssh_connector.execute_commands(cmds)
-                _svc_log.info("exclusion result [%s]: success=%s output_tail=%r",
-                              svc_key, exec_result.success, (exec_result.output or "")[-400:])
-                results.append({"service": svc_key, "group": group_name, "ips": spec.ip_addresses, "success": exec_result.success, "error": exec_result.error})
+                exec_tail = (exec_result.output or "")[-500:]
+                print(f"[EXCL-RESULT] {svc_key}: success={exec_result.success} tail={exec_tail!r}", flush=True)
+                results.append({"service": svc_key, "group": group_name, "detected": detected_group, "ips": spec.ip_addresses, "success": exec_result.success, "error": exec_result.error, "show_tail": show_tail[-200:], "exec_tail": exec_tail[-200:]})
                 if not exec_result.success:
                     all_success = False
             operation.action_plan = {**(operation.action_plan or {}), "result": results}
