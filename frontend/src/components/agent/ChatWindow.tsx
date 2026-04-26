@@ -7,18 +7,22 @@ import { ActionPlanCard } from "./ActionPlanCard";
 interface ChatWindowProps {
   messages: ChatMessage[];
   readyToExecute: boolean;
+  requiresApproval: boolean;
   loading: boolean;
   onSend: (message: string) => void;
   onExecute: () => void;
+  onSubmitForReview: () => void;
   onCancel: () => void;
 }
 
 export function ChatWindow({
   messages,
   readyToExecute,
+  requiresApproval,
   loading,
   onSend,
   onExecute,
+  onSubmitForReview,
   onCancel,
 }: ChatWindowProps) {
   const [input, setInput] = useState("");
@@ -63,7 +67,13 @@ export function ChatWindow({
 
       {readyToExecute && (
         <div className="px-4 pb-2">
-          <ActionPlanCard onConfirm={onExecute} onCancel={onCancel} loading={loading} />
+          <ActionPlanCard
+            requiresApproval={requiresApproval}
+            onConfirm={onExecute}
+            onSubmitForReview={onSubmitForReview}
+            onCancel={onCancel}
+            loading={loading}
+          />
         </div>
       )}
 

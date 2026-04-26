@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Enum, ForeignKey, String, TIMESTAMP, Text
+from sqlalchemy import Boolean, Enum, ForeignKey, String, TIMESTAMP, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -15,6 +15,7 @@ class OperationStatus(str, enum.Enum):
     awaiting_approval = "awaiting_approval"
     approved = "approved"
     executing = "executing"
+    pending_review = "pending_review"  # waiting for N2 approval
     completed = "completed"
     failed = "failed"
     rejected = "rejected"
@@ -37,6 +38,13 @@ class Operation(Base):
         Enum(OperationStatus, native_enum=False), nullable=False, default=OperationStatus.pending, index=True
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Audit review fields
+    review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewer_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    executed_direct: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False, index=True
     )

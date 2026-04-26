@@ -8,10 +8,13 @@ export function useAgent(deviceId: string | null) {
     messages,
     currentOperationId,
     readyToExecute,
+    requiresApproval,
     loading,
     addMessage,
     setOperationId,
     setReadyToExecute,
+    setRequiresApproval,
+    setIntent,
     setLoading,
     resetSession,
     reset,
@@ -38,14 +41,16 @@ export function useAgent(deviceId: string | null) {
 
         addMessage("assistant", response.agent_message);
         setReadyToExecute(response.ready_to_execute);
-      } catch (err) {
+        setRequiresApproval(response.requires_approval ?? false);
+        setIntent(response.intent ?? null);
+      } catch {
         toast.error("Erro ao comunicar com o agente");
         addMessage("assistant", "Desculpe, ocorreu um erro. Tente novamente.");
       } finally {
         setLoading(false);
       }
     },
-    [deviceId, currentOperationId, addMessage, setOperationId, setReadyToExecute, setLoading]
+    [deviceId, currentOperationId, addMessage, setOperationId, setReadyToExecute, setRequiresApproval, setIntent, setLoading]
   );
 
   const execute = useCallback(async () => {
@@ -267,9 +272,8 @@ export function useAgent(deviceId: string | null) {
         addMessage("assistant", `Erro na execução: ${operation.error_message}`);
         toast.error("Falha na execução");
       }
-      // Keep messages visible — only reset the active operation context
       resetSession();
-    } catch (err) {
+    } catch {
       toast.error("Erro ao executar operação");
       resetSession();
     } finally {
@@ -277,5 +281,23 @@ export function useAgent(deviceId: string | null) {
     }
   }, [currentOperationId, addMessage, setLoading, resetSession]);
 
-  return { messages, readyToExecute, loading, send, execute, reset };
+  const submitForReview = useCallback(async () => {
+    if (!currentOperationId) return;
+    setLoading(true);
+    try {
+      await operationsApi.submitForReview(currentOperationId);
+      toast.success("Operação enviada para revisão N2!");
+      addMessage(
+        "assistant",
+        "Operação enviada para revisão. Um analista N2 irá analisar e, se aprovada, executar a operação no dispositivo."
+      );
+      resetSession();
+    } catch {
+      toast.error("Erro ao enviar para revisão");
+    } finally {
+      setLoading(false);
+    }
+  }, [currentOperationId, addMessage, setLoading, resetSession]);
+
+  return { messages, readyToExecute, requiresApproval, loading, send, execute, submitForReview, reset };
 }

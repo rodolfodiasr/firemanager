@@ -7,7 +7,8 @@ import { useAgent } from "../hooks/useAgent";
 export function Agent() {
   const { devices } = useDevices();
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
-  const { messages, readyToExecute, loading, send, execute, reset } = useAgent(selectedDeviceId);
+  const { messages, readyToExecute, requiresApproval, loading, send, execute, submitForReview, reset } =
+    useAgent(selectedDeviceId);
 
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
 
@@ -60,9 +61,11 @@ export function Agent() {
           <ChatWindow
             messages={messages}
             readyToExecute={readyToExecute}
+            requiresApproval={requiresApproval}
             loading={loading}
             onSend={send}
             onExecute={execute}
+            onSubmitForReview={submitForReview}
             onCancel={reset}
           />
         </div>

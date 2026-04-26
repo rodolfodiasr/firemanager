@@ -3,6 +3,7 @@ export type OperationStatus =
   | "awaiting_approval"
   | "approved"
   | "executing"
+  | "pending_review"
   | "completed"
   | "failed"
   | "rejected";
@@ -15,6 +16,10 @@ export interface Operation {
   action_plan: Record<string, unknown> | null;
   status: OperationStatus;
   error_message: string | null;
+  review_comment: string | null;
+  reviewer_id: string | null;
+  reviewed_at: string | null;
+  executed_direct: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -24,4 +29,6 @@ export interface ChatResponse {
   status: OperationStatus;
   agent_message: string;
   ready_to_execute: boolean;
+  requires_approval: boolean;
+  intent: string | null;
 }

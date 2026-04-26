@@ -18,6 +18,9 @@ export const operationsApi = {
   execute: (operationId: string) =>
     apiClient.post<Operation>(`/operations/${operationId}/execute`).then((r) => r.data),
 
+  submitForReview: (operationId: string) =>
+    apiClient.post<Operation>(`/operations/${operationId}/submit-review`).then((r) => r.data),
+
   list: () => apiClient.get<Operation[]>("/operations").then((r) => r.data),
 
   get: (id: string) => apiClient.get<Operation>(`/operations/${id}`).then((r) => r.data),

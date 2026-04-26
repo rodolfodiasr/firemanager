@@ -24,6 +24,10 @@ class OperationRead(BaseModel):
     action_plan: dict | None
     status: OperationStatus
     error_message: str | None
+    review_comment: str | None = None
+    reviewer_id: UUID | None = None
+    reviewed_at: datetime | None = None
+    executed_direct: bool = False
     created_at: datetime
     updated_at: datetime
 

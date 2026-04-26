@@ -215,11 +215,14 @@ async def start_or_continue_operation(
     return operation, response
 
 
-async def execute_operation(db: AsyncSession, operation_id: UUID) -> Operation:
+async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: bool = False) -> Operation:
     result = await db.execute(select(Operation).where(Operation.id == operation_id))
     operation = result.scalar_one_or_none()
     if not operation:
         raise OperationNotFoundError()
+
+    if mark_direct:
+        operation.executed_direct = True
 
     if not operation.action_plan:
         raise ValueError("Operation has no action plan")

@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Bot,
@@ -9,6 +10,8 @@ import {
   Settings,
   Flame,
 } from "lucide-react";
+import { useAuthStore } from "../../store/authStore";
+import { auditApi } from "../../api/audit";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -21,6 +24,16 @@ const navItems = [
 ];
 
 export function Sidebar() {
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "admin";
+
+  const { data: pendingCount = 0 } = useQuery({
+    queryKey: ["audit-pending-count"],
+    queryFn: auditApi.getPendingCount,
+    refetchInterval: 30000,
+    enabled: isAdmin,
+  });
+
   return (
     <aside className="w-64 bg-gray-900 text-white flex flex-col h-screen fixed left-0 top-0">
       <div className="flex items-center gap-2 px-6 py-5 border-b border-gray-700">
@@ -42,7 +55,12 @@ export function Sidebar() {
             }
           >
             <Icon size={18} />
-            {label}
+            <span className="flex-1">{label}</span>
+            {label === "Auditoria" && isAdmin && pendingCount > 0 && (
+              <span className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center leading-none">
+                {pendingCount > 99 ? "99+" : pendingCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

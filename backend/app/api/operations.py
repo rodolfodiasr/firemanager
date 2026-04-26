@@ -2,14 +2,13 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
 from app.database import get_db
-from app.models.operation import Operation
-from app.models.user import User
+from app.models.operation import Operation, OperationStatus
+from app.models.user import User, UserRole
 from app.schemas.operation import ChatMessage, OperationCreate, OperationRead
 from app.services.operation_service import (
     OperationNotFoundError,
@@ -20,13 +19,29 @@ from app.services.operation_service import (
 router = APIRouter()
 
 
+async def _chat_response(db: AsyncSession, user: User, operation: Operation, agent_response: str) -> dict:
+    """Build the unified chat response dict, including audit policy check."""
+    ready = operation.status.value == "approved"
+    requires_approval = False
+    if ready and operation.intent:
+        from app.services.audit_service import check_requires_approval
+        requires_approval = await check_requires_approval(db, user, operation.intent)
+    return {
+        "operation_id": str(operation.id),
+        "status": operation.status.value,
+        "agent_message": agent_response,
+        "ready_to_execute": ready,
+        "requires_approval": requires_approval,
+        "intent": operation.intent,
+    }
+
+
 @router.post("", response_model=dict, status_code=200)
 async def chat_with_agent(
     data: OperationCreate,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    """Start or continue a conversation with the AI agent for a new operation."""
     operation, agent_response = await start_or_continue_operation(
         db=db,
         user_id=current_user.id,
@@ -34,12 +49,7 @@ async def chat_with_agent(
         device_id=data.device_id,
         user_message=data.natural_language_input,
     )
-    return {
-        "operation_id": str(operation.id),
-        "status": operation.status.value,
-        "agent_message": agent_response,
-        "ready_to_execute": operation.status.value == "approved",
-    }
+    return await _chat_response(db, current_user, operation, agent_response)
 
 
 @router.post("/{operation_id}/chat", response_model=dict)
@@ -49,7 +59,6 @@ async def continue_chat(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    """Continue an ongoing agent conversation."""
     result = await db.execute(select(Operation).where(Operation.id == operation_id))
     operation = result.scalar_one_or_none()
     if not operation:
@@ -65,13 +74,7 @@ async def continue_chat(
 
     result2 = await db.execute(select(Operation).where(Operation.id == operation_id))
     updated_op = result2.scalar_one()
-
-    return {
-        "operation_id": str(operation_id),
-        "status": updated_op.status.value,
-        "agent_message": agent_response,
-        "ready_to_execute": updated_op.status.value == "approved",
-    }
+    return await _chat_response(db, current_user, updated_op, agent_response)
 
 
 @router.post("/{operation_id}/execute", response_model=OperationRead)
@@ -80,16 +83,48 @@ async def execute_op(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> OperationRead:
-    """Execute an approved operation on the target device."""
+    """Execute an approved operation. Operators are blocked if the intent requires N2 approval."""
+    result = await db.execute(select(Operation).where(Operation.id == operation_id))
+    operation = result.scalar_one_or_none()
+    if not operation:
+        raise HTTPException(status_code=404, detail="Operação não encontrada")
+
+    # Enforce audit policy for operators
+    if current_user.role == UserRole.operator and operation.intent:
+        from app.services.audit_service import check_requires_approval
+        if await check_requires_approval(db, current_user, operation.intent):
+            raise HTTPException(
+                status_code=403,
+                detail="Esta operação requer aprovação N2. Use 'Enviar para Revisão'.",
+            )
+
+    mark_direct = current_user.role == UserRole.operator
     try:
-        operation = await execute_operation(db, operation_id)
+        operation = await execute_operation(db, operation_id, mark_direct=mark_direct)
     except OperationNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    # Trigger async document generation
-    from app.workers.generate_documents import generate
-    generate.delay(str(operation_id))
+    try:
+        from app.workers.generate_documents import generate
+        generate.delay(str(operation_id))
+    except Exception:
+        pass
 
+    return OperationRead.model_validate(operation)
+
+
+@router.post("/{operation_id}/submit-review", response_model=OperationRead)
+async def submit_for_review(
+    operation_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> OperationRead:
+    """Move an approved operation into the N2 review queue."""
+    from app.services.audit_service import submit_for_review as _submit
+    try:
+        operation = await _submit(db, operation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return OperationRead.model_validate(operation)
 
 

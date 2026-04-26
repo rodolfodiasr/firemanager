@@ -21,14 +21,16 @@ interface AgentState {
   messages: ChatMessage[];
   currentOperationId: string | null;
   readyToExecute: boolean;
+  requiresApproval: boolean;
+  intent: string | null;
   loading: boolean;
   addMessage: (role: "user" | "assistant", content: string, tableData?: TableData) => void;
   setOperationId: (id: string | null) => void;
   setReadyToExecute: (ready: boolean) => void;
+  setRequiresApproval: (v: boolean) => void;
+  setIntent: (v: string | null) => void;
   setLoading: (loading: boolean) => void;
-  // Resets only the active operation state — keeps messages visible
   resetSession: () => void;
-  // Resets everything including messages (use when switching devices)
   reset: () => void;
 }
 
@@ -36,6 +38,8 @@ export const useAgentStore = create<AgentState>((set) => ({
   messages: [],
   currentOperationId: null,
   readyToExecute: false,
+  requiresApproval: false,
+  intent: null,
   loading: false,
 
   addMessage: (role, content, tableData?) =>
@@ -45,11 +49,13 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   setOperationId: (id) => set({ currentOperationId: id }),
   setReadyToExecute: (ready) => set({ readyToExecute: ready }),
+  setRequiresApproval: (v) => set({ requiresApproval: v }),
+  setIntent: (v) => set({ intent: v }),
   setLoading: (loading) => set({ loading }),
 
   resetSession: () =>
-    set({ currentOperationId: null, readyToExecute: false, loading: false }),
+    set({ currentOperationId: null, readyToExecute: false, requiresApproval: false, intent: null, loading: false }),
 
   reset: () =>
-    set({ messages: [], currentOperationId: null, readyToExecute: false, loading: false }),
+    set({ messages: [], currentOperationId: null, readyToExecute: false, requiresApproval: false, intent: null, loading: false }),
 }));
