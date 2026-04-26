@@ -136,31 +136,42 @@ Regras de preenchimento:
   - filter_object: "<nome>" se o usuário pedir rotas que contenham um objeto específico em origem, destino ou gateway
   - filter_interface: "<interface>" se o usuário pedir rotas por interface (ex: X1, X0)
   - filter_type: "<tipo>" se o usuário pedir por tipo de rota (ex: standard)
-- Para configure_content_filter: defina execution_mode="ssh"; preencha content_filter_spec com todos os campos relevantes; em ssh_commands forneça APENAS os comandos de configuração (NÃO inclua "configure" nem "end" — o sistema entra e sai do modo configure automaticamente). Inclua "commit" ao final.
+- Para configure_content_filter: defina execution_mode="ssh"; preencha content_filter_spec com todos os campos relevantes; em ssh_commands forneça APENAS os comandos de configuração (NÃO inclua "configure" nem "end"). Inclua "commit" ao final.
 
-  ESTRUTURA DO CLI SONICWALL:
-  "content-filter" é um MODO — enviado sozinho, sem argumentos.
-  Dentro do modo content-filter: "profile <nome>" cria/edita perfil; "cfs" entra no modo CFS.
-  Dentro do CFS: "policy <nome>" cria/edita política. Cada bloco encerra com "exit".
+  REGRAS CRÍTICAS DE NOMENCLATURA (validadas contra o SonicWall real):
+  A) O nome usado no comando "profile <nome>" NÃO pode ter espaços. Sempre gere um nome CLI sem espaços substituindo espaços por hífens e usando prefixo "fm-cfs-". Exemplo: usuário diz "Adulto Detalhado" → nome CLI = "fm-cfs-adulto-detalhado".
+  B) O nome usado no comando "policy <nome>" também não pode ter espaços → "fm-cfs-policy-<slug>".
+  C) Dentro do perfil, o comando "name fm-cfs-<slug>" define o nome de exibição — pode ser igual ao nome CLI (sem espaços).
 
-  CONSTRUÇÃO DOS ssh_commands — siga esta ordem:
+  ESTRUTURA DO CLI SONICWALL (validada):
+  - "content-filter" → entra em (config-content-filter)
+  - "profile fm-cfs-<slug>" → entra em (config-content-filter-profile[...]) — sem espaços no nome
+  - Dentro do perfil: comandos de categorias, uri-list e flags de segurança
+  - "exit" sai do perfil para content-filter; "exit" sai de content-filter para configure
+  - "reputation active" → entra em (add-content-filter-reputation-object[active]) — sub-modo separado!
+  - "cfs" → entra em (config-cfs); "policy <nome>" → entra em (add-cfs-policy[...])
 
-  PASSO 1 — Se source_address for um IP específico (não "any"), crie o address-object ANTES do content-filter:
+  CONSTRUÇÃO DOS ssh_commands — siga esta ordem exata:
+
+  PASSO 1 — Se source_address for IP específico (não "any"), crie address-object:
   ["address-object ipv4 fm-host-<ip-sem-pontos>", "host <ip>", "zone LAN", "exit"]
-  Exemplo para 192.168.168.10: ["address-object ipv4 fm-host-192-168-168-10", "host 192.168.168.10", "zone LAN", "exit"]
 
-  PASSO 2 — Bloco do perfil CFS:
-  ["content-filter", "profile <profile_name>", "name <profile_name>", "uri-list search-order allowed-first", "uri-list forbidden-operation block"]
+  PASSO 2 — Se reputation_enabled=true, configure ANTES do perfil (é um sub-modo separado):
+  ["content-filter", "reputation active", "exit", "exit"]
+  (O "exit" sai da reputation, o segundo "exit" sai de content-filter)
 
-  PASSO 3 — Sites permitidos (allowed_sites): para cada URL em allowed_sites adicione:
-  "uri-list allowed add <url>"
-  Exemplo: "uri-list allowed add *.eternitysolucoes.com.br", "uri-list allowed add qualitysi.com.br"
+  PASSO 3 — Bloco do perfil CFS (nome sem espaços):
+  ["content-filter", "profile fm-cfs-<slug>", "name fm-cfs-<slug>"]
 
-  PASSO 4 — Sites bloqueados (blocked_sites): para cada URL em blocked_sites adicione:
-  "uri-list blocked add <url>"
-  Exemplo: "uri-list blocked add xxx.com", "uri-list blocked add xnx.com"
+  PASSO 4 — Sites permitidos (allowed_sites), dentro do perfil, para cada URL:
+  "uri-list allowed <url>"
+  Exemplo: "uri-list allowed *.eternitysolucoes.com.br", "uri-list allowed qualitysi.com.br"
 
-  PASSO 5 — Flags de segurança (use o comando SEM "no" para ATIVAR, COM "no" para DESATIVAR):
+  PASSO 5 — Sites bloqueados (blocked_sites), dentro do perfil, para cada URL:
+  "uri-list blocked <url>"
+  Exemplo: "uri-list blocked xxx.com", "uri-list blocked xnx.com"
+
+  PASSO 6 — Flags de segurança dentro do perfil (SEM "no" = ativar, COM "no" = desativar):
   - https_filtering:        "https-filtering"            / "no https-filtering"
   - smart_filter:           "smart-filter"               / "no smart-filter"
   - safe_search:            "safe-search"                / "no safe-search"
@@ -168,26 +179,26 @@ Regras de preenchimento:
   - google_safe_search:     "google-force-safe-search"   / "no google-force-safe-search"
   - youtube_restrict_mode:  "youtube-restrict-mode"      / "no youtube-restrict-mode"
   - bing_safe_search:       "bing-force-safe-search"     / "no bing-force-safe-search"
-  - reputation_enabled:     "reputation active"          / "no reputation active"
-  Se reputation_enabled=true, adicione após "reputation active": "reputation action <reputation_action>"
 
-  PASSO 6 — Categorias e fechamento do perfil:
+  PASSO 7 — Fechamento do perfil:
   ["categories default", "no consent required", "no custom-header insertion", "no custom-header entries", "exit", "exit"]
 
-  PASSO 7 — Bloco da política CFS:
-  ["content-filter", "cfs", "policy <policy_name>", "name <policy_name>",
+  PASSO 8 — Bloco da política CFS:
+  ["content-filter", "cfs", "policy fm-cfs-policy-<slug>", "name fm-cfs-policy-<slug>",
    "source zone <zones[0]>",
-   "source address included <source_address_object_ou_any>",
+   "source address included \"<source_obj_ou_any>\"",
    "source address excluded none", "destination zone WAN",
    "user included all", "user excluded none", "schedule always-on",
-   "profile <profile_name>", "action \"CFS Default Action\"", "enable", "priority 10",
+   "profile \"fm-cfs-<slug>\"", "action \"CFS Default Action\"",
    "exit", "exit", "exit", "commit"]
-  Se source_address="any" use "any"; se for IP específico use o nome do objeto criado no Passo 1.
+  IMPORTANTE: use aspas duplas em nomes com espaço no profile reference e no source address.
+  Se source_address="any" → "source address included \"any\""; se IP → "source address included \"fm-host-<ip-sem-pontos>\"".
+  NÃO inclua "enable" nem "priority <n>" na política — não são comandos válidos neste contexto.
 
-  EXEMPLO COMPLETO (todas as flags ativas, sites permitidos/bloqueados, source 192.168.168.10, categorias adult+games+social networks, zonas LAN→WAN):
-  ["address-object ipv4 fm-host-192-168-168-10", "host 192.168.168.10", "zone LAN", "exit", "content-filter", "profile fm-cfs-filtro-geral", "name fm-cfs-filtro-geral", "uri-list search-order allowed-first", "uri-list forbidden-operation block", "uri-list allowed add *.eternitysolucoes.com.br", "uri-list allowed add qualitysi.com.br", "uri-list blocked add xxx.com", "uri-list blocked add xnx.com", "https-filtering", "smart-filter", "safe-search", "threat-api", "google-force-safe-search", "youtube-restrict-mode", "bing-force-safe-search", "reputation active", "reputation action default", "categories default", "no consent required", "no custom-header insertion", "no custom-header entries", "exit", "exit", "content-filter", "cfs", "policy fm-cfs-policy-filtro-geral", "name fm-cfs-policy-filtro-geral", "source zone LAN", "source address included fm-host-192-168-168-10", "source address excluded none", "destination zone WAN", "user included all", "user excluded none", "schedule always-on", "profile fm-cfs-filtro-geral", "action \"CFS Default Action\"", "enable", "priority 10", "exit", "exit", "exit", "commit"]
+  EXEMPLO COMPLETO (todas as flags ativas, sites permitidos/bloqueados, source 192.168.168.10):
+  ["address-object ipv4 fm-host-192-168-168-10", "host 192.168.168.10", "zone LAN", "exit", "content-filter", "reputation active", "exit", "exit", "content-filter", "profile fm-cfs-filtro-geral", "name fm-cfs-filtro-geral", "uri-list allowed *.eternitysolucoes.com.br", "uri-list allowed qualitysi.com.br", "uri-list blocked xxx.com", "uri-list blocked xnx.com", "https-filtering", "smart-filter", "safe-search", "threat-api", "google-force-safe-search", "youtube-restrict-mode", "bing-force-safe-search", "categories default", "no consent required", "no custom-header insertion", "no custom-header entries", "exit", "exit", "content-filter", "cfs", "policy fm-cfs-policy-filtro-geral", "name fm-cfs-policy-filtro-geral", "source zone LAN", "source address included \"fm-host-192-168-168-10\"", "source address excluded none", "destination zone WAN", "user included all", "user excluded none", "schedule always-on", "profile \"fm-cfs-filtro-geral\"", "action \"CFS Default Action\"", "exit", "exit", "exit", "commit"]
 
-  Use prefixo "fm-" em nomes gerados pela plataforma. Demais specs=null.
+  Use prefixo "fm-" e hífens em todos os nomes CLI gerados pela plataforma. Demais specs=null.
 
 - Para toggle_gateway_av: defina execution_mode="ssh"; preencha security_service_spec com service="gateway-antivirus" e enabled=true/false; em ssh_commands gere os comandos abaixo (NÃO inclua "configure" nem "end"):
   Ativar:   ["gateway-antivirus", "enable", "exit", "commit"]
