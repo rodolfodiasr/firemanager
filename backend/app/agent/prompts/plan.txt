@@ -289,7 +289,11 @@ VENDORS CLI-ONLY (cisco_ios, cisco_nxos, juniper, aruba, dell, dell_n, hp_comwar
 REGRA GERAL: Quando o vendor for cisco_ios, cisco_nxos, juniper, aruba, dell, dell_n, hp_comware
 ou ubiquiti, SEMPRE defina execution_mode="ssh" e preencha ssh_commands com os comandos CLI do vendor.
 O sistema entra automaticamente em modo configure — NÃO inclua "configure terminal", "system-view"
-nem "end" nos comandos (exceto Juniper com "commit" e HP Comware com "quit" ao final de cada bloco).
+nem "end" nos comandos.
+EXCEÇÕES obrigatórias:
+  - Juniper: inclua "commit" explicitamente ao final de cada lista de comandos.
+  - HP Comware: inclua "quit" ao sair de cada bloco (interface, vlan, etc.); use "undo" em vez de "no".
+  - Ubiquiti EdgeOS: inclua "commit" e "save" ao final de cada lista de comandos; use "delete" em vez de "no".
 Demais specs (rule_spec, nat_spec, etc.) podem ser preenchidos para documentação, mas a
 execução real usa apenas ssh_commands.
 
@@ -369,6 +373,7 @@ STP — por porta:
 ATENÇÃO: comandos são no formato "set ..." em modo configure.
 O sistema entra em configure automaticamente.
 SEMPRE inclua "commit" no final da lista de comandos.
+Para DESFAZER/DELETAR configuração use "delete" no lugar de "set".
 
 Regra de firewall:
   ["set firewall family inet filter PERMIT-HTTPS term allow-https from source-address 192.168.1.0/24",
@@ -378,59 +383,354 @@ Regra de firewall:
    "set firewall family inet filter PERMIT-HTTPS term allow-https then accept",
    "commit"]
 
-VLAN (EX Series):
-  ["set vlans Cameras vlan-id 100",
-   "set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members Cameras",
+Bloquear tráfego (drop):
+  ["set firewall family inet filter BLOCK-SOCIAL term block-social from protocol tcp",
+   "set firewall family inet filter BLOCK-SOCIAL term block-social then discard",
+   "set firewall family inet filter BLOCK-SOCIAL term allow-all then accept",
+   "commit"]
+
+Aplicar filtro em interface:
+  ["set interfaces ge-0/0/1 unit 0 family inet filter input PERMIT-HTTPS",
+   "commit"]
+
+VLAN (EX Series) — acesso simples:
+  ["set vlans <NOME_VLAN> vlan-id <VLAN_ID>",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching interface-mode access",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members <NOME_VLAN>",
+   "commit"]
+
+VLAN — criação apenas:
+  ["set vlans <NOME_VLAN> vlan-id <VLAN_ID>",
+   "commit"]
+
+Interface trunk (uplink com múltiplas VLANs tagged):
+  ["set interfaces ge-0/0/1 unit 0 family ethernet-switching interface-mode trunk",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members <NOME_VLAN_A>",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members <NOME_VLAN_B>",
+   "commit"]
+
+Interface acesso (porta de workstation/câmera):
+  ["set interfaces ge-0/0/1 unit 0 family ethernet-switching interface-mode access",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members <NOME_VLAN>",
+   "commit"]
+
+Desativar porta:
+  ["set interfaces ge-0/0/1 disable", "commit"]
+
+Reativar porta:
+  ["delete interfaces ge-0/0/1 disable", "commit"]
+
+L3 VLAN — IRB (interface roteada para a VLAN):
+  ["set interfaces irb unit <VLAN_ID> family inet address 192.168.100.1/24",
+   "set vlans <NOME_VLAN> l3-interface irb.<VLAN_ID>",
+   "commit"]
+
+Interface com IP (L3 física):
+  ["set interfaces ge-0/0/0 unit 0 family inet address 192.168.1.1/24",
    "commit"]
 
 Rota estática:
   ["set routing-options static route 10.10.10.0/24 next-hop 192.168.1.254",
    "commit"]
 
-Interface IP:
-  ["set interfaces ge-0/0/0 unit 0 family inet address 192.168.1.1/24",
+Rota padrão:
+  ["set routing-options static route 0.0.0.0/0 next-hop 192.168.1.254",
    "commit"]
+
+STP — global:
+  Ativar RSTP:              ["set protocols rstp", "commit"]
+  Desativar RSTP:           ["delete protocols rstp", "commit"]
+  Prioridade do switch:     ["set protocols rstp bridge-priority 4k", "commit"]
+
+STP — por porta:
+  Edge port (portfast):     ["set protocols rstp interface ge-0/0/1 edge", "commit"]
+  Desativar edge:           ["delete protocols rstp interface ge-0/0/1 edge", "commit"]
+  No-root-port (root guard): ["set protocols rstp interface ge-0/0/1 no-root-port", "commit"]
+
+REGRAS IMPORTANTES PARA JUNIPER:
+- SEMPRE inclua "commit" ao final de cada lista de comandos
+- Deletar configuração usa "delete": "delete interfaces ge-0/0/1 disable"
+- Nomes de VLAN são referenciados pelo NOME (string), não pelo ID numérico
+- VLANs de acesso: interface-mode access; trunks: interface-mode trunk
+- Interfaces IRB são usadas para roteamento L3 em EX Series
+- Interfaces naming: ge-0/0/X (1G), xe-0/0/X (10G), et-0/0/X (40/100G)
 
 ── ARUBA OS-CX / AOS-Switch (HPE) ─────────────────────────────────────────
 
 Sintaxe similar ao Cisco IOS. NÃO inclua configure/end.
 
 VLAN:
-  ["vlan 100", "name Cameras", "exit"]
+  ["vlan <VLAN_ID>", "name <NOME_VLAN>", "exit"]
 
 Interface acesso:
-  ["interface 1/1/1", "no shutdown", "vlan access 100", "exit"]
+  ["interface 1/1/1",
+   "no shutdown",
+   "vlan access <VLAN_ID>",
+   "spanning-tree port-type admin-edge",
+   "exit"]
 
-Interface trunk:
-  ["interface 1/1/2", "no shutdown", "vlan trunk allowed 100,200", "exit"]
+Interface trunk (uplink):
+  ["interface 1/1/2",
+   "no shutdown",
+   "vlan trunk allowed <VLAN_A>,<VLAN_B>",
+   "vlan trunk native <VLAN_NATIVA>",
+   "exit"]
+
+Interface com Voice VLAN (dados untagged + voz tagged):
+  ["interface 1/1/3",
+   "no shutdown",
+   "vlan access <VLAN_DADOS>",
+   "vlan voice <VLAN_VOZ>",
+   "spanning-tree port-type admin-edge",
+   "exit"]
+
+Desativar porta:
+  ["interface 1/1/5", "shutdown", "exit"]
+
+Reativar porta:
+  ["interface 1/1/5", "no shutdown", "exit"]
+
+Interface L3 VLAN (SVI):
+  ["interface vlan <VLAN_ID>",
+   "ip address 192.168.100.1/24",
+   "no shutdown",
+   "exit"]
+
+DHCP relay (dentro da interface VLAN):
+  ["interface vlan <VLAN_ID>",
+   "ip helper-address 10.0.0.1",
+   "no shutdown",
+   "exit"]
+
+LAG / Port-channel:
+  ["interface lag 1",
+   "no shutdown",
+   "lacp mode active",
+   "exit",
+   "interface 1/1/1",
+   "no shutdown",
+   "lag 1",
+   "exit",
+   "interface 1/1/2",
+   "no shutdown",
+   "lag 1",
+   "exit"]
 
 Rota estática:
   ["ip route 10.10.10.0/24 192.168.1.254"]
 
+Rota padrão:
+  ["ip route 0.0.0.0/0 192.168.1.254"]
+
 ACL:
   ["ip access-list FM-PERMIT-HTTPS",
    "10 permit tcp 192.168.1.0/24 10.0.0.50/32 eq 443",
+   "exit",
+   "interface 1/1/1",
+   "ip access-group FM-PERMIT-HTTPS in",
    "exit"]
+
+STP — global:
+  Modo RSTP:                   ["spanning-tree mode rpvst"]
+  BPDU Guard global:           ["spanning-tree bpduguard default"]
+  Desativar BPDU Guard global: ["no spanning-tree bpduguard default"]
+  Ativar STP:                  ["spanning-tree"]
+  Desativar STP:               ["no spanning-tree"]
+
+STP — por porta (dentro do bloco de interface):
+  Edge port (portfast):        "spanning-tree port-type admin-edge"
+  Desativar edge:              "no spanning-tree port-type admin-edge"
+  BPDU Guard por porta:        "spanning-tree bpduguard enable"
+  Desativar BPDU Guard:        "no spanning-tree bpduguard enable"
+  Root Guard por porta:        "spanning-tree root-guard"
+
+REGRAS IMPORTANTES PARA ARUBA:
+- Interface naming: 1/1/X (slot/módulo/porta)
+- BPDU Guard e edge port são configurados por interface (não globais por padrão)
+- voice vlan adiciona a VLAN de voz tagged mantendo a VLAN de dados untagged
+- LAG usa "interface lag N" + "lag N" dentro de cada membro
 
 ── DELL OS10 (PowerSwitch S/Z series) ──────────────────────────────────────
 
 Sintaxe similar ao Cisco NX-OS. NÃO inclua configure/end.
 
 VLAN:
-  ["interface vlan 100", "description Cameras", "no shutdown", "exit"]
+  ["interface vlan <VLAN_ID>",
+   "description <NOME_VLAN>",
+   "no shutdown",
+   "exit"]
 
 Interface acesso:
-  ["interface ethernet 1/1/1", "no shutdown", "switchport mode access", "switchport access vlan 100", "exit"]
+  ["interface ethernet 1/1/1",
+   "no shutdown",
+   "switchport mode access",
+   "switchport access vlan <VLAN_ID>",
+   "spanning-tree port type edge",
+   "spanning-tree bpduguard enable",
+   "exit"]
 
-Interface trunk:
-  ["interface ethernet 1/1/2", "no shutdown", "switchport mode trunk", "switchport trunk allowed-vlan 100,200", "exit"]
+Interface trunk (uplink):
+  ["interface ethernet 1/1/2",
+   "no shutdown",
+   "switchport mode trunk",
+   "switchport trunk allowed-vlan <VLAN_A>,<VLAN_B>",
+   "exit"]
+
+Desativar porta:
+  ["interface ethernet 1/1/3", "shutdown", "exit"]
+
+Reativar porta:
+  ["interface ethernet 1/1/3", "no shutdown", "exit"]
+
+Interface L3 VLAN (SVI):
+  ["interface vlan <VLAN_ID>",
+   "ip address 192.168.100.1/24",
+   "no shutdown",
+   "exit"]
+
+DHCP relay:
+  ["interface vlan <VLAN_ID>",
+   "ip helper-address 10.0.0.1",
+   "no shutdown",
+   "exit"]
 
 Rota estática:
   ["ip route 10.10.10.0/24 192.168.1.254"]
 
-Port-channel:
-  ["interface port-channel 1", "no shutdown", "exit",
-   "interface ethernet 1/1/1", "channel-group 1 mode active", "exit"]
+Rota padrão:
+  ["ip route 0.0.0.0/0 192.168.1.254"]
+
+Port-channel / LAG:
+  ["interface port-channel 1",
+   "no shutdown",
+   "exit",
+   "interface ethernet 1/1/1",
+   "channel-group 1 mode active",
+   "exit",
+   "interface ethernet 1/1/2",
+   "channel-group 1 mode active",
+   "exit"]
+
+STP — global:
+  Modo RSTP:          ["spanning-tree mode rstp"]
+  Modo MSTP:          ["spanning-tree mode mstp"]
+  BPDU Guard global:  ["spanning-tree bpduguard default"]
+  Ativar STP:         ["spanning-tree enable"]
+  Desativar STP:      ["no spanning-tree enable"]
+
+STP — por porta (dentro do bloco de interface):
+  Edge port (portfast):   "spanning-tree port type edge"
+  BPDU Guard por porta:   "spanning-tree bpduguard enable"
+  Desativar BPDU Guard:   "no spanning-tree bpduguard enable"
+  Root Guard:             "spanning-tree guard root"
+
+REGRAS IMPORTANTES PARA DELL OS10:
+- Interface naming: ethernet 1/1/X (slot/sub-slot/porta) ou ethernet 1/1/X:Y (breakout)
+- SVI criada com "interface vlan N" (diferente do NX-OS que usa "interface Vlan N")
+- BPDU guard e edge port se aplicam por porta (mais granular que global)
+
+── UBIQUITI EDGEOS / EDGESWITCH ────────────────────────────────────────────
+
+Sintaxe baseada em "set ..." — similar ao Juniper, diferente do IOS.
+O sistema entra em configure automaticamente.
+SEMPRE inclua "commit" e "save" ao final de cada lista de comandos.
+NÃO inclua "configure", "exit" nem "end" nos comandos.
+Para DESFAZER/DELETAR configuração use "delete" no lugar de "set".
+
+Interface naming (roteadores EdgeRouter): eth0, eth1, eth2, eth3
+Interface naming (switches EdgeSwitch): 0, 1, 2 (número de porta)
+
+Descrição de interface:
+  ["set interfaces ethernet eth1 description LAN",
+   "commit", "save"]
+
+Endereço IP em interface (L3):
+  ["set interfaces ethernet eth0 address 192.168.1.1/24",
+   "commit", "save"]
+
+VLAN (VIF — subinterface tagged):
+  ["set interfaces ethernet eth1 vif <VLAN_ID> description <NOME_VLAN>",
+   "set interfaces ethernet eth1 vif <VLAN_ID> address 192.168.100.1/24",
+   "commit", "save"]
+
+Desativar interface:
+  ["set interfaces ethernet eth1 disable",
+   "commit", "save"]
+
+Reativar interface:
+  ["delete interfaces ethernet eth1 disable",
+   "commit", "save"]
+
+Rota estática:
+  ["set protocols static route 10.10.10.0/24 next-hop 192.168.1.254",
+   "commit", "save"]
+
+Rota padrão:
+  ["set protocols static route 0.0.0.0/0 next-hop 192.168.1.254",
+   "commit", "save"]
+
+Regra de firewall (permitir):
+  ["set firewall name LAN_IN rule 10 description FM-PERMIT-HTTPS",
+   "set firewall name LAN_IN rule 10 action accept",
+   "set firewall name LAN_IN rule 10 protocol tcp",
+   "set firewall name LAN_IN rule 10 source address 192.168.1.0/24",
+   "set firewall name LAN_IN rule 10 destination address 10.0.0.50",
+   "set firewall name LAN_IN rule 10 destination port 443",
+   "commit", "save"]
+
+Regra de firewall (bloquear/drop):
+  ["set firewall name LAN_IN rule 20 description FM-BLOCK",
+   "set firewall name LAN_IN rule 20 action drop",
+   "set firewall name LAN_IN rule 20 protocol tcp",
+   "set firewall name LAN_IN rule 20 destination port 80,443",
+   "commit", "save"]
+
+Aplicar firewall em interface:
+  Inbound (tráfego entrando na interface): "set interfaces ethernet eth1 firewall in name LAN_IN"
+  Outbound:                                "set interfaces ethernet eth1 firewall out name LAN_OUT"
+  ["set interfaces ethernet eth1 firewall in name LAN_IN",
+   "commit", "save"]
+
+Grupo de endereços (address-group):
+  ["set firewall group address-group FM-SERVERS address 192.168.1.10",
+   "set firewall group address-group FM-SERVERS address 192.168.1.11",
+   "commit", "save"]
+
+NAT — SNAT / masquerade (saída para internet):
+  ["set nat source rule 10 outbound-interface eth0",
+   "set nat source rule 10 source address 192.168.1.0/24",
+   "set nat source rule 10 translation address masquerade",
+   "commit", "save"]
+
+NAT — DNAT / port forwarding (entrada do WAN):
+  ["set nat destination rule 10 description FM-FWD-HTTP",
+   "set nat destination rule 10 inbound-interface eth0",
+   "set nat destination rule 10 protocol tcp",
+   "set nat destination rule 10 destination port 80",
+   "set nat destination rule 10 translation address 192.168.1.10",
+   "set nat destination rule 10 translation port 80",
+   "commit", "save"]
+
+DHCP relay:
+  ["set service dhcp-relay interface eth1",
+   "set service dhcp-relay server 10.0.0.1",
+   "commit", "save"]
+
+DHCP server em interface:
+  ["set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 default-router 192.168.1.1",
+   "set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 dns-server 8.8.8.8",
+   "set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 start 192.168.1.100 stop 192.168.1.200",
+   "commit", "save"]
+
+REGRAS IMPORTANTES PARA UBIQUITI EDGEOS:
+- SEMPRE inclua "commit" e "save" ao final de cada lista de comandos
+- "delete" = equivalente ao "no" do IOS para remover configurações
+- VLANs são subinterfaces (vif): "set interfaces ethernet eth1 vif <ID>"
+- Regras de firewall são agrupadas por nome e aplicadas em interfaces
+- NAT source = SNAT/masquerade; NAT destination = DNAT/port forwarding
+- Regras de firewall numeradas — números menores têm prioridade mais alta
+- Use "masquerade" para NAT dinâmico (muitos IPs privados → um IP público)
+- NÃO assuma o nome da interface — pergunte ao usuário se não for obvio (eth0/eth1)
 
 ── DELL DNOS6 (N-Series: N1524P, N1548P, N2000, N3000) ────────────────────
 
@@ -706,17 +1006,23 @@ Pode combinar VLANs + portas na mesma operação usando múltiplos comandos:
    "copy running-config startup-config" nos ssh_commands — o sistema faz isso automaticamente.
 2. EXCEÇÃO Juniper: SEMPRE inclua "commit" explicitamente no final dos comandos.
 3. EXCEÇÃO HP Comware: SEMPRE inclua "quit" ao final de cada bloco (interface, vlan, etc.).
-4. Para Cisco IOS, Aruba e DELL N-Series (dell_n): "enable" e save são feitos automaticamente.
-5. IMPORTANTE: ssh_commands vs ssh_show_commands são mutuamente exclusivos:
+4. EXCEÇÃO Ubiquiti EdgeOS: SEMPRE inclua "commit" e "save" ao final dos comandos.
+5. Para Cisco IOS, Aruba e DELL N-Series (dell_n): "enable" e save são feitos automaticamente.
+6. IMPORTANTE: ssh_commands vs ssh_show_commands são mutuamente exclusivos:
    - ssh_commands → comandos de CONFIGURAÇÃO (entram em configure/system-view)
    - ssh_show_commands → comandos de LEITURA (show/display, sem entrar em configure)
    - NUNCA coloque show/display em ssh_commands nem comandos de config em ssh_show_commands
-6. HP Comware: use "display" em vez de "show" (ex: "display vlan", "display interface brief").
-7. Gere nomes de objetos com prefixo "FM-" para facilitar identificação (ex: FM-VLAN-CAMERAS).
-8. NÃO assuma números de VLAN ou seus propósitos — use apenas os que o usuário informar.
-   Se o usuário não especificar a VLAN, pergunte antes de gerar o plano.
-9. DELL N-Series (dell_n) vs DELL OS10 (dell): são CLIs diferentes.
-   dell_n → usa modo "general" para portas com múltiplas VLANs, interfaces Gi1/0/X e Te1/0/X.
-   dell   → usa sintaxe NX-OS style, interfaces "ethernet 1/1/X".
-10. HP Comware (hp_comware): usa "system-view" / "quit" / "display" — não IOS nem DNOS6.
+7. HP Comware: use "display" em vez de "show" (ex: "display vlan", "display interface brief").
+8. Ubiquiti EdgeOS: use "show" em modo exec; comandos de config usam sintaxe "set ...".
+9. Gere nomes de objetos com prefixo "FM-" para facilitar identificação (ex: FM-VLAN-CAMERAS).
+10. NÃO assuma números de VLAN ou seus propósitos — use apenas os que o usuário informar.
+    Se o usuário não especificar a VLAN, pergunte antes de gerar o plano.
+11. DELL N-Series (dell_n) vs DELL OS10 (dell): são CLIs diferentes.
+    dell_n → usa modo "general" para portas com múltiplas VLANs, interfaces Gi1/0/X e Te1/0/X.
+    dell   → usa sintaxe NX-OS style, interfaces "ethernet 1/1/X".
+12. HP Comware (hp_comware): usa "system-view" / "quit" / "display" — não IOS nem DNOS6.
     Modo hybrid = equivalente ao general (DNOS6) — mesma lógica, sintaxe diferente.
+13. Juniper (juniper): usa "set ..." / "delete ..." — nomes de VLAN por string, não por ID.
+    IRB = interface L3 mapeada para uma VLAN (set vlans <NOME> l3-interface irb.<ID>).
+14. Ubiquiti (ubiquiti): usa "set ..." / "delete ..." — VLANs como subinterfaces (vif).
+    Firewall definido por nome e aplicado por interface (in/out).
