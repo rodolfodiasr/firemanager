@@ -130,7 +130,8 @@ class FortinetConnector(BaseConnector):
 
     async def _ensure_service(self, client: httpx.AsyncClient, svc: str) -> str | None:
         """Return FortiGate service object name, creating custom one if needed.
-        Returns None if the service cannot be created (permissions issue)."""
+        Returns None if the service cannot be created (permissions issue).
+        Raises ValueError for invalid port numbers (out of 1-65535 range)."""
         if svc.upper() in ("ANY", "ALL", ""):
             return "ALL"
         parts = svc.upper().split("/")
@@ -138,6 +139,17 @@ class FortinetConnector(BaseConnector):
             # Assume it's already an object name — use as-is
             return svc
         proto, port = parts
+
+        # Validate port range before hitting the FortiOS API
+        try:
+            port_num = int(port)
+        except ValueError:
+            raise ValueError(f"Porta '{port}' não é um número válido no serviço '{svc}'.")
+        if not (1 <= port_num <= 65535):
+            raise ValueError(
+                f"Porta {port_num} está fora do intervalo válido (1–65535). "
+                f"Verifique se digitou corretamente — por exemplo, '{svc}' parece um typo."
+            )
 
         # 1. Try built-in service first (no creation needed)
         builtin = self._BUILTIN_SERVICES.get((proto, port))
@@ -163,7 +175,7 @@ class FortinetConnector(BaseConnector):
         r = await client.post(f"/api/v2/cmdb/firewall.service/custom?vdom={self.vdom}", json=svc_payload)
         if r.status_code not in (200, 201):
             logger.error("Fortinet: cannot create service object %s (HTTP %s): %s", name, r.status_code, r.text)
-            return None  # signal failure
+            return None  # signal permissions failure
         logger.info("Fortinet: created service object %s", name)
         return name
 
@@ -198,7 +210,10 @@ class FortinetConnector(BaseConnector):
         async with self._client() as client:
             src_name = await self._ensure_address(client, spec.src_address)
             dst_name = await self._ensure_address(client, spec.dst_address)
-            svc_name = await self._ensure_service(client, spec.service)
+            try:
+                svc_name = await self._ensure_service(client, spec.service)
+            except ValueError as exc:
+                return ExecutionResult(success=False, error=str(exc))
             if svc_name is None:
                 return ExecutionResult(
                     success=False,
