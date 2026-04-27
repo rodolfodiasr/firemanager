@@ -96,15 +96,16 @@ async def inspect_device(
 
         if resource == "content_filter":
             ssh = get_ssh_connector(device)
-            ssh_result = await ssh.execute_show_commands(["show content-filter"])
+            # Must use full-page reader — show content-filter is multi-page
+            ssh_result = await ssh.execute_show_commands_full(["show content-filter"])
             if not ssh_result.success:
                 raise HTTPException(status_code=502, detail=f"Falha na conexão SSH: {ssh_result.error}")
             items = _parse_named_blocks(
                 ssh_result.output,
-                ["profile", "policy", "uri-list-object", "cfs-object", "object"],
+                ["profile", "policy", "uri-list-object", "uri-list-group",
+                 "action", "reputation-object"],
             )
             if not items:
-                # Fallback: return raw output so the operator can see what the device returns
                 clean = _ANSI_RE.sub("", ssh_result.output).strip()
                 items = [{"type": "Raw", "name": "show content-filter", "details": clean or "(sem output)"}]
             return {"resource": resource, "items": items}

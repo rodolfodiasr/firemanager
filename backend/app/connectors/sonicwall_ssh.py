@@ -307,6 +307,34 @@ class SonicWallSSHConnector:
         )
         return all_output.decode("utf-8", errors="replace")
 
+    def _read_all_pages(self, shell, timeout: float = 60.0) -> str:
+        """Read show output navigating through ALL --MORE-- pages (sends SPACE at each).
+
+        Use this for commands like 'show content-filter' whose output spans many pages.
+        """
+        all_output = b""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if shell.recv_ready():
+                chunk = shell.recv(_RECV_SIZE)
+                all_output += chunk
+                decoded = all_output.decode("utf-8", errors="replace")
+                # Strip the --MORE-- marker and request next page
+                if "--MORE--" in decoded.upper():
+                    shell.sendall(b" ")
+                    # Remove pager markers from accumulated output so parser sees clean text
+                    cleaned = decoded.replace("--MORE--", "").replace("--more--", "")
+                    all_output = cleaned.encode("utf-8", errors="replace")
+                    logger.info("SSH show (paged): sent SPACE for next page")
+                    continue
+                last_line = decoded.rstrip().rsplit("\n", 1)[-1].rstrip()
+                if last_line.endswith(">") or last_line.endswith("#"):
+                    logger.info("SSH show (paged): reached prompt, done (%d bytes)", len(all_output))
+                    return decoded
+            time.sleep(_POLL_SLEEP)
+        logger.warning("SSH show (paged): timed out after %.0fs", timeout)
+        return all_output.decode("utf-8", errors="replace")
+
     def _connect_and_show(self, commands: list[str]) -> tuple[bool, str]:
         """Run show commands at user exec level without entering configure mode."""
         import paramiko
@@ -384,6 +412,78 @@ class SonicWallSSHConnector:
         with ThreadPoolExecutor(max_workers=1) as executor:
             success, output = await loop.run_in_executor(
                 executor, self._connect_and_show, commands
+            )
+
+        return SSHResult(
+            success=success,
+            output=output,
+            commands_executed=commands,
+            error=None if success else output,
+        )
+
+    def _connect_and_show_full(self, commands: list[str]) -> tuple[bool, str]:
+        """Like _connect_and_show but pages through all --MORE-- prompts."""
+        import paramiko
+
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        try:
+            client.connect(
+                hostname=self.host,
+                port=self.ssh_port,
+                username=self.username,
+                password=self.password,
+                timeout=30,
+                look_for_keys=False,
+                allow_agent=False,
+            )
+            shell = client.invoke_shell(width=250, height=1000)
+
+            out_banner = self._wait_for(shell, [">", "assword:"], timeout=15)
+            if "assword:" in out_banner and ">" not in out_banner:
+                self._send(shell, self.password)
+                out_banner += self._wait_for(shell, [">"], timeout=10)
+
+            parts: list[str] = [out_banner]
+
+            for cmd in commands:
+                logger.info("SSH show (full): sending command: %r", cmd)
+                self._send(shell, cmd)
+                out = self._read_all_pages(shell, timeout=60)
+                parts.append(out)
+
+            shell.close()
+            client.close()
+            return True, "".join(parts)
+
+        except Exception as exc:
+            import paramiko as _p
+            if isinstance(exc, _p.AuthenticationException):
+                return False, f"Falha de autenticação SSH em {self.host}:{self.ssh_port}: {exc}"
+            elif isinstance(exc, _p.SSHException):
+                return False, f"Erro SSH em {self.host}:{self.ssh_port}: {exc}"
+            elif isinstance(exc, OSError):
+                return False, f"Conexão SSH recusada em {self.host}:{self.ssh_port}: {exc}"
+            return False, f"Erro SSH ({type(exc).__name__}): {exc}"
+        finally:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+    async def execute_show_commands_full(self, commands: list[str]) -> SSHResult:
+        """Like execute_show_commands but pages through ALL --MORE-- prompts.
+
+        Use for commands with long multi-page output (e.g. show content-filter).
+        """
+        if not commands:
+            return SSHResult(success=False, error="Nenhum comando show fornecido")
+
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            success, output = await loop.run_in_executor(
+                executor, self._connect_and_show_full, commands
             )
 
         return SSHResult(
