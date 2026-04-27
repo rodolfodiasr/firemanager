@@ -406,7 +406,7 @@ export function Templates() {
           initialDeviceId={editContext?.initialDeviceId}
           parentOperationId={editContext?.parentOperationId}
         />
-      )}}
+      )}
       {showCreate && <CreateTemplateModal onClose={() => setShowCreate(false)} />}
 
       {/* Toolbar */}
