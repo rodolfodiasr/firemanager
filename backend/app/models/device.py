@@ -10,13 +10,30 @@ from sqlalchemy.sql import func
 from app.database import Base
 
 
+_DEFAULT_CATEGORY = "firewall"
+
+
 class VendorEnum(str, enum.Enum):
-    fortinet = "fortinet"
+    # Firewalls
+    fortinet  = "fortinet"
     sonicwall = "sonicwall"
-    pfsense = "pfsense"
-    opnsense = "opnsense"
-    mikrotik = "mikrotik"
-    endian = "endian"
+    pfsense   = "pfsense"
+    opnsense  = "opnsense"
+    mikrotik  = "mikrotik"
+    endian    = "endian"
+    # Routers / Switches
+    cisco_ios  = "cisco_ios"
+    cisco_nxos = "cisco_nxos"
+    juniper    = "juniper"
+    aruba      = "aruba"
+    ubiquiti   = "ubiquiti"
+
+
+class DeviceCategory(str, enum.Enum):
+    firewall  = "firewall"
+    router    = "router"
+    switch    = "switch"
+    l3_switch = "l3_switch"
 
 
 class DeviceStatus(str, enum.Enum):
@@ -47,6 +64,9 @@ class Device(Base):
         Enum(DeviceStatus, native_enum=False), nullable=False, default=DeviceStatus.unknown
     )
     last_seen: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    category: Mapped[DeviceCategory] = mapped_column(
+        Enum(DeviceCategory, native_enum=False), nullable=False, default=DeviceCategory.firewall
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False

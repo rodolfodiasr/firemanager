@@ -1,10 +1,19 @@
+export type DeviceCategory = "firewall" | "router" | "switch" | "l3_switch";
+
 export type VendorEnum =
+  // Firewalls
   | "fortinet"
   | "sonicwall"
   | "pfsense"
   | "opnsense"
   | "mikrotik"
-  | "endian";
+  | "endian"
+  // Routers / Switches
+  | "cisco_ios"
+  | "cisco_nxos"
+  | "juniper"
+  | "aruba"
+  | "ubiquiti";
 
 export type DeviceStatus = "online" | "offline" | "unknown" | "error";
 
@@ -12,6 +21,7 @@ export interface Device {
   id: string;
   name: string;
   vendor: VendorEnum;
+  category: DeviceCategory;
   firmware_version: string | null;
   host: string;
   port: number;
@@ -25,15 +35,19 @@ export interface Device {
 }
 
 export interface DeviceCredentials {
-  auth_type: "token" | "user_pass";
+  auth_type: "token" | "user_pass" | "ssh";
   token?: string;
   username?: string;
   password?: string;
+  ssh_port?: number;
+  vdom?: string;
+  os_version?: number;
 }
 
 export interface DeviceCreate {
   name: string;
   vendor: VendorEnum;
+  category: DeviceCategory;
   firmware_version?: string;
   host: string;
   port: number;

@@ -3,11 +3,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.device import DeviceStatus, VendorEnum
+from app.models.device import DeviceCategory, DeviceStatus, VendorEnum
 
 
 class DeviceCredentials(BaseModel):
-    auth_type: str = "token"  # "token" | "user_pass"
+    auth_type: str = "token"  # "token" | "user_pass" | "ssh"
     token: str | None = None
     username: str | None = None
     password: str | None = None
@@ -19,6 +19,7 @@ class DeviceCredentials(BaseModel):
 class DeviceCreate(BaseModel):
     name: str = Field(min_length=2, max_length=100)
     vendor: VendorEnum
+    category: DeviceCategory
     firmware_version: str | None = None
     host: str
     port: int = 443
@@ -30,6 +31,7 @@ class DeviceCreate(BaseModel):
 
 class DeviceUpdate(BaseModel):
     name: str | None = None
+    category: DeviceCategory | None = None
     firmware_version: str | None = None
     host: str | None = None
     port: int | None = None
@@ -43,6 +45,7 @@ class DeviceRead(BaseModel):
     id: UUID
     name: str
     vendor: VendorEnum
+    category: DeviceCategory
     firmware_version: str | None
     host: str
     port: int

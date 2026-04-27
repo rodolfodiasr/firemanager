@@ -23,6 +23,7 @@ async def create_device(db: AsyncSession, data: DeviceCreate, tenant_id: UUID) -
         tenant_id=tenant_id,
         name=data.name,
         vendor=data.vendor,
+        category=data.category,
         firmware_version=data.firmware_version,
         host=data.host,
         port=data.port,
@@ -63,6 +64,8 @@ async def update_device(
     device = await get_device(db, device_id, tenant_id)
     if data.name is not None:
         device.name = data.name
+    if data.category is not None:
+        device.category = data.category
     if data.firmware_version is not None:
         device.firmware_version = data.firmware_version
     if data.host is not None:
