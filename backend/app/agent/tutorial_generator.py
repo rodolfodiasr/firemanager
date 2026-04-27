@@ -5,24 +5,35 @@ import anthropic
 
 from app.config import settings
 
-_SYSTEM = (
-    "Você é um instrutor de segurança de redes especialista em SonicWall. "
-    "Escreva tutoriais didáticos e objetivos em português brasileiro voltados para "
-    "operadores de rede. Use markdown com títulos (##), passos numerados, "
-    "blocos de destaque (> Dica:) e caminhos de menu em negrito."
-)
+# Human-readable vendor name and UI description used in the tutorial prompt
+_VENDOR_INFO: dict[str, tuple[str, str]] = {
+    "fortinet":    ("FortiGate",       "FortiOS Web UI (GUI)"),
+    "sonicwall":   ("SonicWall",       "SonicWall Management UI"),
+    "pfsense":     ("pfSense",         "pfSense Web Configurator"),
+    "opnsense":    ("OPNsense",        "OPNsense Web UI"),
+    "mikrotik":    ("MikroTik",        "Winbox ou WebFig"),
+    "endian":      ("Endian Firewall", "Endian Web GUI"),
+    "cisco_ios":   ("Cisco IOS",       "CLI (terminal)"),
+    "cisco_nxos":  ("Cisco NX-OS",    "CLI (terminal)"),
+    "juniper":     ("Juniper",         "J-Web ou CLI"),
+    "aruba":       ("Aruba",           "ArubaOS CLI"),
+    "dell":        ("Dell OS10",       "CLI (terminal)"),
+    "dell_n":      ("Dell N-Series",   "CLI (terminal)"),
+    "hp_comware":  ("HP Comware",      "CLI (terminal)"),
+    "ubiquiti":    ("Ubiquiti EdgeOS", "EdgeOS CLI ou UniFi Controller"),
+}
 
 _INTENT_CONTEXT = {
-    "create_rule": "criação de regra de acesso (Access Rules)",
-    "edit_rule": "edição de regra de acesso (Access Rules)",
-    "delete_rule": "exclusão de regra de acesso (Access Rules)",
+    "create_rule": "criação de regra de acesso (Firewall Policy)",
+    "edit_rule": "edição de regra de acesso (Firewall Policy)",
+    "delete_rule": "exclusão de regra de acesso (Firewall Policy)",
     "create_nat_policy": "criação de política NAT",
     "delete_nat_policy": "exclusão de política NAT",
     "create_route_policy": "criação de rota estática",
     "delete_route_policy": "exclusão de rota estática",
     "create_group": "criação de grupo de endereços",
-    "configure_content_filter": "configuração de Content Filter (CFS)",
-    "configure_app_rules": "configuração de App Rules",
+    "configure_content_filter": "configuração de filtro de conteúdo",
+    "configure_app_rules": "configuração de regras de aplicação",
     "add_security_exclusion": "adição de exclusão de segurança",
     "toggle_gateway_av": "ativação/desativação do Gateway Anti-Virus",
     "toggle_anti_spyware": "ativação/desativação do Anti-Spyware",
@@ -38,8 +49,18 @@ async def generate_tutorial(
     intent: str,
     natural_language_input: str,
     action_plan: dict,
+    vendor: str = "sonicwall",
 ) -> str:
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+    vendor_name, vendor_ui = _VENDOR_INFO.get(vendor, ("firewall", "interface de gerenciamento"))
+
+    system = (
+        f"Você é um instrutor de segurança de redes especialista em {vendor_name}. "
+        "Escreva tutoriais didáticos e objetivos em português brasileiro voltados para "
+        "operadores de rede. Use markdown com títulos (##), passos numerados, "
+        "blocos de destaque (> Dica:) e caminhos de menu em negrito."
+    )
 
     clean_plan = {
         k: v for k, v in action_plan.items()
@@ -51,7 +72,7 @@ async def generate_tutorial(
 
     prompt = f"""O usuário solicitou: "{natural_language_input}"
 
-A operação executada foi do tipo **{context}**.
+A operação executada foi do tipo **{context}** em um dispositivo **{vendor_name}**.
 
 Configuração aplicada:
 ```json
@@ -59,24 +80,24 @@ Configuração aplicada:
 ```
 
 Gere um tutorial passo a passo explicando como o usuário faria **exatamente essa mesma configuração** \
-pelo painel web do SonicWall (Management UI), sem usar o FireManager ou SSH.
+pelo {vendor_ui}, sem usar o FireManager ou SSH.
 
 Estruture assim:
 ## O que foi configurado
 (breve resumo da operação)
 
-## Como fazer manualmente no SonicWall
+## Como fazer manualmente no {vendor_name}
 (passos numerados com caminho de navegação no menu, campos a preencher e onde clicar para salvar)
 
 ## Dicas e boas práticas
 (alertas, verificações recomendadas ou boas práticas relacionadas)
 
-Seja direto, prático e didático. Use caminhos de menu em negrito, ex: **Manage → Security Services → Content Filter**."""
+Seja direto, prático e didático. Use caminhos de menu em negrito."""
 
     response = await client.messages.create(
         model=settings.anthropic_model,
         max_tokens=2000,
-        system=_SYSTEM,
+        system=system,
         messages=[{"role": "user", "content": prompt}],
     )
     return response.content[0].text

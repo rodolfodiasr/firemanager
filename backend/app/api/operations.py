@@ -239,11 +239,16 @@ async def get_tutorial(
     if not op.action_plan or not op.intent:
         raise HTTPException(status_code=400, detail="Plano de ação não disponível para gerar tutorial.")
 
+    device_result = await db.execute(select(Device).where(Device.id == op.device_id))
+    device = device_result.scalar_one_or_none()
+    vendor = device.vendor.value if device else "sonicwall"
+
     from app.agent.tutorial_generator import generate_tutorial
     tutorial = await generate_tutorial(
         intent=op.intent,
         natural_language_input=op.natural_language_input,
         action_plan=op.action_plan,
+        vendor=vendor,
     )
     op.tutorial = tutorial
     await db.commit()
