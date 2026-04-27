@@ -24,6 +24,9 @@ export interface Operation {
   parent_operation_id: string | null;
   created_at: string;
   updated_at: string;
+  // Populated when fetched as part of BulkJobDetail
+  device_name: string | null;
+  device_category: string | null;
 }
 
 export interface ChatResponse {

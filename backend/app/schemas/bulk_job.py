@@ -29,5 +29,12 @@ class BulkJobRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CategoryPlanSummary(BaseModel):
+    category: str
+    device_count: int
+    intent: str | None
+
+
 class BulkJobDetail(BulkJobRead):
     operations: list[OperationRead]
+    category_plans: list[CategoryPlanSummary] | None = None

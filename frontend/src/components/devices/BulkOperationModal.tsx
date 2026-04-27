@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { X, Layers, Loader2, AlertCircle } from "lucide-react";
+import { X, Layers, Loader2, AlertCircle, Shield, Route, Network, Sparkles } from "lucide-react";
 import { bulkJobsApi } from "../../api/bulk_jobs";
-import type { Device } from "../../types/device";
+import type { Device, DeviceCategory } from "../../types/device";
 
 interface BulkOperationModalProps {
   isOpen: boolean;
@@ -13,6 +13,13 @@ interface BulkOperationModalProps {
 
 const CATEGORY_LABELS: Record<string, string> = {
   firewall: "Firewall", router: "Roteador", switch: "Switch", l3_switch: "Switch L3",
+};
+
+const CATEGORY_ICON: Record<string, React.ElementType> = {
+  firewall:  Shield,
+  router:    Route,
+  switch:    Network,
+  l3_switch: Layers,
 };
 
 const VENDOR_LABELS: Record<string, string> = {
@@ -48,7 +55,8 @@ export function BulkOperationModal({ isOpen, devices, onClose }: BulkOperationMo
     return acc;
   }, {});
 
-  const uniqueVendors = [...new Set(devices.map((d) => d.vendor))];
+  const categoryCount = Object.keys(byCategory).length;
+  const isCrossDevice = categoryCount > 1;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -63,53 +71,68 @@ export function BulkOperationModal({ isOpen, devices, onClose }: BulkOperationMo
           </button>
         </div>
 
-        {/* Devices summary */}
+        {/* Cross-device callout */}
+        {isCrossDevice && (
+          <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 text-xs text-blue-800">
+            <Sparkles size={13} className="mt-0.5 shrink-0 text-blue-500" />
+            <span>
+              <strong>Operação cross-device detectada</strong> — {categoryCount} categorias selecionadas.
+              A IA gerará um plano distinto e otimizado para cada categoria.
+            </span>
+          </div>
+        )}
+
+        {/* Devices summary grouped by category */}
         <div className="bg-gray-50 rounded-xl p-4 mb-5 border border-gray-200">
-          <p className="text-xs font-semibold text-gray-500 uppercase mb-2">
-            {devices.length} dispositivos selecionados
+          <p className="text-xs font-semibold text-gray-500 uppercase mb-3">
+            {devices.length} dispositivos · {categoryCount} {categoryCount === 1 ? "categoria" : "categorias"}
           </p>
-          {Object.entries(byCategory).map(([cat, devs]) => (
-            <div key={cat} className="mb-2 last:mb-0">
-              <p className="text-xs font-medium text-gray-600 mb-1">{CATEGORY_LABELS[cat] ?? cat}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {devs.map((d) => (
-                  <span key={d.id} className="text-xs bg-white border border-gray-200 rounded-lg px-2 py-0.5 text-gray-700">
-                    {d.name}
-                    <span className="text-gray-400 ml-1">({VENDOR_LABELS[d.vendor] ?? d.vendor})</span>
-                  </span>
-                ))}
+          {Object.entries(byCategory).map(([cat, devs]) => {
+            const Icon = CATEGORY_ICON[cat as DeviceCategory] ?? Layers;
+            return (
+              <div key={cat} className="mb-3 last:mb-0">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Icon size={12} className="text-gray-400" />
+                  <p className="text-xs font-semibold text-gray-600">
+                    {CATEGORY_LABELS[cat] ?? cat}
+                    <span className="font-normal text-gray-400 ml-1">({devs.length})</span>
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pl-4">
+                  {devs.map((d) => (
+                    <span key={d.id} className="text-xs bg-white border border-gray-200 rounded-lg px-2 py-0.5 text-gray-700">
+                      {d.name}
+                      <span className="text-gray-400 ml-1">({VENDOR_LABELS[d.vendor] ?? d.vendor})</span>
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-          {uniqueVendors.length > 1 && (
-            <div className="flex items-start gap-1.5 mt-3 text-amber-700 bg-amber-50 rounded-lg p-2 text-xs">
-              <AlertCircle size={13} className="mt-0.5 shrink-0" />
-              <span>
-                Vendors diferentes selecionados ({uniqueVendors.map(v => VENDOR_LABELS[v] ?? v).join(", ")}).
-                A IA gerará o plano com base no primeiro dispositivo e replicará para os demais.
-              </span>
-            </div>
-          )}
+            );
+          })}
         </div>
 
         {/* NL Input */}
         <div className="mb-5">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            O que deseja fazer em todos estes dispositivos?
+            O que deseja fazer nestes dispositivos?
           </label>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             rows={4}
             placeholder={
-              devices[0]?.category === "switch"
+              isCrossDevice
+                ? "Ex: Bloquear redes sociais nos firewalls e criar VLAN 100 nos switches"
+                : devices[0]?.category === "switch"
                 ? "Ex: Criar VLAN 100 com nome Câmeras e ativar nas portas Gi0/1 até Gi0/8"
                 : "Ex: Liberar acesso HTTPS para o IP 192.168.1.50 vindo da rede interna"
             }
             className="w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
           />
           <p className="text-xs text-gray-400 mt-1">
-            A IA gerará o plano a partir do primeiro dispositivo e aplicará o mesmo nos demais.
+            {isCrossDevice
+              ? "A IA analisará o contexto de cada categoria e gerará comandos otimizados para cada tipo de dispositivo."
+              : "A IA gerará o plano a partir do primeiro dispositivo e replicará para os demais."}
           </p>
         </div>
 

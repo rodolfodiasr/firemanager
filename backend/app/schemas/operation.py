@@ -33,6 +33,9 @@ class OperationRead(BaseModel):
     parent_operation_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
+    # Populated when fetched as part of BulkJobDetail (JOIN with devices)
+    device_name: str | None = None
+    device_category: str | None = None
 
     model_config = {"from_attributes": True}
 

@@ -4,10 +4,11 @@ import { useParams, Link } from "react-router-dom";
 import {
   Layers, CheckCircle2, XCircle, Loader2, Clock,
   ChevronDown, ChevronUp, Play, Trash2, ArrowLeft,
+  Shield, Route, Network,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { bulkJobsApi } from "../api/bulk_jobs";
-import type { BulkJob, BulkJobStatus } from "../types/bulk_job";
+import type { BulkJob, BulkJobDetail, BulkJobStatus, CategoryPlanSummary } from "../types/bulk_job";
 import type { Operation } from "../types/operation";
 
 // ── Status helpers ────────────────────────────────────────────────────────────
@@ -86,11 +87,29 @@ function JobCard({ job }: { job: BulkJob }) {
   );
 }
 
+// ── Category icon helper ──────────────────────────────────────────────────────
+
+const CATEGORY_ICON: Record<string, React.ElementType> = {
+  firewall:  Shield,
+  router:    Route,
+  switch:    Network,
+  l3_switch: Layers,
+};
+
+const CATEGORY_LABEL: Record<string, string> = {
+  firewall:  "Firewall",
+  router:    "Roteador",
+  switch:    "Switch",
+  l3_switch: "Switch L3",
+};
+
 // ── Operation row (in detail) ─────────────────────────────────────────────────
 
 function OpRow({ op }: { op: Operation }) {
   const [expanded, setExpanded] = useState(false);
   const cfg = OP_STATUS_CONFIG[op.status] ?? { label: op.status, color: "text-gray-500" };
+
+  const displayName = op.device_name ?? op.device_id;
 
   return (
     <div className="border border-gray-100 rounded-lg overflow-hidden">
@@ -99,11 +118,11 @@ function OpRow({ op }: { op: Operation }) {
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-left"
       >
         <div className="flex items-center gap-3 min-w-0">
-          <span className={`text-xs font-medium ${cfg.color}`}>{cfg.label}</span>
-          <span className="text-xs text-gray-500 font-mono truncate">{op.device_id}</span>
+          <span className={`text-xs font-medium shrink-0 ${cfg.color}`}>{cfg.label}</span>
+          <span className="text-sm font-medium text-gray-800 truncate">{displayName}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {op.intent && (
+          {op.intent && op.intent !== "cross_device" && (
             <span className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
               {op.intent}
             </span>
@@ -130,12 +149,86 @@ function OpRow({ op }: { op: Operation }) {
   );
 }
 
+// ── Cross-device category plans summary ───────────────────────────────────────
+
+function CategoryPlanBanner({ plans }: { plans: CategoryPlanSummary[] }) {
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
+      <p className="text-xs font-semibold text-blue-700 uppercase mb-2">
+        Operação cross-device — {plans.length} categorias
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {plans.map((p) => {
+          const Icon = CATEGORY_ICON[p.category] ?? Layers;
+          return (
+            <div
+              key={p.category}
+              className="flex items-center gap-1.5 bg-white border border-blue-100 rounded-lg px-2.5 py-1.5"
+            >
+              <Icon size={12} className="text-blue-500" />
+              <span className="text-xs font-medium text-gray-700">
+                {CATEGORY_LABEL[p.category] ?? p.category}
+              </span>
+              <span className="text-xs text-gray-400">{p.device_count} dispositivo(s)</span>
+              {p.intent && (
+                <span className="text-xs font-mono bg-gray-100 px-1 rounded text-gray-500">
+                  {p.intent}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Operations grouped by category ───────────────────────────────────────────
+
+function OpsByCategory({ ops, isCrossDevice }: { ops: Operation[]; isCrossDevice: boolean }) {
+  if (!isCrossDevice) {
+    return (
+      <div className="space-y-2">
+        {ops.map((op) => <OpRow key={op.id} op={op} />)}
+      </div>
+    );
+  }
+
+  // Group by device_category
+  const groups = ops.reduce<Record<string, Operation[]>>((acc, op) => {
+    const cat = op.device_category ?? "unknown";
+    acc[cat] = [...(acc[cat] ?? []), op];
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-4">
+      {Object.entries(groups).map(([cat, catOps]) => {
+        const Icon = CATEGORY_ICON[cat] ?? Layers;
+        return (
+          <div key={cat}>
+            <div className="flex items-center gap-2 mb-2">
+              <Icon size={13} className="text-gray-400" />
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                {CATEGORY_LABEL[cat] ?? cat} — {catOps.length} dispositivo(s)
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              {catOps.map((op) => <OpRow key={op.id} op={op} />)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Detail view ───────────────────────────────────────────────────────────────
 
 function BulkJobDetailView({ id }: { id: string }) {
   const qc = useQueryClient();
 
-  const { data: job, isLoading } = useQuery({
+  const { data: job, isLoading } = useQuery<BulkJobDetail>({
     queryKey: ["bulk-job", id],
     queryFn: () => bulkJobsApi.get(id),
     refetchInterval: (q) =>
@@ -155,8 +248,9 @@ function BulkJobDetailView({ id }: { id: string }) {
   if (isLoading) return <p className="text-sm text-gray-400 py-8 text-center">Carregando...</p>;
   if (!job) return <p className="text-sm text-red-400 py-8 text-center">Job não encontrado.</p>;
 
-  const canExecute = job.status === "ready" || job.status === "partial";
-  const canCancel  = job.status === "ready" || job.status === "pending";
+  const canExecute    = job.status === "ready" || job.status === "partial";
+  const canCancel     = job.status === "ready" || job.status === "pending";
+  const isCrossDevice = job.intent === "cross_device";
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -167,12 +261,16 @@ function BulkJobDetailView({ id }: { id: string }) {
             <Layers size={20} className="text-brand-500" />
             <h2 className="text-lg font-semibold text-gray-900 line-clamp-2">{job.description}</h2>
           </div>
-          <div className="flex items-center gap-3 text-xs text-gray-500">
+          <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
             <JobStatusBadge status={job.status} />
             <span>{job.device_count} dispositivos</span>
-            {job.intent && (
+            {isCrossDevice ? (
+              <span className="font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                cross-device
+              </span>
+            ) : job.intent ? (
               <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{job.intent}</span>
-            )}
+            ) : null}
             <span>{new Date(job.created_at).toLocaleString("pt-BR")}</span>
           </div>
         </div>
@@ -202,6 +300,11 @@ function BulkJobDetailView({ id }: { id: string }) {
         </div>
       </div>
 
+      {/* Cross-device category breakdown */}
+      {job.category_plans && job.category_plans.length > 1 && (
+        <CategoryPlanBanner plans={job.category_plans} />
+      )}
+
       {/* Progress bar */}
       {(job.completed_count + job.failed_count) > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5">
@@ -222,14 +325,10 @@ function BulkJobDetailView({ id }: { id: string }) {
         </div>
       )}
 
-      {/* Operations list */}
+      {/* Operations list — grouped by category for cross-device jobs */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <p className="text-sm font-semibold text-gray-700 mb-3">Operações por dispositivo</p>
-        <div className="space-y-2">
-          {job.operations.map((op) => (
-            <OpRow key={op.id} op={op} />
-          ))}
-        </div>
+        <OpsByCategory ops={job.operations} isCrossDevice={isCrossDevice} />
       </div>
 
       {job.error_summary && (

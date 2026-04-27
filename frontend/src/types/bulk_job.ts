@@ -23,8 +23,15 @@ export interface BulkJob {
   updated_at: string;
 }
 
+export interface CategoryPlanSummary {
+  category: string;
+  device_count: number;
+  intent: string | null;
+}
+
 export interface BulkJobDetail extends BulkJob {
   operations: Operation[];
+  category_plans: CategoryPlanSummary[] | null;
 }
 
 export interface BulkJobCreate {
