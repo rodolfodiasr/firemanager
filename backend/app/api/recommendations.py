@@ -278,20 +278,45 @@ def _check_dpi_ssl(rules: list[FirewallRule]) -> list[dict]:
 
 
 def _check_disabled_rules(rules: list[FirewallRule]) -> list[dict]:
-    disabled = [r.name for r in rules if not r.enabled]
+    disabled = [r for r in rules if not r.enabled]
     if not disabled:
         return []
+
+    zero_hit = [r.name for r in disabled if r.hit_count == 0]
+    has_hit  = [r.name for r in disabled if r.hit_count and r.hit_count > 0]
+    unknown  = [r.name for r in disabled if r.hit_count is None]
+
+    # Build per-rule detail lines for description
+    detail_lines = []
+    for r in disabled:
+        if r.hit_count is None:
+            detail_lines.append(f'  • "{r.name}" — hits: N/D')
+        else:
+            detail_lines.append(f'  • "{r.name}" — {r.hit_count:,} hit(s)')
+
+    notes = []
+    if zero_hit:
+        notes.append(f"{len(zero_hit)} com zero hits (nunca usadas ou stats zeradas)")
+    if has_hit:
+        notes.append(f"{len(has_hit)} com hits registrados (avaliar se ainda são necessárias)")
+    if unknown:
+        notes.append(f"{len(unknown)} sem dados de hits disponíveis")
+
     return [{
         "id": "disabled_rules",
         "severity": "low",
         "title": f"{len(disabled)} regra(s) desativada(s) — candidatas à remoção",
         "description": (
             "Regras desativadas não afetam o tráfego mas ocupam espaço na política e podem "
-            "causar confusão durante auditorias. Revise se ainda são necessárias."
+            "causar confusão durante auditorias. Revise se ainda são necessárias.\n\n"
+            + "\n".join(detail_lines)
+            + ("\n\n" + " · ".join(notes) if notes else "")
         ),
-        "affected_rules": disabled,
+        "affected_rules": [r.name for r in disabled],
+        "hit_counts": {r.name: r.hit_count for r in disabled},
         "agent_seed": (
-            f"Quero revisar e possivelmente remover as regras desativadas: {', '.join(disabled)} — "
+            f"Quero revisar e possivelmente remover as regras desativadas: "
+            f"{', '.join(r.name for r in disabled)} — "
         ),
         "manual_hint": (
             "# Listar regras desativadas:\n"
@@ -370,6 +395,24 @@ async def get_recommendations(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Erro ao buscar regras: {exc}")
 
+    # Enrich rules with hit counts — best-effort, non-fatal
+    stats_fetched = False
+    try:
+        rule_stats = await connector.get_rule_statistics()
+        if rule_stats:
+            stats_fetched = True
+            for rule in rules:
+                if rule.rule_id in rule_stats:
+                    rule.hit_count = rule_stats[rule.rule_id]
+                else:
+                    # Also try matching by name as fallback
+                    for rid, count in rule_stats.items():
+                        if rid == rule.name:
+                            rule.hit_count = count
+                            break
+    except Exception:
+        pass
+
     # Security status — non-fatal, best-effort via SSH
     security_enabled: dict[str, bool] = {}
     try:
@@ -400,5 +443,6 @@ async def get_recommendations(
         "total": len(checks),
         "rules_analyzed": len(rules),
         "security_fetched": bool(security_enabled),
+        "stats_fetched": stats_fetched,
         "checks": checks,
     }

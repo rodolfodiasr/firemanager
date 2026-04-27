@@ -78,22 +78,53 @@ function RecommendationCard({
         </div>
       </div>
 
-      {/* Affected rules */}
+      {/* Affected rules — with hit count table for disabled_rules check */}
       {rec.affected_rules.length > 0 && (
         <div className="px-5 py-3 border-t border-gray-100">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
             Regras afetadas ({rec.affected_rules.length})
           </p>
-          <div className="flex flex-wrap gap-1.5">
-            {rec.affected_rules.map((name) => (
-              <span
-                key={name}
-                className="inline-block px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded font-mono"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
+
+          {rec.hit_counts ? (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-gray-400 border-b border-gray-100">
+                  <th className="pb-1 font-semibold">Regra</th>
+                  <th className="pb-1 font-semibold text-right">Hits acumulados</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rec.affected_rules.map((name) => {
+                  const count = rec.hit_counts![name];
+                  return (
+                    <tr key={name}>
+                      <td className="py-1.5 font-mono text-gray-700">{name}</td>
+                      <td className="py-1.5 text-right">
+                        {count === null || count === undefined ? (
+                          <span className="text-gray-300">N/D</span>
+                        ) : count === 0 ? (
+                          <span className="text-gray-400">0 — nunca usada</span>
+                        ) : (
+                          <span className="text-amber-600 font-medium">{count.toLocaleString("pt-BR")} hits</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {rec.affected_rules.map((name) => (
+                <span
+                  key={name}
+                  className="inline-block px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded font-mono"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -170,7 +201,10 @@ export function InspectorRecommendations({ deviceId, deviceName }: Props) {
               <p className="text-xs text-gray-400">
                 {data.rules_analyzed} regras verificadas
                 {!data.security_fetched && (
-                  <span className="ml-2 text-amber-500">· status de segurança indisponível via SSH</span>
+                  <span className="ml-2 text-amber-500">· serviços de segurança indisponíveis</span>
+                )}
+                {!data.stats_fetched && (
+                  <span className="ml-2 text-gray-300">· hit counts indisponíveis</span>
                 )}
               </p>
             ) : (

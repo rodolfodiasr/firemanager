@@ -6,4 +6,5 @@ export interface Recommendation {
   affected_rules: string[];
   agent_seed: string;
   manual_hint: string;
+  hit_counts?: Record<string, number | null>;
 }

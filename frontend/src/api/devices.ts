@@ -25,7 +25,7 @@ export const devicesApi = {
 
   recommendations: (id: string) =>
     apiClient
-      .get<{ total: number; rules_analyzed: number; security_fetched: boolean; checks: Recommendation[] }>(
+      .get<{ total: number; rules_analyzed: number; security_fetched: boolean; stats_fetched: boolean; checks: Recommendation[] }>(
         `/devices/${id}/recommendations`
       )
       .then((r) => r.data),

@@ -22,6 +22,7 @@ class FirewallRule:
     enabled: bool
     src_zone: str = ""
     dst_zone: str = ""
+    hit_count: int | None = None
     raw: dict = field(default_factory=dict)
 
 
@@ -161,4 +162,8 @@ class BaseConnector(ABC):
 
     async def get_security_status(self) -> dict:
         """Return status of security services. Vendors that support it override this."""
+        return {}
+
+    async def get_rule_statistics(self) -> dict[str, int]:
+        """Return {rule_id: hit_count}. Best-effort — returns empty dict if unsupported."""
         return {}

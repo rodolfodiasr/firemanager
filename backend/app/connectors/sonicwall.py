@@ -375,6 +375,44 @@ class SonicWallConnector(BaseConnector):
             resp.raise_for_status()
             return self._parse_rules(resp.json())
 
+    async def get_rule_statistics(self) -> dict[str, int]:
+        """Fetch hit counts per rule UUID from the SonicWall statistics endpoint."""
+        stats: dict[str, int] = {}
+        try:
+            async with self._session() as client:
+                resp = await client.get("/api/sonicos/access-rules/ipv4/statistics")
+                if resp.status_code != 200:
+                    return stats
+                data = resp.json()
+
+                # Gen7: {"access_rules": [{"ipv4": {"uuid": ..., "packets": ...}}, ...]}
+                raw_list = []
+                ar = data.get("access_rules", data)
+                if isinstance(ar, dict):
+                    raw_list = ar.get("ipv4", [])
+                elif isinstance(ar, list):
+                    for item in ar:
+                        if isinstance(item, dict):
+                            raw_list.append(item.get("ipv4", item))
+
+                for entry in raw_list:
+                    if not isinstance(entry, dict):
+                        continue
+                    uid = str(entry.get("uuid", entry.get("rule_id", "")))
+                    # Try common field names for hit/packet count
+                    count = (
+                        entry.get("hit_count")
+                        or entry.get("packets")
+                        or entry.get("packet_count")
+                        or entry.get("connections")
+                        or 0
+                    )
+                    if uid:
+                        stats[uid] = int(count)
+        except Exception:
+            pass
+        return stats
+
     async def create_rule(self, spec: RuleSpec) -> ExecutionResult:
         async with self._session() as client:
             src_name = await self._ensure_address_object(client, spec.src_address, spec.src_zone)
