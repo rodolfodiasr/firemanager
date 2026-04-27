@@ -13,6 +13,7 @@ import {
   BookMarked,
   Radar,
   Building2,
+  Globe,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -85,6 +86,21 @@ export function Sidebar() {
           >
             <Building2 size={18} />
             <span className="flex-1">Tenants</span>
+          </NavLink>
+        )}
+        {user?.is_super_admin && (
+          <NavLink
+            to="/mssp"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-brand-600 text-white"
+                  : "text-gray-400 hover:bg-gray-800 hover:text-white"
+              }`
+            }
+          >
+            <Globe size={18} />
+            <span className="flex-1">Painel MSSP</span>
           </NavLink>
         )}
       </nav>

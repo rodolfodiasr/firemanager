@@ -4,27 +4,45 @@ import type { User } from "../types/user";
 import apiClient from "../api/client";
 
 interface AuthState {
-  user:            User | null;
-  tenant:          TenantInfo | null;
-  tenantRole:      string | null;
-  pendingTenants:  TenantInfo[] | null;  // set when login returns multiple tenants
-  preToken:        string | null;
-  isAuthenticated: boolean;
+  user:             User | null;
+  tenant:           TenantInfo | null;
+  tenantRole:       string | null;
+  pendingTenants:   TenantInfo[] | null;
+  preToken:         string | null;
+  isAuthenticated:  boolean;
 
-  login:           (token: string, refreshToken: string) => Promise<void>;
-  setPendingTenants: (preToken: string, tenants: TenantInfo[]) => void;
-  selectTenant:    (tenantId: string) => Promise<void>;
-  logout:          () => void;
-  fetchMe:         () => Promise<void>;
+  // Support mode — super admin viewing a tenant as read-only
+  supportMode:      boolean;
+  supportTenantName: string | null;
+  _savedToken:      string | null;
+
+  login:              (token: string, refreshToken: string) => Promise<void>;
+  setPendingTenants:  (preToken: string, tenants: TenantInfo[]) => void;
+  selectTenant:       (tenantId: string) => Promise<void>;
+  logout:             () => void;
+  fetchMe:            () => Promise<void>;
+  enterSupportMode:   (supportToken: string, tenantName: string) => void;
+  exitSupportMode:    () => void;
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  try {
+    return JSON.parse(atob(token.split(".")[1]));
+  } catch {
+    return {};
+  }
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user:            null,
-  tenant:          null,
-  tenantRole:      null,
-  pendingTenants:  null,
-  preToken:        null,
-  isAuthenticated: !!localStorage.getItem("access_token"),
+  user:             null,
+  tenant:           null,
+  tenantRole:       null,
+  pendingTenants:   null,
+  preToken:         null,
+  isAuthenticated:  !!localStorage.getItem("access_token"),
+  supportMode:      false,
+  supportTenantName: null,
+  _savedToken:      null,
 
   login: async (token, refreshToken) => {
     localStorage.setItem("access_token", token);
@@ -35,14 +53,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       .then((r) => r.data)
       .catch(() => []);
 
-    // Decode tenant_id from JWT payload (middle segment)
-    let tenantId: string | null = null;
-    let role: string | null = null;
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      tenantId = payload.tenant_id ?? null;
-      role     = payload.role     ?? null;
-    } catch { /* ignore */ }
+    const payload = decodeJwtPayload(token);
+    const tenantId = (payload.tenant_id as string) ?? null;
+    const role     = (payload.role as string)      ?? null;
 
     const activeTenant = myTenants.find((t) => t.id === tenantId) ?? myTenants[0] ?? null;
 
@@ -53,6 +66,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       pendingTenants: null,
       preToken: null,
       isAuthenticated: true,
+      supportMode: false,
+      supportTenantName: null,
+      _savedToken: null,
     });
   },
 
@@ -72,7 +88,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
-    set({ user: null, tenant: null, tenantRole: null, pendingTenants: null, preToken: null, isAuthenticated: false });
+    set({
+      user: null,
+      tenant: null,
+      tenantRole: null,
+      pendingTenants: null,
+      preToken: null,
+      isAuthenticated: false,
+      supportMode: false,
+      supportTenantName: null,
+      _savedToken: null,
+    });
   },
 
   fetchMe: async () => {
@@ -84,18 +110,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .catch(() => []);
 
       const token = localStorage.getItem("access_token") ?? "";
-      let tenantId: string | null = null;
-      let role: string | null = null;
-      try {
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        tenantId = payload.tenant_id ?? null;
-        role     = payload.role     ?? null;
-      } catch { /* ignore */ }
+      const payload = decodeJwtPayload(token);
+      const tenantId = (payload.tenant_id as string) ?? null;
+      const role     = (payload.role as string)      ?? null;
 
       const activeTenant = myTenants.find((t) => t.id === tenantId) ?? myTenants[0] ?? null;
       set({ user: me, tenant: activeTenant, tenantRole: role, isAuthenticated: true });
     } catch {
       set({ user: null, tenant: null, tenantRole: null, isAuthenticated: false });
     }
+  },
+
+  enterSupportMode: (supportToken: string, tenantName: string) => {
+    const savedToken = localStorage.getItem("access_token") ?? "";
+    localStorage.setItem("access_token", supportToken);
+    set({ supportMode: true, supportTenantName: tenantName, _savedToken: savedToken });
+  },
+
+  exitSupportMode: () => {
+    const { _savedToken } = get();
+    if (_savedToken) {
+      localStorage.setItem("access_token", _savedToken);
+    }
+    set({ supportMode: false, supportTenantName: null, _savedToken: null });
   },
 }));

@@ -12,7 +12,10 @@ import { DirectMode } from "./pages/DirectMode";
 import { Templates } from "./pages/Templates";
 import { Inspector } from "./pages/Inspector";
 import { Tenants } from "./pages/Tenants";
+import { MSSPDashboard } from "./pages/MSSPDashboard";
+import { AcceptInvite } from "./pages/AcceptInvite";
 import { Sidebar } from "./components/layout/Sidebar";
+import { SupportBanner } from "./components/layout/SupportBanner";
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -20,7 +23,10 @@ function ProtectedLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex">
       <Sidebar />
-      {children}
+      <div className="flex-1 flex flex-col">
+        <SupportBanner />
+        {children}
+      </div>
     </div>
   );
 }
@@ -29,6 +35,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/invite/:token" element={<AcceptInvite />} />
       <Route
         path="/"
         element={
@@ -114,6 +121,14 @@ export function AppRouter() {
         element={
           <ProtectedLayout>
             <Tenants />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/mssp"
+        element={
+          <ProtectedLayout>
+            <MSSPDashboard />
           </ProtectedLayout>
         }
       />

@@ -134,6 +134,10 @@ async def get_tenant_context(
     if not tenant or not tenant.is_active:
         raise HTTPException(status_code=403, detail="Tenant não encontrado ou inativo")
 
+    # Support mode: super admin issued a read-only token for this tenant
+    if payload.get("support") and user.is_super_admin:
+        return TenantContext(user=user, tenant=tenant, role=TenantRole.readonly)
+
     result = await db.execute(
         select(UserTenantRole).where(
             UserTenantRole.user_id == user.id,

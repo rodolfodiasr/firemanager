@@ -15,6 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { tenantsApi } from "../api/tenants";
+import { inviteApi } from "../api/invite";
 import { useAuth } from "../hooks/useAuth";
 import { TopBar } from "../components/layout/TopBar";
 import type { TenantMember, TenantRead, TenantRole } from "../types/tenant";
@@ -50,10 +51,12 @@ interface MembersPanelProps {
 function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps) {
   const qc = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
+  const [inviteMode, setInviteMode] = useState<"direct" | "email">("direct");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<TenantRole>("analyst");
   const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [emailSent, setEmailSent] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState<TenantRole>("analyst");
 
@@ -63,15 +66,23 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps
   });
 
   const inviteMut = useMutation({
-    mutationFn: () =>
-      tenantsApi.inviteByEmail(tenantId, { email: inviteEmail, name: inviteName || undefined, role: inviteRole }),
+    mutationFn: async () => {
+      if (inviteMode === "direct") {
+        return tenantsApi.inviteByEmail(tenantId, { email: inviteEmail, name: inviteName || undefined, role: inviteRole });
+      }
+      await inviteApi.create({ email: inviteEmail, tenant_id: tenantId, role: inviteRole, frontend_url: window.location.origin });
+      setEmailSent(true);
+      return { member: null as unknown as TenantMember, temp_password: null as string | null };
+    },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["members", tenantId] });
-      if (res.temp_password) setTempPassword(res.temp_password);
-      setShowInvite(false);
-      setInviteEmail("");
-      setInviteName("");
-      setInviteRole("analyst");
+      if (res?.temp_password) setTempPassword(res.temp_password);
+      if (inviteMode === "direct") {
+        setShowInvite(false);
+        setInviteEmail("");
+        setInviteName("");
+        setInviteRole("analyst");
+      }
     },
   });
 
@@ -97,7 +108,7 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps
           <span className="text-sm font-semibold text-gray-700">{tenantName}</span>
         </div>
         <button
-          onClick={() => { setShowInvite(true); setTempPassword(null); }}
+          onClick={() => { setShowInvite(true); setTempPassword(null); setEmailSent(false); }}
           className="flex items-center gap-1.5 text-xs font-medium bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 transition-colors"
         >
           <UserPlus size={13} />
@@ -119,9 +130,33 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps
         </div>
       )}
 
-      {showInvite && (
+      {showInvite && emailSent && (
+        <div className="mb-3 bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800">
+          <p className="font-semibold mb-1">Convite enviado!</p>
+          <p>Um e-mail foi enviado para <strong>{inviteEmail}</strong> com o link de acesso.</p>
+          <button
+            onClick={() => { setEmailSent(false); setShowInvite(false); setInviteEmail(""); setInviteRole("analyst"); }}
+            className="mt-2 text-green-600 underline"
+          >
+            Fechar
+          </button>
+        </div>
+      )}
+      {showInvite && !emailSent && (
         <div className="mb-3 bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2">
-          <p className="text-xs font-semibold text-gray-600">Convidar membro por e-mail</p>
+          <div className="flex gap-1 bg-gray-200 rounded-lg p-0.5 text-xs font-medium">
+            {(["direct", "email"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setInviteMode(m)}
+                className={`flex-1 py-1 rounded-md transition-colors ${inviteMode === m ? "bg-white text-gray-800 shadow-sm" : "text-gray-500"}`}
+              >
+                {m === "direct" ? "Criar agora" : "Enviar link"}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs font-semibold text-gray-600">
+            {inviteMode === "direct" ? "Criar conta com senha temporária" : "Enviar convite por e-mail"}</p>
           <input
             type="email"
             placeholder="email@empresa.com"
@@ -129,13 +164,15 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps
             onChange={(e) => setInviteEmail(e.target.value)}
             className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
-          <input
-            type="text"
-            placeholder="Nome (opcional)"
-            value={inviteName}
-            onChange={(e) => setInviteName(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-          />
+          {inviteMode === "direct" && (
+            <input
+              type="text"
+              placeholder="Nome (opcional)"
+              value={inviteName}
+              onChange={(e) => setInviteName(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          )}
           <select
             value={inviteRole}
             onChange={(e) => setInviteRole(e.target.value as TenantRole)}
@@ -156,7 +193,7 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps
               disabled={!inviteEmail || inviteMut.isPending}
               className="flex-1 bg-brand-600 text-white text-xs font-medium py-1.5 rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
             >
-              {inviteMut.isPending ? "Convidando..." : "Confirmar"}
+              {inviteMut.isPending ? "Enviando..." : inviteMode === "direct" ? "Criar conta" : "Enviar link"}
             </button>
             <button
               onClick={() => setShowInvite(false)}
