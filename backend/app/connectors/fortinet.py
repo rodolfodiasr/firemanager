@@ -1,4 +1,5 @@
 """Fortinet FortiOS 7.x REST API connector."""
+import ipaddress
 import json
 import time
 from typing import Any
@@ -76,20 +77,80 @@ class FortinetConnector(BaseConnector):
                 )
             return rules
 
+    # ── Object helpers ───────────────────────────────────────────────────────
+
+    def _addr_obj_name(self, addr: str) -> str:
+        return f"FM-{addr.replace('/', '-').replace('.', '-').replace(':', '-')}"
+
+    def _svc_obj_name(self, svc: str) -> str:
+        return f"FM-{svc.replace('/', '-').upper()}"
+
+    async def _ensure_address(self, client: httpx.AsyncClient, addr: str) -> str:
+        """Return existing FortiGate address object name, creating it if needed."""
+        if addr.lower() in ("any", "all", ""):
+            return "all"
+        name = self._addr_obj_name(addr)
+        check = await client.get(f"/api/v2/cmdb/firewall/address/{name}?vdom={self.vdom}")
+        if check.status_code == 200:
+            return name
+        if "/" in addr:
+            net = ipaddress.ip_network(addr, strict=False)
+            subnet = f"{net.network_address} {net.netmask}"
+        else:
+            subnet = f"{addr} 255.255.255.255"
+        await client.post(
+            f"/api/v2/cmdb/firewall/address?vdom={self.vdom}",
+            json={"name": name, "type": "ipmask", "subnet": subnet},
+        )
+        return name
+
+    async def _ensure_service(self, client: httpx.AsyncClient, svc: str) -> str:
+        """Return existing FortiGate service object name, creating it if needed."""
+        if svc.upper() in ("ANY", "ALL", ""):
+            return "ALL"
+        # If it doesn't look like "PROTO/PORT" assume it's already an object name
+        parts = svc.upper().split("/")
+        if len(parts) != 2:
+            return svc
+        proto, port = parts
+        name = self._svc_obj_name(svc)
+        check = await client.get(f"/api/v2/cmdb/firewall.service/custom/{name}?vdom={self.vdom}")
+        if check.status_code == 200:
+            return name
+        payload: dict[str, Any] = {"name": name, "protocol": "TCP/UDP/SCTP"}
+        if proto == "TCP":
+            payload["tcp-portrange"] = port
+        elif proto == "UDP":
+            payload["udp-portrange"] = port
+        else:
+            payload["tcp-portrange"] = port
+        await client.post(f"/api/v2/cmdb/firewall.service/custom?vdom={self.vdom}", json=payload)
+        return name
+
+    # ── Rules ────────────────────────────────────────────────────────────────
+
     async def create_rule(self, spec: RuleSpec) -> ExecutionResult:
-        payload: dict[str, Any] = {
-            "name": spec.name,
-            "srcintf": [{"name": "any"}],
-            "dstintf": [{"name": "any"}],
-            "srcaddr": [{"name": spec.src_address}],
-            "dstaddr": [{"name": spec.dst_address}],
-            "service": [{"name": spec.service}],
-            "action": spec.action,
-            "status": "enable",
-            "comments": spec.comment or "",
-        }
-        payload.update(spec.extra)
         async with self._client() as client:
+            src_name = await self._ensure_address(client, spec.src_address)
+            dst_name = await self._ensure_address(client, spec.dst_address)
+            svc_name = await self._ensure_service(client, spec.service)
+
+            # Use zones from spec; FortiOS accepts interface or zone names
+            src_intf = spec.src_zone if spec.src_zone else "any"
+            dst_intf = spec.dst_zone if spec.dst_zone else "any"
+
+            payload: dict[str, Any] = {
+                "name": spec.name,
+                "srcintf": [{"name": src_intf}],
+                "dstintf": [{"name": dst_intf}],
+                "srcaddr": [{"name": src_name}],
+                "dstaddr": [{"name": dst_name}],
+                "service": [{"name": svc_name}],
+                "action": spec.action,
+                "status": "enable",
+                "comments": spec.comment or "",
+            }
+            payload.update(spec.extra)
             resp = await client.post(
                 f"/api/v2/cmdb/firewall/policy?vdom={self.vdom}", json=payload
             )
