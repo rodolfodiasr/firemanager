@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Flame, Eye, EyeOff } from "lucide-react";
+import { Flame, Eye, EyeOff, Building2, ArrowRight } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 
 interface LoginForm {
@@ -10,19 +10,32 @@ interface LoginForm {
 }
 
 export function Login() {
-  const { signIn } = useAuth();
+  const { signIn, selectTenant, pendingTenants } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectingTenant, setSelectingTenant] = useState(false);
   const { register, handleSubmit, formState: { isSubmitting } } = useForm<LoginForm>();
 
   const onSubmit = async (data: LoginForm) => {
     setError(null);
     try {
       await signIn(data.email, data.password, data.totp_code);
+      // If pendingTenants is set after signIn, show tenant picker (handled below)
     } catch (err: unknown) {
       const raw = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
       const msg = typeof raw === "string" ? raw : "Credenciais inválidas";
       setError(msg);
+    }
+  };
+
+  const handleSelectTenant = async (tenantId: string) => {
+    setSelectingTenant(true);
+    setError(null);
+    try {
+      await selectTenant(tenantId);
+    } catch {
+      setError("Erro ao selecionar tenant. Tente novamente.");
+      setSelectingTenant(false);
     }
   };
 
@@ -38,61 +51,92 @@ export function Login() {
         </div>
 
         <div className="bg-gray-900 rounded-2xl p-8 shadow-xl">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Tenant selection step */}
+          {pendingTenants ? (
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">E-mail</label>
-              <input
-                type="email"
-                {...register("email", { required: true })}
-                className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                placeholder="admin@firemanager.local"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Senha</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  {...register("password", { required: true })}
-                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 pr-10"
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  onClick={() => setShowPassword((p) => !p)}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Código MFA <span className="text-gray-500">(opcional)</span>
-              </label>
-              <input
-                {...register("totp_code")}
-                className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                placeholder="123456"
-                maxLength={6}
-              />
-            </div>
-
-            {error && (
-              <p className="text-red-400 text-sm bg-red-900/20 border border-red-900 rounded-lg px-3 py-2">
-                {error}
+              <p className="text-sm font-semibold text-gray-300 mb-4 text-center">
+                Selecione o tenant para acessar:
               </p>
-            )}
+              <div className="space-y-2">
+                {pendingTenants.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => handleSelectTenant(t.id)}
+                    disabled={selectingTenant}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-gray-800 border border-gray-700 hover:border-brand-500 rounded-xl text-white text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Building2 size={16} className="text-brand-400" />
+                      {t.name}
+                    </span>
+                    <ArrowRight size={14} className="text-gray-400" />
+                  </button>
+                ))}
+              </div>
+              {error && (
+                <p className="text-red-400 text-sm bg-red-900/20 border border-red-900 rounded-lg px-3 py-2 mt-4">
+                  {error}
+                </p>
+              )}
+            </div>
+          ) : (
+            /* Login form */
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">E-mail</label>
+                <input
+                  type="email"
+                  {...register("email", { required: true })}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  placeholder="admin@firemanager.local"
+                />
+              </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50 mt-2"
-            >
-              {isSubmitting ? "Entrando..." : "Entrar"}
-            </button>
-          </form>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Senha</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    {...register("password", { required: true })}
+                    className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 pr-10"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    onClick={() => setShowPassword((p) => !p)}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Código MFA <span className="text-gray-500">(opcional)</span>
+                </label>
+                <input
+                  {...register("totp_code")}
+                  className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  placeholder="123456"
+                  maxLength={6}
+                />
+              </div>
+
+              {error && (
+                <p className="text-red-400 text-sm bg-red-900/20 border border-red-900 rounded-lg px-3 py-2">
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50 mt-2"
+              >
+                {isSubmitting ? "Entrando..." : "Entrar"}
+              </button>
+            </form>
+          )}
         </div>
 
         <p className="text-center text-xs text-gray-600 mt-6">

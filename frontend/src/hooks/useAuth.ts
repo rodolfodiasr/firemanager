@@ -5,7 +5,7 @@ import { useAuthStore } from "../store/authStore";
 import type { TokenResponse } from "../types/user";
 
 export function useAuth() {
-  const { user, isAuthenticated, login, logout, fetchMe } = useAuthStore();
+  const store = useAuthStore();
   const navigate = useNavigate();
 
   const signIn = useCallback(
@@ -15,16 +15,46 @@ export function useAuth() {
         password,
         totp_code: totpCode,
       });
-      await login(resp.data.access_token, resp.data.refresh_token);
+
+      const data = resp.data;
+
+      // Multiple tenants — need user to pick one
+      if (data.pre_token && data.tenants) {
+        store.setPendingTenants(data.pre_token, data.tenants);
+        return; // Login page renders tenant picker
+      }
+
+      // Single tenant or super admin — token ready
+      if (data.access_token && data.refresh_token) {
+        await store.login(data.access_token, data.refresh_token);
+        navigate("/");
+      }
+    },
+    [store, navigate]
+  );
+
+  const selectTenant = useCallback(
+    async (tenantId: string) => {
+      await store.selectTenant(tenantId);
       navigate("/");
     },
-    [login, navigate]
+    [store, navigate]
   );
 
   const signOut = useCallback(() => {
-    logout();
+    store.logout();
     navigate("/login");
-  }, [logout, navigate]);
+  }, [store, navigate]);
 
-  return { user, isAuthenticated, signIn, signOut, fetchMe };
+  return {
+    user:           store.user,
+    tenant:         store.tenant,
+    tenantRole:     store.tenantRole,
+    pendingTenants: store.pendingTenants,
+    isAuthenticated: store.isAuthenticated,
+    signIn,
+    selectTenant,
+    signOut,
+    fetchMe: store.fetchMe,
+  };
 }

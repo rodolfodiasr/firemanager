@@ -1,3 +1,5 @@
+import type { TenantInfo } from "./tenant";
+
 export type UserRole = "admin" | "operator" | "viewer";
 
 export interface User {
@@ -7,10 +9,13 @@ export interface User {
   role: UserRole;
   is_active: boolean;
   mfa_enabled: boolean;
+  is_super_admin: boolean;
 }
 
 export interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
+  access_token?: string;
+  refresh_token?: string;
+  pre_token?: string;
+  tenants?: TenantInfo[];
   token_type: string;
 }

@@ -8,14 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import get_current_user
+from app.api.auth import TenantContext, get_tenant_context
 from app.api.inspect import _SECURITY_COMMANDS
 from app.connectors.base import FirewallRule
 from app.connectors.factory import get_connector, get_ssh_connector
 from app.database import get_db
 from app.models.device import Device
 from app.models.operation import Operation
-from app.models.user import User
+from app.services.device_service import DeviceNotFoundError, get_device
 
 router = APIRouter()
 
@@ -502,12 +502,12 @@ async def _check_policy_instability(device_id: UUID, db: AsyncSession) -> list[d
 @router.get("/{device_id}/recommendations")
 async def get_recommendations(
     device_id: UUID,
-    _: Annotated[User, Depends(get_current_user)] = None,
-    db: Annotated[AsyncSession, Depends(get_db)] = None,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)] = None,
+    db:  Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> dict:
-    result = await db.execute(select(Device).where(Device.id == device_id))
-    device = result.scalar_one_or_none()
-    if not device:
+    try:
+        device = await get_device(db, device_id, tenant_id=ctx.tenant.id)
+    except DeviceNotFoundError:
         raise HTTPException(status_code=404, detail="Dispositivo não encontrado.")
 
     try:

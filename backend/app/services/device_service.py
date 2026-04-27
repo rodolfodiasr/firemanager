@@ -17,9 +17,10 @@ class DeviceNotFoundError(Exception):
     default_message = "Device não encontrado"
 
 
-async def create_device(db: AsyncSession, data: DeviceCreate) -> Device:
+async def create_device(db: AsyncSession, data: DeviceCreate, tenant_id: UUID) -> Device:
     encrypted = encrypt_credentials(data.credentials.model_dump())
     device = Device(
+        tenant_id=tenant_id,
         name=data.name,
         vendor=data.vendor,
         firmware_version=data.firmware_version,
@@ -36,23 +37,30 @@ async def create_device(db: AsyncSession, data: DeviceCreate) -> Device:
     return device
 
 
-async def get_device(db: AsyncSession, device_id: UUID) -> Device:
-    result = await db.execute(select(Device).where(Device.id == device_id))
+async def get_device(db: AsyncSession, device_id: UUID, tenant_id: UUID | None = None) -> Device:
+    query = select(Device).where(Device.id == device_id)
+    if tenant_id is not None:
+        query = query.where(Device.tenant_id == tenant_id)
+    result = await db.execute(query)
     device = result.scalar_one_or_none()
     if not device:
         raise DeviceNotFoundError()
     return device
 
 
-async def list_devices(db: AsyncSession, skip: int = 0, limit: int = 100) -> tuple[list[Device], int]:
-    count_result = await db.execute(select(Device))
-    all_devices = list(count_result.scalars().all())
+async def list_devices(
+    db: AsyncSession, tenant_id: UUID, skip: int = 0, limit: int = 100
+) -> tuple[list[Device], int]:
+    result = await db.execute(select(Device).where(Device.tenant_id == tenant_id))
+    all_devices = list(result.scalars().all())
     total = len(all_devices)
     return all_devices[skip : skip + limit], total
 
 
-async def update_device(db: AsyncSession, device_id: UUID, data: DeviceUpdate) -> Device:
-    device = await get_device(db, device_id)
+async def update_device(
+    db: AsyncSession, device_id: UUID, data: DeviceUpdate, tenant_id: UUID | None = None
+) -> Device:
+    device = await get_device(db, device_id, tenant_id)
     if data.name is not None:
         device.name = data.name
     if data.firmware_version is not None:
@@ -74,13 +82,15 @@ async def update_device(db: AsyncSession, device_id: UUID, data: DeviceUpdate) -
     return device
 
 
-async def delete_device(db: AsyncSession, device_id: UUID) -> None:
-    device = await get_device(db, device_id)
+async def delete_device(db: AsyncSession, device_id: UUID, tenant_id: UUID | None = None) -> None:
+    device = await get_device(db, device_id, tenant_id)
     await db.delete(device)
 
 
-async def health_check_device(db: AsyncSession, device_id: UUID) -> Device:
-    device = await get_device(db, device_id)
+async def health_check_device(
+    db: AsyncSession, device_id: UUID, tenant_id: UUID | None = None
+) -> Device:
+    device = await get_device(db, device_id, tenant_id)
     try:
         connector = get_connector(device)
         result = await connector.test_connection()

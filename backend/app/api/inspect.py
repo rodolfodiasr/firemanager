@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import get_current_user
+from app.api.auth import TenantContext, get_tenant_context
 from app.connectors.factory import get_connector, get_ssh_connector
 from app.database import get_db
 from app.models.device import Device
-from app.models.user import User
+from app.services.device_service import DeviceNotFoundError, get_device
 
 router = APIRouter()
 
@@ -68,8 +68,8 @@ def _parse_named_blocks(output: str, block_keywords: list[str]) -> list[dict]:
 async def inspect_device(
     device_id: UUID,
     resource: str = Query(...),
-    _: Annotated[User, Depends(get_current_user)] = None,
-    db: Annotated[AsyncSession, Depends(get_db)] = None,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)] = None,
+    db:  Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> dict:
     """Fetch live configuration data directly from the device, bypassing the LLM/operation flow."""
     if resource not in _VALID_RESOURCES:
@@ -78,9 +78,9 @@ async def inspect_device(
             detail=f"resource deve ser: {', '.join(_VALID_RESOURCES)}.",
         )
 
-    result = await db.execute(select(Device).where(Device.id == device_id))
-    device = result.scalar_one_or_none()
-    if not device:
+    try:
+        device = await get_device(db, device_id, tenant_id=ctx.tenant.id)
+    except DeviceNotFoundError:
         raise HTTPException(status_code=404, detail="Dispositivo não encontrado.")
 
     try:

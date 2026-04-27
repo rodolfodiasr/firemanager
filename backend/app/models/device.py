@@ -2,7 +2,8 @@ import enum
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, Enum, Integer, String, TIMESTAMP, Text
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, TIMESTAMP, Text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -29,6 +30,10 @@ class Device(Base):
     __tablename__ = "devices"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="RESTRICT"),
+        nullable=False, index=True,
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     vendor: Mapped[VendorEnum] = mapped_column(Enum(VendorEnum, native_enum=False), nullable=False)
     firmware_version: Mapped[str | None] = mapped_column(String(50), nullable=True)

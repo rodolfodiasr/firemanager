@@ -19,6 +19,7 @@ class UserRead(BaseModel):
     role: UserRole
     is_active: bool
     mfa_enabled: bool
+    is_super_admin: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -29,9 +30,17 @@ class LoginRequest(BaseModel):
     totp_code: str | None = None
 
 
+class TenantInfo(BaseModel):
+    id: str
+    name: str
+    slug: str
+
+
 class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
+    access_token: str | None = None
+    refresh_token: str | None = None
+    pre_token: str | None = None
+    tenants: list[TenantInfo] | None = None
     token_type: str = "bearer"
 
 

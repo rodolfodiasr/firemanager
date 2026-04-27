@@ -191,53 +191,53 @@ async def _enrich_operations(db: AsyncSession, ops: list[Operation]) -> list[Aud
     ]
 
 
-async def get_pending_operations(db: AsyncSession) -> list[AuditOperationRead]:
-    result = await db.execute(
-        select(Operation)
-        .where(Operation.status == OperationStatus.pending_review)
-        .order_by(Operation.created_at.desc())
-    )
+async def get_pending_operations(db: AsyncSession, tenant_id: UUID | None = None) -> list[AuditOperationRead]:
+    from app.models.device import Device
+    query = select(Operation).where(Operation.status == OperationStatus.pending_review)
+    if tenant_id:
+        query = query.join(Device, Operation.device_id == Device.id).where(Device.tenant_id == tenant_id)
+    result = await db.execute(query.order_by(Operation.created_at.desc()))
     return await _enrich_operations(db, list(result.scalars().all()))
 
 
-async def get_direct_operations(db: AsyncSession) -> list[AuditOperationRead]:
-    result = await db.execute(
-        select(Operation)
-        .where(
-            and_(
-                Operation.executed_direct == True,  # noqa: E712
-                Operation.status.in_([OperationStatus.completed, OperationStatus.failed]),
-            )
+async def get_direct_operations(db: AsyncSession, tenant_id: UUID | None = None) -> list[AuditOperationRead]:
+    from app.models.device import Device
+    query = select(Operation).where(
+        and_(
+            Operation.executed_direct == True,  # noqa: E712
+            Operation.status.in_([OperationStatus.completed, OperationStatus.failed]),
         )
-        .order_by(Operation.created_at.desc())
-        .limit(200)
     )
+    if tenant_id:
+        query = query.join(Device, Operation.device_id == Device.id).where(Device.tenant_id == tenant_id)
+    result = await db.execute(query.order_by(Operation.created_at.desc()).limit(200))
     return await _enrich_operations(db, list(result.scalars().all()))
 
 
-async def get_history_operations(db: AsyncSession) -> list[AuditOperationRead]:
-    result = await db.execute(
-        select(Operation)
-        .where(
-            and_(
-                Operation.status.in_([
-                    OperationStatus.completed,
-                    OperationStatus.failed,
-                    OperationStatus.rejected,
-                ]),
-                Operation.intent.notin_(list(_READ_ONLY_INTENTS)),
-            )
+async def get_history_operations(db: AsyncSession, tenant_id: UUID | None = None) -> list[AuditOperationRead]:
+    from app.models.device import Device
+    query = select(Operation).where(
+        and_(
+            Operation.status.in_([
+                OperationStatus.completed,
+                OperationStatus.failed,
+                OperationStatus.rejected,
+            ]),
+            Operation.intent.notin_(list(_READ_ONLY_INTENTS)),
         )
-        .order_by(Operation.created_at.desc())
-        .limit(200)
     )
+    if tenant_id:
+        query = query.join(Device, Operation.device_id == Device.id).where(Device.tenant_id == tenant_id)
+    result = await db.execute(query.order_by(Operation.created_at.desc()).limit(200))
     return await _enrich_operations(db, list(result.scalars().all()))
 
 
-async def get_pending_count(db: AsyncSession) -> int:
-    result = await db.execute(
-        select(Operation).where(Operation.status == OperationStatus.pending_review)
-    )
+async def get_pending_count(db: AsyncSession, tenant_id: UUID | None = None) -> int:
+    from app.models.device import Device
+    query = select(Operation).where(Operation.status == OperationStatus.pending_review)
+    if tenant_id:
+        query = query.join(Device, Operation.device_id == Device.id).where(Device.tenant_id == tenant_id)
+    result = await db.execute(query)
     return len(result.scalars().all())
 
 
