@@ -167,6 +167,31 @@ class FortinetConnector(BaseConnector):
         logger.info("Fortinet: created service object %s", name)
         return name
 
+    async def _resolve_interface(self, client: httpx.AsyncClient, name: str) -> str:
+        """Resolve interface or zone name case-insensitively. Falls back to 'any'."""
+        if not name or name.lower() == "any":
+            return "any"
+        # Try exact match on interface
+        r = await client.get(f"/api/v2/cmdb/system/interface/{name}?vdom={self.vdom}")
+        if r.status_code == 200:
+            return name
+        # Case-insensitive scan of all interfaces
+        r = await client.get(f"/api/v2/cmdb/system/interface?vdom={self.vdom}&format=name")
+        if r.status_code == 200:
+            for intf in r.json().get("results", []):
+                if intf.get("name", "").lower() == name.lower():
+                    logger.info("Fortinet: resolved interface '%s' → '%s'", name, intf["name"])
+                    return intf["name"]
+        # Case-insensitive scan of zones
+        r = await client.get(f"/api/v2/cmdb/system/zone?vdom={self.vdom}&format=name")
+        if r.status_code == 200:
+            for zone in r.json().get("results", []):
+                if zone.get("name", "").lower() == name.lower():
+                    logger.info("Fortinet: resolved zone '%s' → '%s'", name, zone["name"])
+                    return zone["name"]
+        logger.warning("Fortinet: interface/zone '%s' not found on device, using 'any'", name)
+        return "any"
+
     # ── Rules ────────────────────────────────────────────────────────────────
 
     async def create_rule(self, spec: RuleSpec) -> ExecutionResult:
@@ -185,9 +210,9 @@ class FortinetConnector(BaseConnector):
                     ),
                 )
 
-            # Use zones from spec; FortiOS accepts interface or zone names
-            src_intf = spec.src_zone if spec.src_zone else "any"
-            dst_intf = spec.dst_zone if spec.dst_zone else "any"
+            # Resolve interface/zone names — FortiOS is case-sensitive
+            src_intf = await self._resolve_interface(client, spec.src_zone or "any")
+            dst_intf = await self._resolve_interface(client, spec.dst_zone or "any")
 
             # Only pass known FortiOS policy fields from extra (avoid injecting invalid keys)
             _VALID_EXTRA = {"nat", "logtraffic", "schedule", "utm-status", "inspection-mode",
