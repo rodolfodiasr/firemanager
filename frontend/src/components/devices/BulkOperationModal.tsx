@@ -27,6 +27,7 @@ const VENDOR_LABELS: Record<string, string> = {
   opnsense: "OPNsense", mikrotik: "MikroTik", endian: "Endian",
   cisco_ios: "Cisco IOS", cisco_nxos: "Cisco NX-OS", juniper: "Juniper",
   aruba: "Aruba/HPE", ubiquiti: "Ubiquiti", dell: "DELL OS10", dell_n: "DELL N-Series",
+  hp_comware: "HP Comware",
 };
 
 export function BulkOperationModal({ isOpen, devices, onClose }: BulkOperationModalProps) {

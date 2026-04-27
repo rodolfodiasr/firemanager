@@ -29,6 +29,7 @@ class VendorEnum(str, enum.Enum):
     ubiquiti   = "ubiquiti"
     dell       = "dell"
     dell_n     = "dell_n"    # Dell EMC Networking N-Series (DNOS6: N1524P, N1548P, N2000, N3000)
+    hp_comware = "hp_comware"  # HP / H3C Comware (V1910, V3600, V5800, A-Series)
 
 
 class DeviceCategory(str, enum.Enum):

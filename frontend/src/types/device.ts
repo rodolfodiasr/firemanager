@@ -15,7 +15,8 @@ export type VendorEnum =
   | "aruba"
   | "ubiquiti"
   | "dell"
-  | "dell_n";
+  | "dell_n"
+  | "hp_comware";
 
 export type DeviceStatus = "online" | "offline" | "unknown" | "error";
 

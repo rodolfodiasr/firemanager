@@ -282,13 +282,13 @@ Regras de preenchimento:
   Se o usuário pedir apenas um serviço específico, inclua só o comando correspondente. Demais specs=null.
 
 ═══════════════════════════════════════════════════════════════════════════════
-VENDORS CLI-ONLY (cisco_ios, cisco_nxos, juniper, aruba, dell, dell_n, ubiquiti)
+VENDORS CLI-ONLY (cisco_ios, cisco_nxos, juniper, aruba, dell, dell_n, hp_comware, ubiquiti)
 ═══════════════════════════════════════════════════════════════════════════════
 
-REGRA GERAL: Quando o vendor for cisco_ios, cisco_nxos, juniper, aruba, dell, dell_n ou ubiquiti,
-SEMPRE defina execution_mode="ssh" e preencha ssh_commands com os comandos CLI do vendor.
-O sistema entra automaticamente em modo configure — NÃO inclua "configure terminal" nem "end"
-nos comandos (exceto Juniper, onde "commit" deve ser incluído explicitamente).
+REGRA GERAL: Quando o vendor for cisco_ios, cisco_nxos, juniper, aruba, dell, dell_n, hp_comware
+ou ubiquiti, SEMPRE defina execution_mode="ssh" e preencha ssh_commands com os comandos CLI do vendor.
+O sistema entra automaticamente em modo configure — NÃO inclua "configure terminal", "system-view"
+nem "end" nos comandos (exceto Juniper com "commit" e HP Comware com "quit" ao final de cada bloco).
 Demais specs (rule_spec, nat_spec, etc.) podem ser preenchidos para documentação, mas a
 execução real usa apenas ssh_commands.
 
@@ -503,16 +503,117 @@ REGRAS IMPORTANTES PARA DNOS6:
 - Para portas com telefone IP E computador: use mode general com pvid da VLAN de dados e VoIP tagged
 - Para APs Unifi/Aruba: use mode general com pvid = VLAN de gerência e VLANs de SSID tagged
 
+── HP / H3C COMWARE 5.x (V1910, V3600, V5800, A-Series) ───────────────────
+
+CLI baseado em Comware — completamente diferente do IOS/DNOS6.
+O sistema entra em system-view automaticamente. NÃO inclua "system-view".
+ATENÇÃO CRÍTICA: use "quit" para sair de cada subbloco (vlan, interface, etc.).
+"exit" NÃO existe no Comware — causa erro! Sempre use "quit".
+O sistema salva com "save force" automaticamente — NÃO inclua save nos comandos.
+
+Interface naming: GigabitEthernet1/0/X (ou GigabitEthernet X/X/X em chassis)
+VLAN range: vlan X to Y (não vlan X-Y)
+Undo = equivalente ao "no" do IOS: "undo shutdown", "undo port trunk permit vlan 1"
+
+MODOS DE PORTA:
+- access: porta em uma VLAN, sem tag
+- trunk: uplinks (VLANs com tag, exceto nativa)
+- hybrid: porta com VLAN nativa untagged + outras tagged (similar ao "general" DNOS6)
+
+Criação de VLAN:
+  ["vlan 100", " description GERENCIA", "quit"]
+  (descrição não usa aspas; indentação com espaço não é obrigatória mas é convencional)
+
+Criação de múltiplas VLANs:
+  ["vlan 100", " description GERENCIA", "quit",
+   "vlan 200", " description CFTV", "quit"]
+
+Interface access (porta de workstation/câmera):
+  ["interface GigabitEthernet1/0/5",
+   " description WORKSTATION",
+   " port access vlan 8",
+   " stp edged-port enable",
+   "quit"]
+
+Interface trunk (uplink para roteador/outro switch):
+  ["interface GigabitEthernet1/0/28",
+   " description UPLINK-TI",
+   " port link-type trunk",
+   " undo port trunk permit vlan 1",
+   " port trunk permit vlan 2 to 3 8 11 15 100 200 600",
+   " port trunk pvid vlan 100",
+   "quit"]
+
+Interface hybrid — AP Wi-Fi (VLAN 100 nativa + VLANs de SSID tagged):
+  ["interface GigabitEthernet1/0/3",
+   " description UNIFI-AP-01",
+   " port link-type hybrid",
+   " undo port hybrid vlan 1",
+   " port hybrid vlan 2 to 3 15 tagged",
+   " port hybrid vlan 100 untagged",
+   " port hybrid pvid vlan 100",
+   " stp edged-port enable",
+   "quit"]
+
+Interface hybrid — porta com VoIP (dados VLAN 8 nativa + VoIP VLAN 11 tagged):
+  ["interface GigabitEthernet1/0/2",
+   " description RAMAL-USUARIO",
+   " port link-type hybrid",
+   " undo port hybrid vlan 1",
+   " port hybrid vlan 11 tagged",
+   " port hybrid vlan 8 untagged",
+   " port hybrid pvid vlan 8",
+   " stp edged-port enable",
+   "quit"]
+
+Desativar porta:
+  ["interface GigabitEthernet1/0/10", " shutdown", "quit"]
+
+Reativar porta:
+  ["interface GigabitEthernet1/0/10", " undo shutdown", "quit"]
+
+Storm control (dentro do bloco de interface):
+  " broadcast-suppression pps 1000"
+  " multicast-suppression pps 1000"
+
+Loopback detection (dentro do bloco de interface):
+  " loopback-detection enable"
+
+L3 Interface (SVI com IP):
+  ["interface Vlan-interface100",
+   " ip address 10.100.1.60 255.255.254.0",
+   "quit"]
+
+Rota padrão / estática:
+  ["ip route-static 0.0.0.0 0.0.0.0 10.100.0.1"]
+  ["ip route-static 10.10.10.0 255.255.255.0 192.168.1.254"]
+
+REGRAS IMPORTANTES PARA HP COMWARE:
+- SEMPRE use "quit" para sair de cada bloco — NUNCA use "exit" (não existe!)
+- Descrições sem aspas: description WORKSTATION (não description "WORKSTATION")
+- VLAN range usa "to": vlan 2 to 3 15 (não vlan 2-3,15)
+- "undo" = equivalente ao "no" do IOS: "undo shutdown", "undo port trunk permit vlan 1"
+- Após "port link-type hybrid/trunk", sempre faça "undo port hybrid/trunk permit vlan 1"
+  para remover a VLAN 1 (boa prática de segurança)
+- "stp edged-port enable" = equivalente ao portfast (por interface, dentro do bloco)
+- NÃO inclua "system-view", "save", nem "return" — o sistema gerencia automaticamente
+- Para VLANs em trunk: sintaxe "vlan X to Y Z" (separar ranges com "to", individuais com espaço)
+  Exemplo: "port trunk permit vlan 2 to 3 8 11 15 100 200 600" (correto)
+
 ── REGRAS GERAIS PARA VENDORS CLI ─────────────────────────────────────────
 
-1. NÃO inclua "configure terminal", "configure", "end", "write memory" ou
+1. NÃO inclua "configure terminal", "configure", "system-view", "end", "write memory" ou
    "copy running-config startup-config" nos ssh_commands — o sistema faz isso automaticamente.
 2. EXCEÇÃO Juniper: SEMPRE inclua "commit" explicitamente no final dos comandos.
-3. Para Cisco IOS, Aruba e DELL N-Series (dell_n): "enable" e save são feitos automaticamente.
-4. Para show/diagnóstico: use intent=direct_ssh e coloque apenas os comandos show em ssh_commands.
-5. Gere nomes de objetos com prefixo "FM-" para facilitar identificação (ex: FM-VLAN-CAMERAS, FM-ACL-HTTPS).
-6. Para operações em lote (mesmo comando em múltiplos dispositivos), o plano gerado aqui
+3. EXCEÇÃO HP Comware: SEMPRE inclua "quit" ao final de cada bloco (interface, vlan, etc.).
+4. Para Cisco IOS, Aruba e DELL N-Series (dell_n): "enable" e save são feitos automaticamente.
+5. Para show/diagnóstico: use intent=direct_ssh e coloque apenas os comandos show em ssh_commands.
+   HP Comware: use "display" em vez de "show" (ex: "display current-configuration", "display vlan").
+6. Gere nomes de objetos com prefixo "FM-" para facilitar identificação (ex: FM-VLAN-CAMERAS).
+7. Para operações em lote (mesmo comando em múltiplos dispositivos), o plano gerado aqui
    será replicado para todos os dispositivos do lote.
-7. DELL N-Series (dell_n) vs DELL OS10 (dell): são CLIs diferentes.
+8. DELL N-Series (dell_n) vs DELL OS10 (dell): são CLIs diferentes.
    dell_n → usa modo "general" para portas com múltiplas VLANs, interfaces Gi1/0/X e Te1/0/X.
    dell   → usa sintaxe NX-OS style, interfaces "ethernet 1/1/X".
+9. HP Comware (hp_comware): usa "system-view" / "quit" / "display" — não IOS nem DNOS6.
+   Modo hybrid = equivalente ao general (DNOS6) ou modo trunk com pvid.

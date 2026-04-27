@@ -1,7 +1,8 @@
 """
 Generic SSH/CLI connector using Netmiko.
 Supports: Cisco IOS/IOS-XE, Cisco NX-OS, Juniper JunOS, Aruba OS-CX,
-          DELL OS10/PowerConnect, DELL DNOS6 (N-Series).
+          DELL OS10/PowerConnect, DELL DNOS6 (N-Series),
+          HP/H3C Comware (V1910, V3600, V5800).
 """
 import asyncio
 import re
@@ -29,6 +30,7 @@ _DEVICE_TYPE: dict[str, str] = {
     "aruba":      "aruba_osswitch",
     "dell":       "dell_os10",
     "dell_n":     "dell_dnos6",   # N-Series (N1524P/N1548P/N2000/N3000) running DNOS6
+    "hp_comware": "hp_comware",   # HP V1910 / H3C Comware 5.x — system-view, quit
     "ubiquiti":   "ubiquiti_edge",
 }
 
@@ -36,7 +38,11 @@ _DEVICE_TYPE: dict[str, str] = {
 _NEEDS_ENABLE = {"cisco_ios", "aruba", "dell_n"}
 
 # Vendors where netmiko.save_config() should run after send_config_set()
-_AUTO_SAVE = {"cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n"}
+# hp_comware: save_config() sends "save force" — no prompt needed
+_AUTO_SAVE = {"cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n", "hp_comware"}
+
+# Vendors that use 'quit' instead of 'exit' to leave submode (Comware-based)
+_USES_QUIT = {"hp_comware"}
 
 # CLI error patterns
 _ERROR_RE = re.compile(
@@ -128,6 +134,20 @@ class GenericSSHConnector:
                             )
                     conn.exit_config_mode()
                     combined = self._clean("\n".join(parts))
+                elif self.vendor in _USES_QUIT:
+                    # Comware: send_config_set enters system-view, but AI commands
+                    # already include 'quit' at the end of each block. We send raw.
+                    raw = conn.send_config_set(
+                        commands, exit_config_mode=False, read_timeout=60
+                    )
+                    combined = self._clean(raw)
+                    conn.exit_config_mode()  # sends 'quit' back to user view
+                    if self.vendor in _AUTO_SAVE:
+                        try:
+                            save_out = conn.save_config()
+                            combined += "\n" + self._clean(save_out)
+                        except Exception:
+                            pass
                 else:
                     raw = conn.send_config_set(commands, read_timeout=60)
                     combined = self._clean(raw)

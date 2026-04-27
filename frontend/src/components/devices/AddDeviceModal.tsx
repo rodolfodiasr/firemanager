@@ -159,6 +159,16 @@ const VENDOR_CONFIG: Record<VendorEnum, VendorConfig> = {
     defaultPort: 22,
     hint: "DELL EMC Networking N1524P / N1548P / N2000 / N3000 · Firmware 6.x · SSH habilitado",
   },
+  hp_comware: {
+    label: "HP / H3C Comware (V1910, V3600)",
+    authType: "user_pass",
+    connProtocol: "ssh",
+    usernameLabel: "Usuário",
+    usernamePlaceholder: "admin",
+    passwordLabel: "Senha",
+    defaultPort: 22,
+    hint: "HP V1910 / V3600 / A-Series · Comware 5.x · SSH habilitado (ip ssh server enable)",
+  },
 };
 
 const CATEGORY_LABELS: Record<DeviceCategory, string> = {
@@ -171,8 +181,8 @@ const CATEGORY_LABELS: Record<DeviceCategory, string> = {
 const CATEGORY_VENDORS: Record<DeviceCategory, VendorEnum[]> = {
   firewall:  ["fortinet", "sonicwall", "pfsense", "opnsense", "mikrotik", "endian"],
   router:    ["cisco_ios", "juniper", "mikrotik", "ubiquiti"],
-  switch:    ["cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n", "ubiquiti"],
-  l3_switch: ["cisco_ios", "cisco_nxos", "juniper", "aruba", "dell", "dell_n"],
+  switch:    ["cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n", "hp_comware", "ubiquiti"],
+  l3_switch: ["cisco_ios", "cisco_nxos", "juniper", "aruba", "dell", "dell_n", "hp_comware"],
 };
 
 export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProps) {

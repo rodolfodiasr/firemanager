@@ -18,6 +18,7 @@ CLI_VENDORS = frozenset({
     VendorEnum.aruba,
     VendorEnum.dell,
     VendorEnum.dell_n,
+    VendorEnum.hp_comware,
     VendorEnum.ubiquiti,
 })
 
