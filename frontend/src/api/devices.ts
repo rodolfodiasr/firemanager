@@ -1,4 +1,5 @@
 import type { Device, DeviceCreate } from "../types/device";
+import type { Recommendation } from "../types/recommendation";
 import apiClient from "./client";
 
 export const devicesApi = {
@@ -20,5 +21,12 @@ export const devicesApi = {
   inspect: (id: string, resource: "rules" | "nat" | "routes" | "security" | "content_filter" | "app_rules") =>
     apiClient
       .get<{ resource: string; items: Record<string, unknown>[] }>(`/devices/${id}/inspect`, { params: { resource } })
+      .then((r) => r.data),
+
+  recommendations: (id: string) =>
+    apiClient
+      .get<{ total: number; rules_analyzed: number; security_fetched: boolean; checks: Recommendation[] }>(
+        `/devices/${id}/recommendations`
+      )
       .then((r) => r.data),
 };

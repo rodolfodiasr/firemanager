@@ -3,15 +3,17 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Radar, RefreshCw, Bot, Terminal, ChevronDown, ChevronRight,
-  ShieldCheck, ShieldOff, CheckCircle2, XCircle, AlertCircle, Search,
+  ShieldCheck, ShieldOff, CheckCircle2, XCircle, AlertCircle, Search, ScanSearch,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { devicesApi } from "../api/devices";
 import type { Device } from "../types/device";
+import { InspectorRecommendations } from "./InspectorRecommendations";
 
 type Resource = "rules" | "nat" | "routes" | "security" | "content_filter" | "app_rules";
+type ActiveTab = Resource | "recommendations";
 
-const TABS: { key: Resource; label: string }[] = [
+const RESOURCE_TABS: { key: Resource; label: string }[] = [
   { key: "rules", label: "Regras de Acesso" },
   { key: "nat", label: "NAT" },
   { key: "routes", label: "Rotas" },
@@ -145,6 +147,7 @@ export function Inspector() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [deviceId, setDeviceId]     = useState(searchParams.get("device") ?? "");
+  const [activeTab, setActiveTab]   = useState<ActiveTab>("rules");
   const [resource, setResource]     = useState<Resource>("rules");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
@@ -159,7 +162,7 @@ export function Inspector() {
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["inspect", deviceId, resource],
     queryFn: () => devicesApi.inspect(deviceId, resource),
-    enabled: !!deviceId,
+    enabled: !!deviceId && activeTab !== "recommendations",
     staleTime: 30_000,
     retry: false,
   });
@@ -228,6 +231,7 @@ export function Inspector() {
   const hasActiveFilters = !!(searchText || actionFilter || srcZoneFilter || dstZoneFilter || objectFilter);
 
   function changeResource(r: Resource) {
+    setActiveTab(r);
     setResource(r);
     setExpandedRow(null);
     setTypeFilter(null);
@@ -367,7 +371,7 @@ export function Inspector() {
           </div>
           <select
             value={deviceId}
-            onChange={(e) => { setDeviceId(e.target.value); setExpandedRow(null); setTypeFilter(null); setSearchText(""); setActionFilter(null); setSrcZoneFilter(""); setDstZoneFilter(""); setObjectFilter(""); }}
+            onChange={(e) => { setDeviceId(e.target.value); setActiveTab("rules"); setResource("rules"); setExpandedRow(null); setTypeFilter(null); setSearchText(""); setActionFilter(null); setSrcZoneFilter(""); setDstZoneFilter(""); setObjectFilter(""); }}
             className="flex-1 min-w-[260px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           >
             <option value="">Selecione um dispositivo...</option>
@@ -375,7 +379,7 @@ export function Inspector() {
               <option key={d.id} value={d.id}>{d.name} — {d.vendor} ({d.host})</option>
             ))}
           </select>
-          {deviceId && (
+          {deviceId && activeTab !== "recommendations" && (
             <button
               onClick={() => refetch()}
               disabled={isFetching}
@@ -389,13 +393,13 @@ export function Inspector() {
 
         {/* Tabs */}
         {deviceId && (
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-            {TABS.map((tab) => (
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
+            {RESOURCE_TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => changeResource(tab.key)}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  resource === tab.key
+                  activeTab === tab.key
                     ? "bg-white shadow-sm text-gray-900"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
@@ -403,11 +407,27 @@ export function Inspector() {
                 {tab.label}
               </button>
             ))}
+            <button
+              onClick={() => setActiveTab("recommendations")}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                activeTab === "recommendations"
+                  ? "bg-white shadow-sm text-brand-700"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <ScanSearch size={14} />
+              Recomendações
+            </button>
           </div>
         )}
 
+        {/* Recommendations tab */}
+        {deviceId && activeTab === "recommendations" && (
+          <InspectorRecommendations deviceId={deviceId} deviceName={selectedDevice?.name} />
+        )}
+
         {/* Rules toolbar: search + action + zone + object filters */}
-        {deviceId && resource === "rules" && !isLoading && !isError && items.length > 0 && (
+        {deviceId && activeTab !== "recommendations" && resource === "rules" && !isLoading && !isError && items.length > 0 && (
           <div className="space-y-2">
             {/* Row 1: search + action */}
             <div className="flex flex-wrap items-center gap-3">
@@ -497,7 +517,7 @@ export function Inspector() {
         )}
 
         {/* Generic search bar for NAT / Routes */}
-        {deviceId && (resource === "nat" || resource === "routes") && !isLoading && !isError && items.length > 0 && (
+        {deviceId && activeTab !== "recommendations" && (resource === "nat" || resource === "routes") && !isLoading && !isError && items.length > 0 && (
           <div className="relative max-w-sm">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
@@ -511,7 +531,7 @@ export function Inspector() {
         )}
 
         {/* Type filter pills — content_filter / app_rules */}
-        {deviceId && isGrouped && !isLoading && !isError && items.length > 0 && (
+        {deviceId && activeTab !== "recommendations" && isGrouped && !isLoading && !isError && items.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-gray-500 font-medium">Filtrar por tipo:</span>
             <button
@@ -550,14 +570,14 @@ export function Inspector() {
           </div>
         )}
 
-        {deviceId && isLoading && (
+        {deviceId && activeTab !== "recommendations" && isLoading && (
           <div className="py-16 text-center text-gray-400">
             <RefreshCw size={28} className="mx-auto mb-3 animate-spin text-brand-500" />
             <p className="text-sm">Consultando {selectedDevice?.name ?? "dispositivo"}...</p>
           </div>
         )}
 
-        {deviceId && isError && (
+        {deviceId && activeTab !== "recommendations" && isError && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
             <XCircle size={32} className="mx-auto mb-2 text-red-400" />
             <p className="text-sm font-medium text-red-700">Falha ao conectar ao dispositivo</p>
@@ -570,13 +590,13 @@ export function Inspector() {
           </div>
         )}
 
-        {deviceId && !isLoading && !isError && items.length === 0 && (
+        {deviceId && activeTab !== "recommendations" && !isLoading && !isError && items.length === 0 && (
           <div className="py-16 text-center text-gray-400 bg-white rounded-xl border border-gray-200">
             <p className="text-sm">Nenhum item encontrado nesta categoria.</p>
           </div>
         )}
 
-        {deviceId && !isLoading && !isError && items.length > 0 && (
+        {deviceId && activeTab !== "recommendations" && !isLoading && !isError && items.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {/* Table header bar */}
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
