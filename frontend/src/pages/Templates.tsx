@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   BookMarked, Search, ChevronRight, Play, Send, X, Plus,
   Trash2, Loader2, Terminal,
@@ -13,6 +13,7 @@ import { operationsApi } from "../api/operations";
 import type { RuleTemplate, TemplateParameter } from "../types/template";
 import type { Device } from "../types/device";
 import { useAuthStore } from "../store/authStore";
+import { Pencil } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -82,16 +83,19 @@ function ParamField({
 
 // ── Template Modal ─────────────────────────────────────────────────────────────
 function TemplateModal({
-  template, onClose,
+  template, onClose, initialParams, initialDeviceId, parentOperationId,
 }: {
   template: RuleTemplate;
   onClose: () => void;
+  initialParams?: Record<string, string>;
+  initialDeviceId?: string;
+  parentOperationId?: string;
 }) {
   const navigate = useNavigate();
-  const [deviceId, setDeviceId] = useState("");
+  const [deviceId, setDeviceId] = useState(initialDeviceId ?? "");
   const [params, setParams] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
-    template.parameters.forEach((p) => { init[p.key] = p.default ?? ""; });
+    template.parameters.forEach((p) => { init[p.key] = initialParams?.[p.key] ?? p.default ?? ""; });
     return init;
   });
 
@@ -105,6 +109,9 @@ function TemplateModal({
         device_id: deviceId,
         description: `[Template] ${template.name}`,
         ssh_commands: preview,
+        template_slug: template.slug,
+        template_params: params,
+        ...(parentOperationId ? { parent_operation_id: parentOperationId } : {}),
       }).then(async (op) => {
         if (action === "execute") {
           return operationsApi.execute(op.id);
@@ -147,6 +154,12 @@ function TemplateModal({
             <X size={20} />
           </button>
         </div>
+        {parentOperationId && (
+          <div className="flex items-center gap-2 px-6 py-2 bg-amber-50 border-b border-amber-200">
+            <Pencil size={13} className="text-amber-600 shrink-0" />
+            <p className="text-xs text-amber-800 font-medium">Editando operação anterior — ajuste os parâmetros e execute novamente.</p>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {/* Device */}
@@ -325,17 +338,45 @@ export function Templates() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const editId = searchParams.get("edit");
 
   const [search, setSearch] = useState("");
   const [vendorFilter, setVendorFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [selected, setSelected] = useState<RuleTemplate | null>(null);
+  const [editContext, setEditContext] = useState<{
+    initialParams: Record<string, string>;
+    initialDeviceId: string;
+    parentOperationId: string;
+  } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ["templates", vendorFilter, categoryFilter],
     queryFn: () => templatesApi.list({ vendor: vendorFilter || undefined, category: categoryFilter || undefined }),
   });
+
+  const { data: editOp } = useQuery({
+    queryKey: ["operation", editId],
+    queryFn: () => operationsApi.get(editId!),
+    enabled: !!editId,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (!editOp || templates.length === 0) return;
+    const slug = editOp.action_plan?.template_slug as string | undefined;
+    if (!slug) return;
+    const tpl = templates.find((t) => t.slug === slug);
+    if (!tpl) return;
+    setEditContext({
+      initialParams: (editOp.action_plan?.template_params as Record<string, string>) ?? {},
+      initialDeviceId: editOp.device_id,
+      parentOperationId: editOp.id,
+    });
+    setSelected(tpl);
+  }, [editOp?.id, templates.length]);
 
   const deleteMutation = useMutation({
     mutationFn: (slug: string) => templatesApi.delete(slug),
@@ -357,7 +398,15 @@ export function Templates() {
 
   return (
     <PageWrapper title="Templates de Regras">
-      {selected && <TemplateModal template={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <TemplateModal
+          template={selected}
+          onClose={() => { setSelected(null); setEditContext(null); }}
+          initialParams={editContext?.initialParams}
+          initialDeviceId={editContext?.initialDeviceId}
+          parentOperationId={editContext?.parentOperationId}
+        />
+      )}}
       {showCreate && <CreateTemplateModal onClose={() => setShowCreate(false)} />}
 
       {/* Toolbar */}

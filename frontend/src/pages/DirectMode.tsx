@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Terminal, Play, Send, ChevronRight, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { Terminal, Play, Send, ChevronRight, CheckCircle2, XCircle, Loader2, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { devicesApi } from "../api/devices";
@@ -10,12 +11,30 @@ import type { Device } from "../types/device";
 type Step = "compose" | "review" | "done";
 
 export function DirectMode() {
+  const [searchParams] = useSearchParams();
+  const editId = searchParams.get("edit");
+
   const [step, setStep] = useState<Step>("compose");
   const [deviceId, setDeviceId] = useState("");
   const [description, setDescription] = useState("");
   const [rawCommands, setRawCommands] = useState("");
   const [operationId, setOperationId] = useState<string | null>(null);
   const [opStatus, setOpStatus] = useState<"idle" | "executing" | "done" | "failed">("idle");
+
+  const { data: editOp } = useQuery({
+    queryKey: ["operation", editId],
+    queryFn: () => operationsApi.get(editId!),
+    enabled: !!editId,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (!editOp) return;
+    setDeviceId(editOp.device_id);
+    setDescription(editOp.natural_language_input);
+    const cmds = (editOp.action_plan?.ssh_commands as string[] | undefined) ?? [];
+    setRawCommands(cmds.join("\n"));
+  }, [editOp?.id]);
 
   const { data: devices = [] } = useQuery({
     queryKey: ["devices"],
@@ -29,7 +48,12 @@ export function DirectMode() {
 
   const createMutation = useMutation({
     mutationFn: () =>
-      operationsApi.createDirectSSH({ device_id: deviceId, description, ssh_commands: commands }),
+      operationsApi.createDirectSSH({
+        device_id: deviceId,
+        description,
+        ssh_commands: commands,
+        ...(editId ? { parent_operation_id: editId } : {}),
+      }),
     onSuccess: (data) => {
       setOperationId(data.id);
       setStep("review");
@@ -70,8 +94,19 @@ export function DirectMode() {
   const canSubmit = deviceId && description.trim() && commands.length > 0;
 
   return (
-    <PageWrapper title="Modo Técnico">
+    <PageWrapper title={editOp ? "Editar Operação SSH" : "Modo Técnico"}>
       <div className="max-w-3xl">
+        {/* Edit banner */}
+        {editOp && (
+          <div className="flex items-start gap-2 mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <Pencil size={14} className="text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800">
+              <span className="font-semibold">Editando operação:</span>{" "}
+              {editOp.natural_language_input}
+            </p>
+          </div>
+        )}
+
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-6 text-sm">
           {(["compose", "review", "done"] as Step[]).map((s, i) => (

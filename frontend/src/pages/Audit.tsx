@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, XCircle, ChevronDown, ChevronRight, BookOpen, X, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { CheckCircle2, XCircle, ChevronDown, ChevronRight, BookOpen, X, Loader2, Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { StatusBadge } from "../components/shared/StatusBadge";
@@ -369,12 +370,22 @@ function TutorialDrawer({ operationId, onClose }: { operationId: string; onClose
 
 // ── History Tab ───────────────────────────────────────────────────────────────
 function HistoryTab() {
+  const navigate = useNavigate();
   const { data: ops = [], isLoading } = useQuery({
     queryKey: ["audit-history"],
     queryFn: auditApi.getHistory,
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [tutorialOpId, setTutorialOpId] = useState<string | null>(null);
+
+  function editRoute(op: typeof ops[number]): string {
+    const ap = op.action_plan as Record<string, unknown> | null;
+    if (op.intent === "direct_ssh") {
+      if (ap?.template_slug) return `/templates?edit=${op.id}`;
+      return `/direct-mode?edit=${op.id}`;
+    }
+    return `/agent?edit=${op.id}`;
+  }
 
   if (isLoading) return <div className="py-10 text-center text-gray-400">Carregando...</div>;
   if (ops.length === 0)
@@ -488,8 +499,8 @@ function HistoryTab() {
                   </div>
                 )}
 
-                {op.status === "completed" && (
-                  <div className="pt-1">
+                <div className="pt-1 flex flex-wrap gap-2">
+                  {op.status === "completed" && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setTutorialOpId(op.id); }}
                       className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-600 border border-brand-300 rounded-lg hover:bg-brand-50 transition-colors"
@@ -497,8 +508,15 @@ function HistoryTab() {
                       <BookOpen size={15} />
                       Ver como fazer manualmente
                     </button>
-                  </div>
-                )}
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate(editRoute(op)); }}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <Pencil size={15} />
+                    Editar / Repetir
+                  </button>
+                </div>
               </div>
             </div>
           )}

@@ -50,6 +50,7 @@ async def chat_with_agent(
         operation_id=None,
         device_id=data.device_id,
         user_message=data.natural_language_input,
+        parent_operation_id=data.parent_operation_id,
     )
     return await _chat_response(db, current_user, operation, agent_response)
 
@@ -159,6 +160,9 @@ class DirectSSHCreate(BaseModel):
     device_id: UUID
     description: str
     ssh_commands: list[str]
+    parent_operation_id: UUID | None = None
+    template_slug: str | None = None
+    template_params: dict | None = None
 
 
 @router.post("/direct-ssh", response_model=OperationRead)
@@ -177,7 +181,7 @@ async def create_direct_ssh_operation(
     if not dev.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Dispositivo não encontrado.")
 
-    action_plan = {
+    action_plan: dict = {
         "intent": "direct_ssh",
         "device_id": str(data.device_id),
         "steps": [],
@@ -185,6 +189,10 @@ async def create_direct_ssh_operation(
         "ssh_commands": data.ssh_commands,
         "raw_intent_data": {"description": data.description},
     }
+    if data.template_slug:
+        action_plan["template_slug"] = data.template_slug
+    if data.template_params:
+        action_plan["template_params"] = data.template_params
 
     operation = Operation(
         user_id=current_user.id,
@@ -193,6 +201,7 @@ async def create_direct_ssh_operation(
         intent="direct_ssh",
         action_plan=action_plan,
         status=OperationStatus.approved,
+        parent_operation_id=data.parent_operation_id,
     )
     db.add(operation)
     await db.commit()

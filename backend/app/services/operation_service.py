@@ -177,7 +177,8 @@ _sessions: dict[UUID, AgentSession] = {}
 
 
 async def start_or_continue_operation(
-    db: AsyncSession, user_id: UUID, operation_id: UUID | None, device_id: UUID, user_message: str
+    db: AsyncSession, user_id: UUID, operation_id: UUID | None, device_id: UUID, user_message: str,
+    parent_operation_id: UUID | None = None,
 ) -> tuple[Operation, str]:
     device = await get_device(db, device_id)
 
@@ -187,6 +188,7 @@ async def start_or_continue_operation(
             device_id=device_id,
             natural_language_input=user_message,
             status=OperationStatus.pending,
+            parent_operation_id=parent_operation_id,
         )
         db.add(operation)
         await db.flush()

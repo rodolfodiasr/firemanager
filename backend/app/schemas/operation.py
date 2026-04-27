@@ -9,6 +9,7 @@ from app.models.operation import OperationStatus
 class OperationCreate(BaseModel):
     device_id: UUID
     natural_language_input: str
+    parent_operation_id: UUID | None = None
 
 
 class ChatMessage(BaseModel):
@@ -28,6 +29,7 @@ class OperationRead(BaseModel):
     reviewer_id: UUID | None = None
     reviewed_at: datetime | None = None
     executed_direct: bool = False
+    parent_operation_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 

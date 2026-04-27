@@ -46,6 +46,9 @@ class Operation(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     executed_direct: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     tutorial: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parent_operation_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("operations.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False, index=True
     )

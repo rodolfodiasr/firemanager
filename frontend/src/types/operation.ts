@@ -20,6 +20,7 @@ export interface Operation {
   reviewer_id: string | null;
   reviewed_at: string | null;
   executed_direct: boolean;
+  parent_operation_id: string | null;
   created_at: string;
   updated_at: string;
 }

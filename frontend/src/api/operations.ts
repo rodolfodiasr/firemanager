@@ -2,11 +2,12 @@ import type { ChatResponse, Operation } from "../types/operation";
 import apiClient from "./client";
 
 export const operationsApi = {
-  startChat: (deviceId: string, message: string) =>
+  startChat: (deviceId: string, message: string, parentOperationId?: string) =>
     apiClient
       .post<ChatResponse>("/operations", {
         device_id: deviceId,
         natural_language_input: message,
+        parent_operation_id: parentOperationId ?? null,
       })
       .then((r) => r.data),
 
@@ -28,6 +29,13 @@ export const operationsApi = {
   getTutorial: (id: string) =>
     apiClient.get<{ tutorial: string }>(`/operations/${id}/tutorial`).then((r) => r.data),
 
-  createDirectSSH: (body: { device_id: string; description: string; ssh_commands: string[] }) =>
+  createDirectSSH: (body: {
+    device_id: string;
+    description: string;
+    ssh_commands: string[];
+    parent_operation_id?: string;
+    template_slug?: string;
+    template_params?: Record<string, string>;
+  }) =>
     apiClient.post<{ id: string; status: string }>("/operations/direct-ssh", body).then((r) => r.data),
 };

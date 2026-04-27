@@ -13,6 +13,7 @@ interface ChatWindowProps {
   onExecute: () => void;
   onSubmitForReview: () => void;
   onCancel: () => void;
+  defaultInput?: string;
 }
 
 export function ChatWindow({
@@ -24,8 +25,9 @@ export function ChatWindow({
   onExecute,
   onSubmitForReview,
   onCancel,
+  defaultInput,
 }: ChatWindowProps) {
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(defaultInput ?? "");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
