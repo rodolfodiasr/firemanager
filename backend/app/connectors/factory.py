@@ -44,8 +44,8 @@ def get_connector(device: Device) -> BaseConnector:
     if device.vendor == VendorEnum.fortinet:
         return FortinetConnector(
             host=base_url,
-            token=creds.get("token", ""),
-            vdom=creds.get("vdom", "root"),
+            token=creds.get("token") or "",
+            vdom=creds.get("vdom") or "root",
             verify_ssl=device.verify_ssl,
         )
 
