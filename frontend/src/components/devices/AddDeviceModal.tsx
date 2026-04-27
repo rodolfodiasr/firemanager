@@ -147,7 +147,17 @@ const VENDOR_CONFIG: Record<VendorEnum, VendorConfig> = {
     usernamePlaceholder: "admin",
     passwordLabel: "Senha",
     defaultPort: 22,
-    hint: "DELL EMC PowerSwitch S/Z-series (OS10) ou PowerConnect · SSH habilitado",
+    hint: "DELL EMC PowerSwitch S/Z-series (OS10) · SSH habilitado",
+  },
+  dell_n: {
+    label: "DELL N-Series (DNOS6)",
+    authType: "user_pass",
+    connProtocol: "ssh",
+    usernameLabel: "Usuário",
+    usernamePlaceholder: "admin",
+    passwordLabel: "Senha (enable)",
+    defaultPort: 22,
+    hint: "DELL EMC Networking N1524P / N1548P / N2000 / N3000 · Firmware 6.x · SSH habilitado",
   },
 };
 
@@ -161,8 +171,8 @@ const CATEGORY_LABELS: Record<DeviceCategory, string> = {
 const CATEGORY_VENDORS: Record<DeviceCategory, VendorEnum[]> = {
   firewall:  ["fortinet", "sonicwall", "pfsense", "opnsense", "mikrotik", "endian"],
   router:    ["cisco_ios", "juniper", "mikrotik", "ubiquiti"],
-  switch:    ["cisco_ios", "cisco_nxos", "aruba", "dell", "ubiquiti"],
-  l3_switch: ["cisco_ios", "cisco_nxos", "juniper", "aruba", "dell"],
+  switch:    ["cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n", "ubiquiti"],
+  l3_switch: ["cisco_ios", "cisco_nxos", "juniper", "aruba", "dell", "dell_n"],
 };
 
 export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProps) {

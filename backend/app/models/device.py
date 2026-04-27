@@ -28,6 +28,7 @@ class VendorEnum(str, enum.Enum):
     aruba      = "aruba"
     ubiquiti   = "ubiquiti"
     dell       = "dell"
+    dell_n     = "dell_n"    # Dell EMC Networking N-Series (DNOS6: N1524P, N1548P, N2000, N3000)
 
 
 class DeviceCategory(str, enum.Enum):

@@ -282,10 +282,10 @@ Regras de preenchimento:
   Se o usuário pedir apenas um serviço específico, inclua só o comando correspondente. Demais specs=null.
 
 ═══════════════════════════════════════════════════════════════════════════════
-VENDORS CLI-ONLY (cisco_ios, cisco_nxos, juniper, aruba, dell, ubiquiti)
+VENDORS CLI-ONLY (cisco_ios, cisco_nxos, juniper, aruba, dell, dell_n, ubiquiti)
 ═══════════════════════════════════════════════════════════════════════════════
 
-REGRA GERAL: Quando o vendor for cisco_ios, cisco_nxos, juniper, aruba, dell ou ubiquiti,
+REGRA GERAL: Quando o vendor for cisco_ios, cisco_nxos, juniper, aruba, dell, dell_n ou ubiquiti,
 SEMPRE defina execution_mode="ssh" e preencha ssh_commands com os comandos CLI do vendor.
 O sistema entra automaticamente em modo configure — NÃO inclua "configure terminal" nem "end"
 nos comandos (exceto Juniper, onde "commit" deve ser incluído explicitamente).
@@ -412,13 +412,107 @@ Port-channel:
   ["interface port-channel 1", "no shutdown", "exit",
    "interface ethernet 1/1/1", "channel-group 1 mode active", "exit"]
 
+── DELL DNOS6 (N-Series: N1524P, N1548P, N2000, N3000) ────────────────────
+
+Firmware 6.x — CLI próprio, diferente do OS10. NÃO inclua "configure" nem "exit" final.
+O sistema entra em "configure" automaticamente e salva com "copy running-config startup-config".
+Interfaces Gigabit = Gi1/0/X  |  Interfaces 10G (SFP+) = Te1/0/X
+
+ATENÇÃO — MODO "GENERAL" (exclusivo DNOS6):
+O modo "general" permite que uma porta seja simultaneamente untagged em uma VLAN e tagged em outras.
+É o padrão usado para portas com telefone IP (VLAN de dados untagged + VLAN VoIP tagged) ou APs.
+Comandos em modo general:
+  switchport general pvid X             → define a VLAN nativa (untagged)
+  switchport general allowed vlan add X → adiciona VLAN untagged
+  switchport general allowed vlan add X,Y tagged  → adiciona VLANs tagged
+  switchport general allowed vlan remove 1         → remove VLAN 1 (boa prática)
+
+Criação de VLAN:
+  ["vlan 100", "name \"GERENCIA\"", "exit"]
+
+Criação de múltiplas VLANs de uma vez:
+  ["vlan 100,200,300", "exit"]
+
+Interface acesso simples (apenas untagged):
+  ["interface Gi1/0/5", "description \"WORKSTATION\"", "spanning-tree portfast",
+   "spanning-tree guard root", "switchport access vlan 8", "exit"]
+
+Interface modo general — porta com dados (VLAN 8) + VoIP (VLAN 11) + gerência tagged (VLAN 100):
+  ["interface Gi1/0/2", "description \"RAMAL_USUARIO\"",
+   "spanning-tree portfast", "spanning-tree guard root",
+   "switchport mode general",
+   "switchport general pvid 8",
+   "switchport general allowed vlan add 8",
+   "switchport general allowed vlan add 11,100 tagged",
+   "switchport general allowed vlan remove 1",
+   "exit"]
+
+Interface modo general — AP (VLAN 100 nativa + VLANs Wi-Fi tagged):
+  ["interface Gi1/0/10", "description \"AP-WIFI-01\"",
+   "spanning-tree portfast", "spanning-tree guard root",
+   "switchport mode general",
+   "switchport general pvid 100",
+   "switchport general allowed vlan add 100",
+   "switchport general allowed vlan add 2,3,15,61 tagged",
+   "switchport general allowed vlan remove 1",
+   "exit"]
+
+Interface trunk (uplink para outro switch ou roteador):
+  ["interface Te1/0/1", "description \"UPLINK-CORE\"",
+   "switchport mode trunk",
+   "switchport trunk allowed vlan 2,3,8,11,15,100,200,600",
+   "exit"]
+
+Porta de câmera / dispositivo (acesso VLAN 200):
+  ["interface Gi1/0/15", "description \"CAMERA-01\"",
+   "spanning-tree portfast", "spanning-tree guard root",
+   "switchport access vlan 200", "exit"]
+
+Desativar porta:
+  ["interface Gi1/0/40", "shutdown", "exit"]
+
+Reativar porta:
+  ["interface Gi1/0/40", "no shutdown", "exit"]
+
+Storm-control (aplica junto com outras configs da interface):
+  "storm-control broadcast level 1"
+  "storm-control multicast level 1"
+  (valores comuns: 1% para portas de acesso, 10% para uplinks)
+
+Interface L3 (VLAN SVI com IP):
+  ["interface vlan 100", "ip address 10.100.1.190 255.255.248.0", "exit"]
+
+DHCP relay em VLAN (ip helper-address):
+  ["interface vlan 8",
+   "ip helper-address 172.16.2.220 domain",
+   "ip helper-address 172.16.2.221 domain",
+   "ip helper-address 172.16.0.74 dhcp",
+   "exit"]
+
+Rota padrão:
+  ["ip default-gateway 10.100.0.1"]
+
+REGRAS IMPORTANTES PARA DNOS6:
+- Descrições SEMPRE entre aspas duplas: description "NOME DA PORTA"
+- VLAN names SEMPRE entre aspas duplas: name "GERENCIA"
+- NÃO use "switchport mode access" junto com "switchport general" — são mutuamente exclusivos
+- Ao usar modo general, SEMPRE remova a VLAN 1: "switchport general allowed vlan remove 1"
+- "spanning-tree bpdu-protection" é global (nível de switch, não por porta)
+- "spanning-tree portfast" e "spanning-tree guard root" são por porta
+- Para portas apenas com dispositivos (câmeras, impressoras, desktops): mode access é suficiente
+- Para portas com telefone IP E computador: use mode general com pvid da VLAN de dados e VoIP tagged
+- Para APs Unifi/Aruba: use mode general com pvid = VLAN de gerência e VLANs de SSID tagged
+
 ── REGRAS GERAIS PARA VENDORS CLI ─────────────────────────────────────────
 
 1. NÃO inclua "configure terminal", "configure", "end", "write memory" ou
    "copy running-config startup-config" nos ssh_commands — o sistema faz isso automaticamente.
 2. EXCEÇÃO Juniper: SEMPRE inclua "commit" explicitamente no final dos comandos.
-3. Para Cisco IOS e Aruba: o "enable" e "write memory" são feitos automaticamente.
+3. Para Cisco IOS, Aruba e DELL N-Series (dell_n): "enable" e save são feitos automaticamente.
 4. Para show/diagnóstico: use intent=direct_ssh e coloque apenas os comandos show em ssh_commands.
 5. Gere nomes de objetos com prefixo "FM-" para facilitar identificação (ex: FM-VLAN-CAMERAS, FM-ACL-HTTPS).
 6. Para operações em lote (mesmo comando em múltiplos dispositivos), o plano gerado aqui
    será replicado para todos os dispositivos do lote.
+7. DELL N-Series (dell_n) vs DELL OS10 (dell): são CLIs diferentes.
+   dell_n → usa modo "general" para portas com múltiplas VLANs, interfaces Gi1/0/X e Te1/0/X.
+   dell   → usa sintaxe NX-OS style, interfaces "ethernet 1/1/X".

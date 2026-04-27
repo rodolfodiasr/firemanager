@@ -14,7 +14,8 @@ export type VendorEnum =
   | "juniper"
   | "aruba"
   | "ubiquiti"
-  | "dell";
+  | "dell"
+  | "dell_n";
 
 export type DeviceStatus = "online" | "offline" | "unknown" | "error";
 

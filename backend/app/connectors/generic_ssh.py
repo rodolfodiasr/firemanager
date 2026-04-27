@@ -1,6 +1,7 @@
 """
 Generic SSH/CLI connector using Netmiko.
-Supports: Cisco IOS/IOS-XE, Cisco NX-OS, Juniper JunOS, Aruba OS-CX, DELL OS10/PowerConnect.
+Supports: Cisco IOS/IOS-XE, Cisco NX-OS, Juniper JunOS, Aruba OS-CX,
+          DELL OS10/PowerConnect, DELL DNOS6 (N-Series).
 """
 import asyncio
 import re
@@ -27,14 +28,15 @@ _DEVICE_TYPE: dict[str, str] = {
     "juniper":    "juniper_junos",
     "aruba":      "aruba_osswitch",
     "dell":       "dell_os10",
+    "dell_n":     "dell_dnos6",   # N-Series (N1524P/N1548P/N2000/N3000) running DNOS6
     "ubiquiti":   "ubiquiti_edge",
 }
 
 # Vendors that require 'enable' before config mode
-_NEEDS_ENABLE = {"cisco_ios", "aruba"}
+_NEEDS_ENABLE = {"cisco_ios", "aruba", "dell_n"}
 
 # Vendors where netmiko.save_config() should run after send_config_set()
-_AUTO_SAVE = {"cisco_ios", "cisco_nxos", "aruba", "dell"}
+_AUTO_SAVE = {"cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n"}
 
 # CLI error patterns
 _ERROR_RE = re.compile(
