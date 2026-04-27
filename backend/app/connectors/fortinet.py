@@ -112,20 +112,47 @@ class FortinetConnector(BaseConnector):
             logger.info("Fortinet: created address object %s (%s)", name, subnet)
         return name
 
-    async def _ensure_service(self, client: httpx.AsyncClient, svc: str) -> str:
-        """Return existing FortiGate service object name, creating it if needed."""
+    # Built-in FortiOS service names — avoid creating custom objects for these
+    _BUILTIN_SERVICES: dict[tuple[str, str], str] = {
+        ("TCP", "80"): "HTTP", ("TCP", "443"): "HTTPS", ("TCP", "8443"): "HTTPS",
+        ("TCP", "22"): "SSH", ("TCP", "21"): "FTP", ("TCP", "23"): "TELNET",
+        ("TCP", "25"): "SMTP", ("TCP", "110"): "POP3", ("TCP", "143"): "IMAP",
+        ("TCP", "993"): "IMAPS", ("TCP", "995"): "POP3S", ("TCP", "465"): "SMTPS",
+        ("TCP", "3389"): "RDP", ("TCP", "3306"): "MYSQL", ("TCP", "1433"): "MS-SQL",
+        ("TCP", "5432"): "HTTPS",  # no built-in for postgres
+        ("UDP", "53"): "DNS", ("TCP", "53"): "DNS",
+        ("UDP", "67"): "DHCP", ("UDP", "68"): "DHCP",
+        ("UDP", "161"): "SNMP", ("UDP", "162"): "SNMP-TRAP",
+        ("TCP", "514"): "SYSLOG", ("UDP", "514"): "SYSLOG",
+        ("UDP", "123"): "NTP",
+        ("TCP", "8080"): "HTTP",  # common alt-HTTP — FortiOS treats as HTTP
+    }
+
+    async def _ensure_service(self, client: httpx.AsyncClient, svc: str) -> str | None:
+        """Return FortiGate service object name, creating custom one if needed.
+        Returns None if the service cannot be created (permissions issue)."""
         if svc.upper() in ("ANY", "ALL", ""):
             return "ALL"
-        # If it doesn't look like "PROTO/PORT" assume it's already an object name
         parts = svc.upper().split("/")
         if len(parts) != 2:
+            # Assume it's already an object name — use as-is
             return svc
         proto, port = parts
+
+        # 1. Try built-in service first (no creation needed)
+        builtin = self._BUILTIN_SERVICES.get((proto, port))
+        if builtin:
+            logger.info("Fortinet: using built-in service %s for %s", builtin, svc)
+            return builtin
+
+        # 2. Check if custom object already exists
         name = self._svc_obj_name(svc)
         check = await client.get(f"/api/v2/cmdb/firewall.service/custom/{name}?vdom={self.vdom}")
         if check.status_code == 200:
             logger.debug("Fortinet service object already exists: %s", name)
             return name
+
+        # 3. Try to create custom service
         svc_payload: dict[str, Any] = {"name": name, "protocol": "TCP/UDP/SCTP"}
         if proto == "TCP":
             svc_payload["tcp-portrange"] = port
@@ -135,9 +162,9 @@ class FortinetConnector(BaseConnector):
             svc_payload["tcp-portrange"] = port
         r = await client.post(f"/api/v2/cmdb/firewall.service/custom?vdom={self.vdom}", json=svc_payload)
         if r.status_code not in (200, 201):
-            logger.warning("Fortinet: failed to create service object %s: %s", name, r.text)
-        else:
-            logger.info("Fortinet: created service object %s", name)
+            logger.error("Fortinet: cannot create service object %s (HTTP %s): %s", name, r.status_code, r.text)
+            return None  # signal failure
+        logger.info("Fortinet: created service object %s", name)
         return name
 
     # ── Rules ────────────────────────────────────────────────────────────────
@@ -147,6 +174,16 @@ class FortinetConnector(BaseConnector):
             src_name = await self._ensure_address(client, spec.src_address)
             dst_name = await self._ensure_address(client, spec.dst_address)
             svc_name = await self._ensure_service(client, spec.service)
+            if svc_name is None:
+                return ExecutionResult(
+                    success=False,
+                    error=(
+                        f"Não foi possível criar o objeto de serviço para '{spec.service}'. "
+                        "Verifique se o token da API tem permissão Read-Write em Firewall. "
+                        "No FortiGate: System > Administrators > edite o REST API Admin > "
+                        "selecione um perfil com acesso a 'Firewall'."
+                    ),
+                )
 
             # Use zones from spec; FortiOS accepts interface or zone names
             src_intf = spec.src_zone if spec.src_zone else "any"
