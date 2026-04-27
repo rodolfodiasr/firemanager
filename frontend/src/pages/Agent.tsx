@@ -11,9 +11,11 @@ import { operationsApi } from "../api/operations";
 export function Agent() {
   const [searchParams] = useSearchParams();
   const editId = searchParams.get("edit");
+  const deviceParam = searchParams.get("device");
+  const seedParam = searchParams.get("seed");
 
   const { devices } = useDevices();
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(deviceParam ?? null);
 
   const { data: editOp } = useQuery({
     queryKey: ["operation", editId],
@@ -35,6 +37,8 @@ export function Agent() {
 
   const editSeedInput = editOp
     ? `${editOp.natural_language_input} — Quero ajustar: `
+    : seedParam
+    ? decodeURIComponent(seedParam)
     : undefined;
 
   return (

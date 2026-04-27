@@ -10,6 +10,7 @@ import { Settings } from "./pages/Settings";
 import { Audit } from "./pages/Audit";
 import { DirectMode } from "./pages/DirectMode";
 import { Templates } from "./pages/Templates";
+import { Inspector } from "./pages/Inspector";
 import { Sidebar } from "./components/layout/Sidebar";
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -96,6 +97,14 @@ export function AppRouter() {
         element={
           <ProtectedLayout>
             <Templates />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/inspector"
+        element={
+          <ProtectedLayout>
+            <Inspector />
           </ProtectedLayout>
         }
       />

@@ -13,9 +13,10 @@ type Step = "compose" | "review" | "done";
 export function DirectMode() {
   const [searchParams] = useSearchParams();
   const editId = searchParams.get("edit");
+  const deviceParam = searchParams.get("device");
 
   const [step, setStep] = useState<Step>("compose");
-  const [deviceId, setDeviceId] = useState("");
+  const [deviceId, setDeviceId] = useState(deviceParam ?? "");
   const [description, setDescription] = useState("");
   const [rawCommands, setRawCommands] = useState("");
   const [operationId, setOperationId] = useState<string | null>(null);
