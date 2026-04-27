@@ -67,6 +67,7 @@ class Device(Base):
         Enum(DeviceStatus, native_enum=False), nullable=False, default=DeviceStatus.unknown
     )
     last_seen: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[DeviceCategory] = mapped_column(
         Enum(DeviceCategory, native_enum=False), nullable=False, default=DeviceCategory.firewall
     )

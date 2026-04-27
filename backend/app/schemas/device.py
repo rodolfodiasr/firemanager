@@ -53,6 +53,7 @@ class DeviceRead(BaseModel):
     verify_ssl: bool
     status: DeviceStatus
     last_seen: datetime | None
+    last_error: str | None
     notes: str | None
     created_at: datetime
     updated_at: datetime

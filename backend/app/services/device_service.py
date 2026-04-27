@@ -99,16 +99,19 @@ async def health_check_device(
         result = await connector.test_connection()
         if result.success:
             device.status = DeviceStatus.online
+            device.last_error = None
             if result.firmware_version:
                 device.firmware_version = result.firmware_version
         else:
             logger.warning("Health check failed for device %s: %s", device_id, result.error)
             device.status = DeviceStatus.offline
+            device.last_error = result.error
         from datetime import datetime, timezone
         device.last_seen = datetime.now(timezone.utc)
     except Exception as exc:
         logger.exception("Health check exception for device %s: %s", device_id, exc)
         device.status = DeviceStatus.error
+        device.last_error = str(exc)
     await db.flush()
     await db.refresh(device)
     return device

@@ -11,6 +11,10 @@ from app.connectors.base import (
     ExecutionResult,
     FirewallRule,
     GroupSpec,
+    NatPolicy,
+    NatSpec,
+    RoutePolicy,
+    RouteSpec,
     RuleSpec,
 )
 
@@ -136,3 +140,112 @@ class FortinetConnector(BaseConnector):
             resp = await client.get(f"/api/v2/cmdb/firewall/policy?vdom={self.vdom}")
             resp.raise_for_status()
             return json.dumps(resp.json(), indent=2)
+
+    # ── NAT (VIP — Virtual IP objects) ──────────────────────────────────────
+
+    async def list_nat_policies(self) -> list[NatPolicy]:
+        async with self._client() as client:
+            resp = await client.get(f"/api/v2/cmdb/firewall/vip?vdom={self.vdom}")
+            resp.raise_for_status()
+            policies = []
+            for r in resp.json().get("results", []):
+                extip = r.get("extip", "")
+                mappedip = r.get("mappedip", [{}])
+                mapped = mappedip[0].get("range", "") if mappedip else ""
+                policies.append(NatPolicy(
+                    rule_id=str(r.get("mkey", r.get("name", ""))),
+                    name=r.get("name", ""),
+                    inbound=r.get("extintf", "any"),
+                    outbound="any",
+                    source="Any",
+                    translated_source="Original",
+                    destination=extip,
+                    translated_destination=mapped,
+                    service=str(r.get("service", [{}])[0].get("name", "Any")) if r.get("service") else "Any",
+                    translated_service="Original",
+                    enabled=r.get("status", "enable") == "enable",
+                    comment=r.get("comment", ""),
+                    raw=r,
+                ))
+            return policies
+
+    async def create_nat_policy(self, spec: NatSpec) -> ExecutionResult:
+        # FortiGate VIP = DNAT (external IP → mapped internal IP)
+        payload: dict[str, Any] = {
+            "name": spec.name,
+            "extintf": spec.inbound_interface,
+            "extip": spec.destination,
+            "mappedip": [{"range": spec.translated_destination}],
+            "comment": spec.comment or "",
+        }
+        async with self._client() as client:
+            resp = await client.post(
+                f"/api/v2/cmdb/firewall/vip?vdom={self.vdom}", json=payload
+            )
+            if resp.status_code in (200, 201):
+                data = resp.json()
+                return ExecutionResult(success=True, rule_id=spec.name, raw_response=data)
+            return ExecutionResult(success=False, error=resp.text)
+
+    async def delete_nat_policy(self, rule_id: str) -> ExecutionResult:
+        async with self._client() as client:
+            resp = await client.delete(
+                f"/api/v2/cmdb/firewall/vip/{rule_id}?vdom={self.vdom}"
+            )
+            if resp.status_code in (200, 204):
+                return ExecutionResult(success=True, rule_id=rule_id)
+            return ExecutionResult(success=False, error=resp.text)
+
+    # ── Routes (static routes) ───────────────────────────────────────────────
+
+    async def list_route_policies(self) -> list[RoutePolicy]:
+        async with self._client() as client:
+            resp = await client.get(f"/api/v2/cmdb/router/static?vdom={self.vdom}")
+            resp.raise_for_status()
+            routes = []
+            for r in resp.json().get("results", []):
+                routes.append(RoutePolicy(
+                    rule_id=str(r.get("seq-num", "")),
+                    name=r.get("comment", ""),
+                    interface=r.get("device", ""),
+                    source="Any",
+                    destination=r.get("dst", "Any"),
+                    service="Any",
+                    gateway=r.get("gateway", ""),
+                    metric=int(r.get("priority", 20)),
+                    distance=int(r.get("distance", 20)),
+                    route_type="static",
+                    comment=r.get("comment", ""),
+                    enabled=r.get("status", "enable") == "enable",
+                    raw=r,
+                ))
+            return routes
+
+    async def create_route_policy(self, spec: RouteSpec) -> ExecutionResult:
+        payload: dict[str, Any] = {
+            "dst": spec.destination if spec.destination != "Any" else "0.0.0.0 0.0.0.0",
+            "gateway": spec.gateway,
+            "device": spec.interface,
+            "priority": spec.metric,
+            "distance": spec.distance,
+            "comment": spec.comment or spec.name,
+            "status": "enable",
+        }
+        async with self._client() as client:
+            resp = await client.post(
+                f"/api/v2/cmdb/router/static?vdom={self.vdom}", json=payload
+            )
+            if resp.status_code in (200, 201):
+                data = resp.json()
+                rule_id = str(data.get("mkey", ""))
+                return ExecutionResult(success=True, rule_id=rule_id, raw_response=data)
+            return ExecutionResult(success=False, error=resp.text)
+
+    async def delete_route_policy(self, rule_id: str) -> ExecutionResult:
+        async with self._client() as client:
+            resp = await client.delete(
+                f"/api/v2/cmdb/router/static/{rule_id}?vdom={self.vdom}"
+            )
+            if resp.status_code in (200, 204):
+                return ExecutionResult(success=True, rule_id=rule_id)
+            return ExecutionResult(success=False, error=resp.text)
