@@ -1,0 +1,18 @@
+{
+  "slug": "sw7-block-country-geo-ip",
+  "name": "Bloquear País via Geo-IP",
+  "description": "Bloqueia conexões originadas de um país específico usando o filtro Geo-IP.",
+  "category": "Geo-IP",
+  "vendor": "sonicwall",
+  "firmware_pattern": "7.*",
+  "parameters": [
+    {
+      "key": "country",
+      "label": "País (em inglês)",
+      "type": "string",
+      "required": true,
+      "placeholder": "ex: Russia, China, North Korea"
+    }
+  ],
+  "ssh_commands": ["geo-ip", "block country {country}", "exit", "commit"]
+}

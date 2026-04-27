@@ -1,0 +1,49 @@
+{
+  "slug": "sw7-cfs-profile-simple",
+  "name": "Content Filter — Perfil Simples",
+  "description": "Cria um perfil CFS com bloqueio de categorias adulto, jogos e redes sociais aplicado a toda a zona LAN, sem restrição de IP de origem.",
+  "category": "Content Filter",
+  "vendor": "sonicwall",
+  "firmware_pattern": "7.*",
+  "parameters": [
+    {
+      "key": "profile_name",
+      "label": "Nome do Perfil (sem espaços)",
+      "type": "string",
+      "required": true,
+      "placeholder": "ex: bloqueio-geral"
+    }
+  ],
+  "ssh_commands": [
+    "content-filter",
+    "profile fm-cfs-{profile_name_slug}",
+    "name fm-cfs-{profile_name_slug}",
+    "https-filtering",
+    "smart-filter",
+    "safe-search",
+    "threat-api",
+    "categories default",
+    "no consent required",
+    "no custom-header insertion",
+    "no custom-header entries",
+    "exit",
+    "exit",
+    "content-filter",
+    "cfs",
+    "policy fm-cfs-policy-{profile_name_slug}",
+    "name fm-cfs-policy-{profile_name_slug}",
+    "source zone LAN",
+    "source address included any",
+    "source address excluded none",
+    "destination zone WAN",
+    "user included all",
+    "user excluded none",
+    "schedule always-on",
+    "profile fm-cfs-{profile_name_slug}",
+    "action \"CFS Default Action\"",
+    "exit",
+    "exit",
+    "exit",
+    "commit"
+  ]
+}

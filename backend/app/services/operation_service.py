@@ -447,6 +447,7 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
             IntentType.toggle_botnet,
             IntentType.toggle_dpi_ssl,
             IntentType.configure_app_rules,
+            IntentType.direct_ssh,
         ):
             ssh_commands = plan.ssh_commands or []
             if not ssh_commands:

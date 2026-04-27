@@ -1,0 +1,39 @@
+{
+  "slug": "sw7-address-object-host",
+  "name": "Criar Address Object (Host)",
+  "description": "Cria um objeto de endereço do tipo host para uso em regras e políticas.",
+  "category": "Objetos",
+  "vendor": "sonicwall",
+  "firmware_pattern": "7.*",
+  "parameters": [
+    {
+      "key": "name",
+      "label": "Nome do Objeto",
+      "type": "string",
+      "required": true,
+      "placeholder": "ex: servidor-web-01"
+    },
+    {
+      "key": "ip",
+      "label": "Endereço IP",
+      "type": "ip",
+      "required": true,
+      "placeholder": "ex: 192.168.1.10"
+    },
+    {
+      "key": "zone",
+      "label": "Zona",
+      "type": "select",
+      "required": true,
+      "options": ["LAN", "WAN", "DMZ", "VPN", "MULTICAST"],
+      "default": "LAN"
+    }
+  ],
+  "ssh_commands": [
+    "address-object ipv4 {name}",
+    "host {ip}",
+    "zone {zone}",
+    "exit",
+    "commit"
+  ]
+}

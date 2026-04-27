@@ -30,6 +30,7 @@ class IntentType(str, Enum):
     get_security_status = "get_security_status"
     health_check = "health_check"
     get_snapshot = "get_snapshot"
+    direct_ssh = "direct_ssh"
     unknown = "unknown"
 
 

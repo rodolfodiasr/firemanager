@@ -1,0 +1,10 @@
+{
+  "slug": "sw7-enable-ips",
+  "name": "Ativar Intrusion Prevention (IPS)",
+  "description": "Ativa o Intrusion Prevention System no SonicWall.",
+  "category": "Serviços de Segurança",
+  "vendor": "sonicwall",
+  "firmware_pattern": "7.*",
+  "parameters": [],
+  "ssh_commands": ["intrusion-prevention", "enable", "exit", "commit"]
+}

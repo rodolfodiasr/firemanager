@@ -1,0 +1,10 @@
+{
+  "slug": "sw7-disable-gateway-av",
+  "name": "Desativar Gateway Anti-Virus",
+  "description": "Desativa o serviço Gateway Anti-Virus no SonicWall.",
+  "category": "Serviços de Segurança",
+  "vendor": "sonicwall",
+  "firmware_pattern": "7.*",
+  "parameters": [],
+  "ssh_commands": ["gateway-antivirus", "no enable", "exit", "commit"]
+}

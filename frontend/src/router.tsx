@@ -8,6 +8,8 @@ import { Operations } from "./pages/Operations";
 import { Logs } from "./pages/Logs";
 import { Settings } from "./pages/Settings";
 import { Audit } from "./pages/Audit";
+import { DirectMode } from "./pages/DirectMode";
+import { Templates } from "./pages/Templates";
 import { Sidebar } from "./components/layout/Sidebar";
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -78,6 +80,22 @@ export function AppRouter() {
         element={
           <ProtectedLayout>
             <Settings />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/direct-mode"
+        element={
+          <ProtectedLayout>
+            <DirectMode />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/templates"
+        element={
+          <ProtectedLayout>
+            <Templates />
           </ProtectedLayout>
         }
       />

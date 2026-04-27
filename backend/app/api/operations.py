@@ -2,11 +2,13 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
 from app.database import get_db
+from app.models.device import Device
 from app.models.operation import Operation, OperationStatus
 from app.models.user import User, UserRole
 from app.schemas.operation import ChatMessage, OperationCreate, OperationRead
@@ -151,6 +153,51 @@ async def get_operation(
     if not op:
         raise HTTPException(status_code=404, detail="Operation not found")
     return OperationRead.model_validate(op)
+
+
+class DirectSSHCreate(BaseModel):
+    device_id: UUID
+    description: str
+    ssh_commands: list[str]
+
+
+@router.post("/direct-ssh", response_model=OperationRead)
+async def create_direct_ssh_operation(
+    data: DirectSSHCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> OperationRead:
+    """Create a pre-approved SSH operation from manually entered commands (no LLM)."""
+    if current_user.role == UserRole.viewer:
+        raise HTTPException(status_code=403, detail="Visualizadores não podem criar operações.")
+    if not data.ssh_commands:
+        raise HTTPException(status_code=400, detail="Nenhum comando SSH fornecido.")
+
+    dev = await db.execute(select(Device).where(Device.id == data.device_id))
+    if not dev.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Dispositivo não encontrado.")
+
+    action_plan = {
+        "intent": "direct_ssh",
+        "device_id": str(data.device_id),
+        "steps": [],
+        "execution_mode": "ssh",
+        "ssh_commands": data.ssh_commands,
+        "raw_intent_data": {"description": data.description},
+    }
+
+    operation = Operation(
+        user_id=current_user.id,
+        device_id=data.device_id,
+        natural_language_input=data.description,
+        intent="direct_ssh",
+        action_plan=action_plan,
+        status=OperationStatus.approved,
+    )
+    db.add(operation)
+    await db.commit()
+    await db.refresh(operation)
+    return OperationRead.model_validate(operation)
 
 
 @router.get("/{operation_id}/tutorial")

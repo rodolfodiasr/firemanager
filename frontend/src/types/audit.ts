@@ -76,4 +76,5 @@ export const AUDIT_INTENTS: { key: string; label: string; group: string; default
   { key: "toggle_geo_ip",            label: "Toggle Geo-IP Filter",              group: "Serviços",  defaultApproval: false },
   { key: "toggle_botnet",            label: "Toggle Botnet Filter",              group: "Serviços",  defaultApproval: false },
   { key: "toggle_dpi_ssl",           label: "Toggle DPI-SSL",                    group: "Serviços",  defaultApproval: false },
+  { key: "direct_ssh",               label: "Comando SSH Direto",                 group: "Técnico",   defaultApproval: true  },
 ];

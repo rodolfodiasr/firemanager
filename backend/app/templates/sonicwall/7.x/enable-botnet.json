@@ -1,0 +1,10 @@
+{
+  "slug": "sw7-enable-botnet",
+  "name": "Ativar Botnet Filter",
+  "description": "Ativa o bloqueio de conexões com servidores de botnet.",
+  "category": "Serviços de Segurança",
+  "vendor": "sonicwall",
+  "firmware_pattern": "7.*",
+  "parameters": [],
+  "ssh_commands": ["botnet", "block connections enable", "exit", "commit"]
+}

@@ -9,6 +9,8 @@ import {
   FileText,
   Settings,
   Flame,
+  Terminal,
+  BookMarked,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -16,6 +18,8 @@ import { auditApi } from "../../api/audit";
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/agent", icon: Bot, label: "Agente IA" },
+  { to: "/direct-mode", icon: Terminal, label: "Modo Técnico" },
+  { to: "/templates", icon: BookMarked, label: "Templates" },
   { to: "/devices", icon: Server, label: "Dispositivos" },
   { to: "/operations", icon: ClipboardList, label: "Operações" },
   { to: "/audit", icon: Shield, label: "Auditoria" },
