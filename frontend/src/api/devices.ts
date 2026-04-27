@@ -17,7 +17,7 @@ export const devicesApi = {
   healthCheck: (id: string) =>
     apiClient.post<Device>(`/devices/${id}/health-check`).then((r) => r.data),
 
-  inspect: (id: string, resource: "rules" | "nat" | "routes" | "security") =>
+  inspect: (id: string, resource: "rules" | "nat" | "routes" | "security" | "content_filter" | "app_rules") =>
     apiClient
       .get<{ resource: string; items: Record<string, unknown>[] }>(`/devices/${id}/inspect`, { params: { resource } })
       .then((r) => r.data),

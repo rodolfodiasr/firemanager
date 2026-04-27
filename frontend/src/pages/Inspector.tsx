@@ -9,12 +9,14 @@ import { PageWrapper } from "../components/layout/PageWrapper";
 import { devicesApi } from "../api/devices";
 import type { Device } from "../types/device";
 
-type Resource = "rules" | "nat" | "routes" | "security";
+type Resource = "rules" | "nat" | "routes" | "security" | "content_filter" | "app_rules";
 
 const TABS: { key: Resource; label: string }[] = [
   { key: "rules", label: "Regras de Acesso" },
   { key: "nat", label: "NAT" },
   { key: "routes", label: "Rotas" },
+  { key: "content_filter", label: "Content Filter" },
+  { key: "app_rules", label: "App Rules" },
   { key: "security", label: "Serviços de Segurança" },
 ];
 
@@ -44,6 +46,14 @@ const COLUMNS: Record<Resource, { key: string; label: string }[]> = {
     { key: "metric", label: "Métrica" },
     { key: "route_type", label: "Tipo" },
     { key: "enabled", label: "Status" },
+  ],
+  content_filter: [
+    { key: "type", label: "Tipo" },
+    { key: "name", label: "Nome" },
+  ],
+  app_rules: [
+    { key: "type", label: "Tipo" },
+    { key: "name", label: "Nome" },
   ],
   security: [
     { key: "service", label: "Serviço" },
@@ -76,6 +86,10 @@ function buildSeed(resource: Resource, item: Record<string, unknown>): string {
     return `Quero editar a política NAT "${item.name}" — `;
   if (resource === "routes")
     return `Quero editar a rota "${item.name}" (destino: ${item.destination}) — `;
+  if (resource === "content_filter")
+    return `Quero ajustar o ${item.type} de Content Filter "${item.name}" — `;
+  if (resource === "app_rules")
+    return `Quero ajustar a ${item.type} App Rules "${item.name}" — `;
   if (resource === "security")
     return `Quero ${item.enabled ? "desativar" : "ativar"} o serviço de segurança "${item.service}" — `;
   return "";
@@ -203,7 +217,12 @@ export function Inspector() {
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <p className="text-xs text-gray-500">
                 <span className="font-semibold text-gray-700">{items.length}</span>{" "}
-                {resource === "rules" ? "regra(s)" : resource === "nat" ? "política(s) NAT" : resource === "routes" ? "rota(s)" : "serviço(s)"}{" "}
+                {resource === "rules" ? "regra(s)" :
+                 resource === "nat" ? "política(s) NAT" :
+                 resource === "routes" ? "rota(s)" :
+                 resource === "content_filter" ? "objeto(s) Content Filter" :
+                 resource === "app_rules" ? "objeto(s) App Rules" :
+                 "serviço(s)"}{" "}
                 — ao vivo de <span className="font-medium">{selectedDevice?.name}</span>
               </p>
               <div className="flex items-center gap-1.5 text-xs text-gray-400">
@@ -252,37 +271,26 @@ export function Inspector() {
                         <tr key={`${idx}-detail`}>
                           <td colSpan={cols.length + 1} className="bg-gray-50 border-t border-gray-100">
                             <div className="px-6 py-4 space-y-4">
-                              {/* Raw details */}
+                              {/* Raw / CLI details */}
                               <div>
                                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dados completos</p>
-                                <pre className="text-xs bg-white border border-gray-200 rounded-lg p-3 overflow-auto max-h-40 whitespace-pre-wrap text-gray-700">
-                                  {JSON.stringify(
-                                    Object.fromEntries(Object.entries(item).filter(([k]) => k !== "raw")),
-                                    null,
-                                    2
-                                  )}
-                                </pre>
+                                {item.details ? (
+                                  <pre className="text-xs bg-gray-900 text-green-300 border border-gray-700 rounded-lg p-3 overflow-auto max-h-48 whitespace-pre-wrap font-mono">
+                                    {String(item.details)}
+                                  </pre>
+                                ) : (
+                                  <pre className="text-xs bg-white border border-gray-200 rounded-lg p-3 overflow-auto max-h-40 whitespace-pre-wrap text-gray-700">
+                                    {JSON.stringify(
+                                      Object.fromEntries(Object.entries(item).filter(([k]) => k !== "raw")),
+                                      null,
+                                      2
+                                    )}
+                                  </pre>
+                                )}
                               </div>
 
                               {/* Action buttons */}
-                              {resource !== "security" ? (
-                                <div className="flex gap-3">
-                                  <button
-                                    onClick={() => editWithAgent(item)}
-                                    className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700"
-                                  >
-                                    <Bot size={15} />
-                                    Editar via Agente IA
-                                  </button>
-                                  <button
-                                    onClick={() => navigate(`/direct-mode?device=${deviceId}`)}
-                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                                  >
-                                    <Terminal size={15} />
-                                    Editar via Modo Técnico
-                                  </button>
-                                </div>
-                              ) : (
+                              {resource === "security" ? (
                                 <div className="flex gap-3">
                                   <button
                                     onClick={() => editWithAgent(item)}
@@ -297,6 +305,23 @@ export function Inspector() {
                                   >
                                     <Terminal size={15} />
                                     Usar Template
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex gap-3">
+                                  <button
+                                    onClick={() => editWithAgent(item)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700"
+                                  >
+                                    <Bot size={15} />
+                                    Editar via Agente IA
+                                  </button>
+                                  <button
+                                    onClick={() => navigate(`/direct-mode?device=${deviceId}`)}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                  >
+                                    <Terminal size={15} />
+                                    Editar via Modo Técnico
                                   </button>
                                 </div>
                               )}
