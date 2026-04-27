@@ -46,6 +46,9 @@ class Operation(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     executed_direct: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     tutorial: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bulk_job_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("bulk_jobs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     parent_operation_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("operations.id", ondelete="SET NULL"), nullable=True
     )

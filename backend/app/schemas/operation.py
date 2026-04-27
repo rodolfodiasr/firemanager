@@ -29,6 +29,7 @@ class OperationRead(BaseModel):
     reviewer_id: UUID | None = None
     reviewed_at: datetime | None = None
     executed_direct: bool = False
+    bulk_job_id: UUID | None = None
     parent_operation_id: UUID | None = None
     created_at: datetime
     updated_at: datetime

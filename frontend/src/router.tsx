@@ -14,6 +14,7 @@ import { Inspector } from "./pages/Inspector";
 import { Tenants } from "./pages/Tenants";
 import { MSSPDashboard } from "./pages/MSSPDashboard";
 import { AcceptInvite } from "./pages/AcceptInvite";
+import { BulkJobs } from "./pages/BulkJobs";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -129,6 +130,22 @@ export function AppRouter() {
         element={
           <ProtectedLayout>
             <MSSPDashboard />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/bulk-jobs"
+        element={
+          <ProtectedLayout>
+            <BulkJobs />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/bulk-jobs/:id"
+        element={
+          <ProtectedLayout>
+            <BulkJobs />
           </ProtectedLayout>
         }
       />
