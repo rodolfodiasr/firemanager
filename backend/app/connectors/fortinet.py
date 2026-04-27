@@ -226,6 +226,7 @@ class FortinetConnector(BaseConnector):
                 "dstaddr": [{"name": dst_name}],
                 "service": [{"name": svc_name}],
                 "action": spec.action,
+                "schedule": "always",
                 "status": "enable",
                 "comments": spec.comment or "",
             }
