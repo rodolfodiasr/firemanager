@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Plus, Shield, Route, Network, Layers, LayoutGrid, CheckSquare, Square, Layers as LayersIcon } from "lucide-react";
+import { Plus, Shield, Route, Network, Layers, LayoutGrid, CheckSquare, Square, Layers as LayersIcon, FolderPlus } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { DeviceCard } from "../components/devices/DeviceCard";
 import { AddDeviceModal } from "../components/devices/AddDeviceModal";
 import { EditDeviceModal } from "../components/devices/EditDeviceModal";
 import { BulkOperationModal } from "../components/devices/BulkOperationModal";
+import { GroupModal } from "../components/device_groups/GroupModal";
 import { ConfirmModal } from "../components/shared/ConfirmModal";
 import { EmptyState } from "../components/shared/EmptyState";
 import { useDevices } from "../hooks/useDevices";
@@ -31,6 +32,7 @@ export function Devices() {
   const [selectMode, setSelectMode]   = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBulk, setShowBulk]       = useState(false);
+  const [showSaveGroup, setShowSaveGroup] = useState(false);
 
   const filtered = filter === "all"
     ? devices
@@ -132,15 +134,24 @@ export function Devices() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Bulk action button */}
+          {/* Bulk action buttons */}
           {selectMode && selectedIds.size >= 2 && (
-            <button
-              onClick={() => setShowBulk(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm rounded-lg transition-colors font-medium"
-            >
-              <LayersIcon size={16} />
-              Operação em lote ({selectedIds.size})
-            </button>
+            <>
+              <button
+                onClick={() => setShowSaveGroup(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white text-sm rounded-lg transition-colors font-medium"
+              >
+                <FolderPlus size={16} />
+                Salvar como grupo
+              </button>
+              <button
+                onClick={() => setShowBulk(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm rounded-lg transition-colors font-medium"
+              >
+                <LayersIcon size={16} />
+                Operação em lote ({selectedIds.size})
+              </button>
+            </>
           )}
 
           <button
@@ -217,6 +228,12 @@ export function Devices() {
 
       {/* Modals */}
       <AddDeviceModal isOpen={showAdd} onClose={() => setShowAdd(false)} onSubmit={handleCreate} />
+
+      <GroupModal
+        isOpen={showSaveGroup}
+        initialDeviceIds={[...selectedIds]}
+        onClose={() => setShowSaveGroup(false)}
+      />
 
       <BulkOperationModal
         isOpen={showBulk}

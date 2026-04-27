@@ -15,6 +15,7 @@ import {
   Building2,
   Globe,
   Layers,
+  FolderOpen,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -26,6 +27,7 @@ const navItems = [
   { to: "/templates", icon: BookMarked, label: "Templates" },
   { to: "/inspector", icon: Radar, label: "Inspetor" },
   { to: "/devices", icon: Server, label: "Dispositivos" },
+  { to: "/device-groups", icon: FolderOpen, label: "Grupos" },
   { to: "/bulk-jobs", icon: Layers, label: "Lote" },
   { to: "/operations", icon: ClipboardList, label: "Operações" },
   { to: "/audit", icon: Shield, label: "Auditoria" },
