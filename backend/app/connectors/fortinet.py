@@ -37,10 +37,16 @@ class FortinetConnector(BaseConnector):
         )
 
     async def test_connection(self) -> ConnectionResult:
+        if not self.token or not self.token.strip():
+            return ConnectionResult(success=False, error="API Token não configurado. Edite o dispositivo e informe o token.")
         start = time.monotonic()
         try:
             async with self._client() as client:
                 resp = await client.get(f"/api/v2/cmdb/system/status?vdom={self.vdom}")
+                if resp.status_code == 401:
+                    return ConnectionResult(success=False, error="Token inválido ou sem permissão (HTTP 401). Verifique o token em System > Admin > REST API Admin.")
+                if resp.status_code == 403:
+                    return ConnectionResult(success=False, error="Acesso negado (HTTP 403). O token não tem permissão suficiente ou o VDOM está incorreto.")
                 resp.raise_for_status()
                 data = resp.json()
                 latency = (time.monotonic() - start) * 1000
