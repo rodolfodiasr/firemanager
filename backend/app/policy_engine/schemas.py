@@ -31,6 +31,8 @@ class IntentType(str, Enum):
     health_check = "health_check"
     get_snapshot = "get_snapshot"
     direct_ssh = "direct_ssh"
+    list_vlans = "list_vlans"
+    list_ports = "list_ports"
     unknown = "unknown"
 
 
@@ -153,4 +155,5 @@ class ActionPlan(BaseModel):
     security_exclusion_spec: SecurityExclusionSpec | None = None
     app_rules_spec: AppRulesSpec | None = None
     ssh_commands: list[str] | None = None
+    ssh_show_commands: list[str] | None = None  # read-only show/display commands (no config mode)
     raw_intent_data: dict[str, Any] = Field(default_factory=dict)

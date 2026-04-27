@@ -10,7 +10,7 @@ Dispositivo alvo:
 
 Intenção identificada: {intent}
 
-Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, toggle_gateway_av, toggle_anti_spyware, toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl, configure_app_rules, add_security_exclusion, get_security_status, health_check, get_snapshot
+Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, toggle_gateway_av, toggle_anti_spyware, toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl, configure_app_rules, add_security_exclusion, get_security_status, health_check, get_snapshot, list_vlans, list_ports
 
 Gere o ActionPlan no seguinte formato JSON (sem markdown):
 {
@@ -109,6 +109,7 @@ Gere o ActionPlan no seguinte formato JSON (sem markdown):
   },
   "execution_mode": "api",
   "ssh_commands": null,
+  "ssh_show_commands": null,
   "raw_intent_data": {}
 }
 
@@ -433,27 +434,29 @@ Criação de VLAN:
 Criação de múltiplas VLANs de uma vez:
   ["vlan 100,200,300", "exit"]
 
-Interface acesso simples (apenas untagged):
-  ["interface Gi1/0/5", "description \"WORKSTATION\"", "spanning-tree portfast",
-   "spanning-tree guard root", "switchport access vlan 8", "exit"]
+Interface acesso simples (apenas untagged — use o número de VLAN que o usuário indicar):
+  ["interface Gi1/0/5", "description \"NOME-DO-DISPOSITIVO\"", "spanning-tree portfast",
+   "spanning-tree guard root", "switchport access vlan <VLAN_ID>", "exit"]
 
-Interface modo general — porta com dados (VLAN 8) + VoIP (VLAN 11) + gerência tagged (VLAN 100):
-  ["interface Gi1/0/2", "description \"RAMAL_USUARIO\"",
+Interface modo general — porta com dados untagged + VLANs adicionais tagged:
+  (use os números de VLAN exatos que o usuário especificar)
+  ["interface Gi1/0/2", "description \"NOME-DA-PORTA\"",
    "spanning-tree portfast", "spanning-tree guard root",
    "switchport mode general",
-   "switchport general pvid 8",
-   "switchport general allowed vlan add 8",
-   "switchport general allowed vlan add 11,100 tagged",
+   "switchport general pvid <VLAN_DADOS>",
+   "switchport general allowed vlan add <VLAN_DADOS>",
+   "switchport general allowed vlan add <VLAN_A>,<VLAN_B> tagged",
    "switchport general allowed vlan remove 1",
    "exit"]
 
-Interface modo general — AP (VLAN 100 nativa + VLANs Wi-Fi tagged):
-  ["interface Gi1/0/10", "description \"AP-WIFI-01\"",
+Interface modo general — AP (VLAN de gerência nativa + VLANs de SSID tagged):
+  (use os números de VLAN exatos que o usuário especificar)
+  ["interface Gi1/0/10", "description \"AP-NOME\"",
    "spanning-tree portfast", "spanning-tree guard root",
    "switchport mode general",
-   "switchport general pvid 100",
-   "switchport general allowed vlan add 100",
-   "switchport general allowed vlan add 2,3,15,61 tagged",
+   "switchport general pvid <VLAN_MGMT>",
+   "switchport general allowed vlan add <VLAN_MGMT>",
+   "switchport general allowed vlan add <VLAN_X>,<VLAN_Y> tagged",
    "switchport general allowed vlan remove 1",
    "exit"]
 
@@ -544,25 +547,27 @@ Interface trunk (uplink para roteador/outro switch):
    " port trunk pvid vlan 100",
    "quit"]
 
-Interface hybrid — AP Wi-Fi (VLAN 100 nativa + VLANs de SSID tagged):
+Interface hybrid — AP Wi-Fi (VLAN de gerência nativa + VLANs de SSID tagged):
+  (use os números de VLAN exatos que o usuário especificar)
   ["interface GigabitEthernet1/0/3",
-   " description UNIFI-AP-01",
+   " description AP-NOME",
    " port link-type hybrid",
    " undo port hybrid vlan 1",
-   " port hybrid vlan 2 to 3 15 tagged",
-   " port hybrid vlan 100 untagged",
-   " port hybrid pvid vlan 100",
+   " port hybrid vlan <VLAN_X> to <VLAN_Y> tagged",
+   " port hybrid vlan <VLAN_MGMT> untagged",
+   " port hybrid pvid vlan <VLAN_MGMT>",
    " stp edged-port enable",
    "quit"]
 
-Interface hybrid — porta com VoIP (dados VLAN 8 nativa + VoIP VLAN 11 tagged):
+Interface hybrid — porta com dados + VLAN adicional tagged:
+  (use os números de VLAN exatos que o usuário especificar; não assuma propósito)
   ["interface GigabitEthernet1/0/2",
-   " description RAMAL-USUARIO",
+   " description NOME-DA-PORTA",
    " port link-type hybrid",
    " undo port hybrid vlan 1",
-   " port hybrid vlan 11 tagged",
-   " port hybrid vlan 8 untagged",
-   " port hybrid pvid vlan 8",
+   " port hybrid vlan <VLAN_TAG> tagged",
+   " port hybrid vlan <VLAN_DADOS> untagged",
+   " port hybrid pvid vlan <VLAN_DADOS>",
    " stp edged-port enable",
    "quit"]
 
@@ -600,6 +605,49 @@ REGRAS IMPORTANTES PARA HP COMWARE:
 - Para VLANs em trunk: sintaxe "vlan X to Y Z" (separar ranges com "to", individuais com espaço)
   Exemplo: "port trunk permit vlan 2 to 3 8 11 15 100 200 600" (correto)
 
+── LIST_VLANS — listar VLANs configuradas no switch ────────────────────────
+
+Para qualquer vendor CLI que o usuário pedir "listar VLANs", "quais VLANs existem",
+"mostrar VLANs", "ver VLANs", etc.:
+- Defina intent="list_vlans", execution_mode="ssh"
+- Coloque o comando em ssh_show_commands (NÃO em ssh_commands)
+- ssh_commands deve ser null
+- O sistema executa em modo exec/user (sem entrar em configure)
+
+Comandos por vendor:
+  cisco_ios:  ssh_show_commands: ["show vlan brief"]
+  cisco_nxos: ssh_show_commands: ["show vlan brief"]
+  juniper:    ssh_show_commands: ["show vlans"]
+  aruba:      ssh_show_commands: ["show vlans"]
+  dell:       ssh_show_commands: ["show vlan"]
+  dell_n:     ssh_show_commands: ["show vlan"]
+  hp_comware: ssh_show_commands: ["display vlan"]
+  ubiquiti:   ssh_show_commands: ["show vlan"]
+
+── LIST_PORTS — listar portas e seus status ────────────────────────────────
+
+Para qualquer vendor CLI que o usuário pedir "listar portas", "status das interfaces",
+"ver portas", "quais portas estão ativas", "mostrar interfaces", etc.:
+- Defina intent="list_ports", execution_mode="ssh"
+- Coloque o comando em ssh_show_commands (NÃO em ssh_commands)
+- ssh_commands deve ser null
+- O sistema executa em modo exec/user (sem entrar em configure)
+
+Comandos por vendor:
+  cisco_ios:  ssh_show_commands: ["show interfaces status"]
+  cisco_nxos: ssh_show_commands: ["show interface status"]
+  juniper:    ssh_show_commands: ["show interfaces terse"]
+  aruba:      ssh_show_commands: ["show interfaces brief"]
+  dell:       ssh_show_commands: ["show interface status"]
+  dell_n:     ssh_show_commands: ["show interfaces status"]
+  hp_comware: ssh_show_commands: ["display interface brief"]
+  ubiquiti:   ssh_show_commands: ["show interfaces"]
+
+Pode combinar VLANs + portas na mesma operação usando múltiplos comandos:
+  dell_n:     ssh_show_commands: ["show vlan", "show interfaces status"]
+  hp_comware: ssh_show_commands: ["display vlan", "display interface brief"]
+  cisco_ios:  ssh_show_commands: ["show vlan brief", "show interfaces status"]
+
 ── REGRAS GERAIS PARA VENDORS CLI ─────────────────────────────────────────
 
 1. NÃO inclua "configure terminal", "configure", "system-view", "end", "write memory" ou
@@ -607,13 +655,16 @@ REGRAS IMPORTANTES PARA HP COMWARE:
 2. EXCEÇÃO Juniper: SEMPRE inclua "commit" explicitamente no final dos comandos.
 3. EXCEÇÃO HP Comware: SEMPRE inclua "quit" ao final de cada bloco (interface, vlan, etc.).
 4. Para Cisco IOS, Aruba e DELL N-Series (dell_n): "enable" e save são feitos automaticamente.
-5. Para show/diagnóstico: use intent=direct_ssh e coloque apenas os comandos show em ssh_commands.
-   HP Comware: use "display" em vez de "show" (ex: "display current-configuration", "display vlan").
-6. Gere nomes de objetos com prefixo "FM-" para facilitar identificação (ex: FM-VLAN-CAMERAS).
-7. Para operações em lote (mesmo comando em múltiplos dispositivos), o plano gerado aqui
-   será replicado para todos os dispositivos do lote.
-8. DELL N-Series (dell_n) vs DELL OS10 (dell): são CLIs diferentes.
+5. IMPORTANTE: ssh_commands vs ssh_show_commands são mutuamente exclusivos:
+   - ssh_commands → comandos de CONFIGURAÇÃO (entram em configure/system-view)
+   - ssh_show_commands → comandos de LEITURA (show/display, sem entrar em configure)
+   - NUNCA coloque show/display em ssh_commands nem comandos de config em ssh_show_commands
+6. HP Comware: use "display" em vez de "show" (ex: "display vlan", "display interface brief").
+7. Gere nomes de objetos com prefixo "FM-" para facilitar identificação (ex: FM-VLAN-CAMERAS).
+8. NÃO assuma números de VLAN ou seus propósitos — use apenas os que o usuário informar.
+   Se o usuário não especificar a VLAN, pergunte antes de gerar o plano.
+9. DELL N-Series (dell_n) vs DELL OS10 (dell): são CLIs diferentes.
    dell_n → usa modo "general" para portas com múltiplas VLANs, interfaces Gi1/0/X e Te1/0/X.
    dell   → usa sintaxe NX-OS style, interfaces "ethernet 1/1/X".
-9. HP Comware (hp_comware): usa "system-view" / "quit" / "display" — não IOS nem DNOS6.
-   Modo hybrid = equivalente ao general (DNOS6) ou modo trunk com pvid.
+10. HP Comware (hp_comware): usa "system-view" / "quit" / "display" — não IOS nem DNOS6.
+    Modo hybrid = equivalente ao general (DNOS6) — mesma lógica, sintaxe diferente.

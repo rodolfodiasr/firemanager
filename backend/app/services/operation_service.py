@@ -236,8 +236,35 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
 
     # ── CLI-only vendors: all execution goes through SSH ──────────────────────
     if device.vendor in CLI_VENDORS:
-        ssh_commands = plan.ssh_commands or []
-        if not ssh_commands:
+        ssh_show_cmds = plan.ssh_show_commands or []
+        ssh_config_cmds = plan.ssh_commands or []
+
+        # Show/read operations (list_vlans, list_ports, get_info — no config mode)
+        if ssh_show_cmds:
+            operation.status = OperationStatus.executing
+            await db.flush()
+            try:
+                ssh_connector = get_ssh_connector(device)
+                ssh_result = await ssh_connector.execute_show_commands(ssh_show_cmds)
+                operation.action_plan = {
+                    **(operation.action_plan or {}),
+                    "result": {
+                        "commands": ssh_show_cmds,
+                        "output": ssh_result.output,
+                    },
+                }
+                operation.status = OperationStatus.completed if ssh_result.success else OperationStatus.failed
+                if not ssh_result.success:
+                    operation.error_message = ssh_result.error
+            except Exception as exc:
+                operation.status = OperationStatus.failed
+                operation.error_message = str(exc)
+            await db.flush()
+            await db.refresh(operation)
+            return operation
+
+        # Config/write operations
+        if not ssh_config_cmds:
             operation.status = OperationStatus.failed
             operation.error_message = (
                 f"Nenhum comando SSH foi gerado para o vendor '{device.vendor.value}'. "
@@ -251,7 +278,7 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
         await db.flush()
         try:
             ssh_connector = get_ssh_connector(device)
-            ssh_result = await ssh_connector.execute_commands(ssh_commands)
+            ssh_result = await ssh_connector.execute_commands(ssh_config_cmds)
             operation.action_plan = {
                 **(operation.action_plan or {}),
                 "result": {
