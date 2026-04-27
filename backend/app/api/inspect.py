@@ -99,7 +99,14 @@ async def inspect_device(
             ssh_result = await ssh.execute_show_commands(["show content-filter"])
             if not ssh_result.success:
                 raise HTTPException(status_code=502, detail=f"Falha na conexão SSH: {ssh_result.error}")
-            items = _parse_named_blocks(ssh_result.output, ["profile", "policy", "uri-list-object"])
+            items = _parse_named_blocks(
+                ssh_result.output,
+                ["profile", "policy", "uri-list-object", "cfs-object", "object"],
+            )
+            if not items:
+                # Fallback: return raw output so the operator can see what the device returns
+                clean = _ANSI_RE.sub("", ssh_result.output).strip()
+                items = [{"type": "Raw", "name": "show content-filter", "details": clean or "(sem output)"}]
             return {"resource": resource, "items": items}
 
         if resource == "app_rules":
@@ -108,6 +115,9 @@ async def inspect_device(
             if not ssh_result.success:
                 raise HTTPException(status_code=502, detail=f"Falha na conexão SSH: {ssh_result.error}")
             items = _parse_named_blocks(ssh_result.output, ["policy", "match-object", "action-object"])
+            if not items:
+                clean = _ANSI_RE.sub("", ssh_result.output).strip()
+                items = [{"type": "Raw", "name": "show app-rules", "details": clean or "(sem output)"}]
             return {"resource": resource, "items": items}
 
         # ── REST API resources ────────────────────────────────────────────────
