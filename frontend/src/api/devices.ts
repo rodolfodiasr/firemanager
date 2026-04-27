@@ -1,5 +1,5 @@
 import type { Device, DeviceCreate } from "../types/device";
-import type { Recommendation } from "../types/recommendation";
+import type { Recommendation, ScoreData } from "../types/recommendation";
 // RuleRow is embedded in Recommendation — no separate import needed
 import apiClient from "./client";
 
@@ -26,8 +26,13 @@ export const devicesApi = {
 
   recommendations: (id: string) =>
     apiClient
-      .get<{ total: number; rules_analyzed: number; security_fetched: boolean; stats_fetched: boolean; checks: Recommendation[] }>(
-        `/devices/${id}/recommendations`
-      )
+      .get<{
+        total: number;
+        rules_analyzed: number;
+        security_fetched: boolean;
+        stats_fetched: boolean;
+        score: ScoreData;
+        checks: Recommendation[];
+      }>(`/devices/${id}/recommendations`)
       .then((r) => r.data),
 };

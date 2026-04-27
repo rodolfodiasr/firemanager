@@ -1,10 +1,11 @@
 import ipaddress
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
@@ -13,6 +14,7 @@ from app.connectors.base import FirewallRule
 from app.connectors.factory import get_connector, get_ssh_connector
 from app.database import get_db
 from app.models.device import Device
+from app.models.operation import Operation
 from app.models.user import User
 
 router = APIRouter()
@@ -379,6 +381,122 @@ def _check_wan_lan_no_inspection(
     }]
 
 
+# ── Score & Instability ───────────────────────────────────────────────────────
+
+def _calculate_score(checks: list[dict]) -> dict:
+    _PENALTY: dict[str, dict] = {
+        "any_src_internal":      {"per_rule": 15, "max": 30},
+        "any_service_wan":       {"per_rule": 10, "max": 20},
+        "shadow_rules":          {"per_rule":  8, "max": 16},
+        "dpi_ssl_disabled":      {"per_rule":  8, "max": 24},
+        "wan_lan_no_inspection": {"flat": 20},
+        "disabled_rules":        {"per_rule":  1, "max":  5},
+    }
+    _INSTABILITY_PEN = {"high": 20, "medium": 10, "low": 5}
+
+    score = 100
+    breakdown: list[dict] = []
+
+    for check in checks:
+        cid = check["id"]
+        n = len(check.get("affected_rules", []))
+
+        if cid == "policy_instability":
+            penalty = _INSTABILITY_PEN.get(check["severity"], 0)
+        elif cid.startswith("group_src_"):
+            penalty = min(n * 3, 9)
+        elif cid in _PENALTY:
+            p = _PENALTY[cid]
+            penalty = p["flat"] if "flat" in p else min(n * p["per_rule"], p["max"])
+        else:
+            penalty = 0
+
+        if penalty > 0:
+            score -= penalty
+            breakdown.append({
+                "check_id": cid,
+                "title":    check["title"],
+                "severity": check["severity"],
+                "penalty":  penalty,
+            })
+
+    score = max(0, score)
+    if score >= 80:
+        label, color = "Bom", "green"
+    elif score >= 60:
+        label, color = "Atenção", "amber"
+    elif score >= 40:
+        label, color = "Risco", "orange"
+    else:
+        label, color = "Crítico", "red"
+
+    return {"value": score, "label": label, "color": color, "breakdown": breakdown}
+
+
+async def _check_policy_instability(device_id: UUID, db: AsyncSession) -> list[dict]:
+    now = datetime.now(timezone.utc)
+    cutoff_30d = now - timedelta(days=30)
+    cutoff_7d  = now - timedelta(days=7)
+
+    r30 = await db.execute(
+        select(func.count(Operation.id)).where(
+            Operation.device_id == device_id,
+            Operation.created_at >= cutoff_30d,
+        )
+    )
+    r7 = await db.execute(
+        select(func.count(Operation.id)).where(
+            Operation.device_id == device_id,
+            Operation.created_at >= cutoff_7d,
+        )
+    )
+    total_30d = r30.scalar_one()
+    total_7d  = r7.scalar_one()
+
+    if total_30d < 10:
+        return []
+
+    if total_7d >= 10 or total_30d >= 30:
+        severity = "high"
+        desc = (
+            f"Alta frequência de mudanças: {total_30d} operações nos últimos 30 dias"
+            + (f" ({total_7d} só nos últimos 7 dias)" if total_7d >= 5 else "")
+            + ". Políticas instáveis aumentam o risco de configurações incorretas."
+        )
+    elif total_30d >= 20:
+        severity = "medium"
+        desc = (
+            f"{total_30d} operações nos últimos 30 dias — frequência acima do normal. "
+            "Revise se todas as mudanças foram necessárias e estão documentadas."
+        )
+    else:
+        severity = "low"
+        desc = (
+            f"{total_30d} operações nos últimos 30 dias. "
+            "Frequência moderada — monitore se continua dentro do esperado."
+        )
+
+    return [{
+        "id":       "policy_instability",
+        "severity": severity,
+        "title":    f"Instabilidade na política — {total_30d} mudanças em 30 dias",
+        "description": desc,
+        "affected_rules": [],
+        "instability_data": {"total_30d": total_30d, "total_7d": total_7d},
+        "agent_seed": (
+            f"A política deste dispositivo teve {total_30d} mudanças nos últimos 30 dias "
+            f"({total_7d} nos últimos 7 dias). Ajude-me a revisar se as mudanças recentes "
+            "estão corretas e bem documentadas — "
+        ),
+        "manual_hint": (
+            "# Revisar histórico de mudanças no FireManager:\n"
+            "# Menu: Operações > filtrar por dispositivo\n\n"
+            "# Verificar consistência atual da política:\n"
+            "show access-rules ipv4"
+        ),
+    }]
+
+
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
 @router.get("/{device_id}/recommendations")
@@ -441,13 +559,21 @@ async def get_recommendations(
     checks.extend(_check_group_opportunities(rules, pos_map))
     checks.extend(_check_disabled_rules(rules, pos_map))
 
+    try:
+        checks.extend(await _check_policy_instability(device_id, db))
+    except Exception:
+        pass
+
     _order = {"high": 0, "medium": 1, "low": 2}
     checks.sort(key=lambda c: _order.get(c["severity"], 9))
+
+    score = _calculate_score(checks)
 
     return {
         "total":            len(checks),
         "rules_analyzed":   len(rules),
         "security_fetched": bool(security_enabled),
         "stats_fetched":    stats_fetched,
+        "score":            score,
         "checks":           checks,
     }

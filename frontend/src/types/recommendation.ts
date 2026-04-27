@@ -21,4 +21,19 @@ export interface Recommendation {
   affected_rules: RuleRow[];
   agent_seed: string;
   manual_hint: string;
+  instability_data?: { total_30d: number; total_7d: number };
+}
+
+export interface ScoreBreakdown {
+  check_id: string;
+  title: string;
+  severity: "high" | "medium" | "low";
+  penalty: number;
+}
+
+export interface ScoreData {
+  value: number;
+  label: string;
+  color: string;
+  breakdown: ScoreBreakdown[];
 }

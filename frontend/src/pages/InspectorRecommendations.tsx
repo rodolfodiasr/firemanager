@@ -7,7 +7,7 @@ import {
   XCircle, ExternalLink,
 } from "lucide-react";
 import { devicesApi } from "../api/devices";
-import type { Recommendation, RuleRow } from "../types/recommendation";
+import type { Recommendation, RuleRow, ScoreData } from "../types/recommendation";
 
 interface Props {
   deviceId: string;
@@ -74,6 +74,89 @@ function HitCount({ count }: { count: number | null | undefined }) {
   if (count === 0)
     return <span className="text-gray-400 text-xs">0</span>;
   return <span className="text-amber-600 text-xs font-medium">{count.toLocaleString("pt-BR")}</span>;
+}
+
+const SCORE_COLORS: Record<string, string> = {
+  green:  "#16a34a",
+  amber:  "#d97706",
+  orange: "#ea580c",
+  red:    "#dc2626",
+};
+
+function ScoreGauge({ value, label, color }: ScoreData) {
+  const R = 72;
+  const cx = 100;
+  const cy = 100;
+  const arcLen = Math.PI * R;
+  const filled = (value / 100) * arcLen;
+  const stroke = SCORE_COLORS[color] ?? "#6b7280";
+
+  return (
+    <svg viewBox="0 0 200 115" className="w-44 h-24">
+      <path
+        d={`M ${cx - R} ${cy} A ${R} ${R} 0 0 1 ${cx + R} ${cy}`}
+        fill="none" stroke="#e5e7eb" strokeWidth="15" strokeLinecap="round"
+      />
+      <path
+        d={`M ${cx - R} ${cy} A ${R} ${R} 0 0 1 ${cx + R} ${cy}`}
+        fill="none" stroke={stroke} strokeWidth="15" strokeLinecap="round"
+        strokeDasharray={`${filled} ${arcLen}`}
+      />
+      <text x={cx} y="82" textAnchor="middle" dominantBaseline="middle"
+            fontSize="30" fontWeight="700" fill={stroke}>{value}</text>
+      <text x={cx} y="104" textAnchor="middle" dominantBaseline="middle"
+            fontSize="11" fontWeight="600" fill="#6b7280">{label}</text>
+      <text x={cx - R - 2} y="110" textAnchor="middle" fontSize="9" fill="#d1d5db">0</text>
+      <text x={cx + R + 2} y="110" textAnchor="middle" fontSize="9" fill="#d1d5db">100</text>
+    </svg>
+  );
+}
+
+function ScorePanel({ score }: { score: ScoreData }) {
+  const stroke = SCORE_COLORS[score.color] ?? "#6b7280";
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-wrap items-start gap-6">
+      <div className="flex flex-col items-center">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+          Pontuação de Segurança
+        </p>
+        <ScoreGauge {...score} />
+      </div>
+
+      <div className="flex-1 min-w-[220px]">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+          {score.breakdown.length > 0 ? "Impacto por verificação" : "Nenhum problema identificado"}
+        </p>
+        {score.breakdown.length === 0 ? (
+          <p className="text-sm text-green-700">Política aparentemente bem configurada.</p>
+        ) : (
+          <div className="space-y-2">
+            {score.breakdown.map((b) => (
+              <div key={b.check_id} className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-gray-700 truncate">{b.title}</p>
+                </div>
+                <div className="shrink-0 flex items-center gap-1.5">
+                  <div className="w-20 bg-gray-100 rounded-full h-1.5">
+                    <div
+                      className={`h-1.5 rounded-full ${
+                        b.severity === "high" ? "bg-red-500" :
+                        b.severity === "medium" ? "bg-amber-400" : "bg-blue-400"
+                      }`}
+                      style={{ width: `${Math.min(100, (b.penalty / 30) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-semibold w-8 text-right" style={{ color: stroke }}>
+                    -{b.penalty}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function AffectedRulesTable({
@@ -187,6 +270,26 @@ function RecommendationCard({
           <p className="mt-1.5 text-xs text-gray-600 leading-relaxed">{rec.description}</p>
         </div>
       </div>
+
+      {/* Instability stats */}
+      {rec.id === "policy_instability" && rec.instability_data && (
+        <div className="px-5 py-4 border-t border-gray-100">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+            Frequência de mudanças
+          </p>
+          <div className="flex gap-8">
+            <div className="text-center">
+              <p className="text-3xl font-bold text-gray-800">{rec.instability_data.total_30d}</p>
+              <p className="text-xs text-gray-400 mt-0.5">operações (30 dias)</p>
+            </div>
+            <div className="w-px bg-gray-200" />
+            <div className="text-center">
+              <p className="text-3xl font-bold text-gray-800">{rec.instability_data.total_7d}</p>
+              <p className="text-xs text-gray-400 mt-0.5">operações (7 dias)</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Affected rules table */}
       {rec.affected_rules.length > 0 && (
@@ -328,6 +431,9 @@ export function InspectorRecommendations({ deviceId, deviceName, onViewRule }: P
       {/* Results */}
       {data && !isFetching && (
         <>
+          {/* Score panel */}
+          {data.score && <ScorePanel score={data.score} />}
+
           {/* Summary */}
           <div className="flex flex-wrap items-center gap-3">
             {data.total === 0 ? (
