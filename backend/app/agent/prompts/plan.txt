@@ -324,8 +324,19 @@ Port-channel / LAG:
 Trunk:
   ["interface GigabitEthernet0/1",
    "switchport mode trunk",
-   "switchport trunk allowed vlan 100,200",
+   "switchport trunk allowed vlan <VLAN_A>,<VLAN_B>",
    "exit"]
+
+STP — global (fora de qualquer interface):
+  Modo RSTP:                  ["spanning-tree mode rapid-pvst"]
+  BPDU Guard global:          ["spanning-tree portfast bpduguard default"]
+  Desativar BPDU Guard global: ["no spanning-tree portfast bpduguard default"]
+  Portfast global:            ["spanning-tree portfast default"]
+
+STP — por porta (dentro do bloco de interface):
+  ["interface GigabitEthernet0/1", "spanning-tree portfast", "exit"]
+  ["interface GigabitEthernet0/1", "spanning-tree bpduguard enable", "exit"]
+  ["interface GigabitEthernet0/1", "no spanning-tree portfast", "exit"]
 
 ── CISCO NX-OS (Nexus) ─────────────────────────────────────────────────────
 
@@ -344,6 +355,14 @@ Rota estática:
 
 Feature (habilitar funcionalidade):
   ["feature vpc", "feature lacp"]
+
+STP — global:
+  Modo RSTP:          ["spanning-tree mode rapid-pvst"]
+  BPDU Guard global:  ["spanning-tree bpduguard default"]
+
+STP — por porta:
+  ["interface Ethernet1/1", "spanning-tree port type edge", "exit"]
+  ["interface Ethernet1/1", "spanning-tree bpduguard enable", "exit"]
 
 ── JUNIPER JunOS ────────────────────────────────────────────────────────────
 
@@ -495,6 +514,23 @@ DHCP relay em VLAN (ip helper-address):
 Rota padrão:
   ["ip default-gateway 10.100.0.1"]
 
+STP — global (nível do switch, fora de qualquer bloco de interface):
+  Ativar STP:                    ["spanning-tree"]
+  Desativar STP:                 ["no spanning-tree"]
+  Modo RSTP:                     ["spanning-tree mode rstp"]
+  Modo STP clássico:             ["spanning-tree mode stp"]
+  Modo MSTP:                     ["spanning-tree mode mstp"]
+  BPDU Protection global:        ["spanning-tree bpdu-protection"]
+  Desativar BPDU Protection:     ["no spanning-tree bpdu-protection"]
+  Loop Protection global:        ["spanning-tree loopguard default"]
+
+STP — por porta (dentro do bloco de interface, antes do "exit"):
+  "spanning-tree portfast"            → ativa portfast (edge port)
+  "no spanning-tree portfast"         → desativa portfast
+  "spanning-tree guard root"          → ativa root guard
+  "no spanning-tree guard root"       → desativa root guard
+  "spanning-tree guard loop"          → ativa loop guard
+
 REGRAS IMPORTANTES PARA DNOS6:
 - Descrições SEMPRE entre aspas duplas: description "NOME DA PORTA"
 - VLAN names SEMPRE entre aspas duplas: name "GERENCIA"
@@ -531,20 +567,20 @@ Criação de múltiplas VLANs:
   ["vlan 100", " description GERENCIA", "quit",
    "vlan 200", " description CFTV", "quit"]
 
-Interface access (porta de workstation/câmera):
+Interface access (porta de workstation/câmera — use o número de VLAN que o usuário indicar):
   ["interface GigabitEthernet1/0/5",
-   " description WORKSTATION",
-   " port access vlan 8",
+   " description NOME-DO-DISPOSITIVO",
+   " port access vlan <VLAN_ID>",
    " stp edged-port enable",
    "quit"]
 
-Interface trunk (uplink para roteador/outro switch):
+Interface trunk (uplink — use os números de VLAN que o usuário especificar):
   ["interface GigabitEthernet1/0/28",
-   " description UPLINK-TI",
+   " description UPLINK-NOME",
    " port link-type trunk",
    " undo port trunk permit vlan 1",
-   " port trunk permit vlan 2 to 3 8 11 15 100 200 600",
-   " port trunk pvid vlan 100",
+   " port trunk permit vlan <VLAN_A> to <VLAN_B> <VLAN_C>",
+   " port trunk pvid vlan <VLAN_MGMT>",
    "quit"]
 
 Interface hybrid — AP Wi-Fi (VLAN de gerência nativa + VLANs de SSID tagged):
@@ -592,6 +628,22 @@ L3 Interface (SVI com IP):
 Rota padrão / estática:
   ["ip route-static 0.0.0.0 0.0.0.0 10.100.0.1"]
   ["ip route-static 10.10.10.0 255.255.255.0 192.168.1.254"]
+
+STP — global (nível do switch, fora de qualquer bloco — NÃO inclua "quit" após estes):
+  Ativar STP:               ["stp enable"]
+  Desativar STP:            ["undo stp enable"]
+  Modo RSTP:                ["stp mode rstp"]
+  Modo STP clássico:        ["stp mode stp"]
+  Modo MSTP:                ["stp mode mstp"]
+  BPDU Protection global:   ["stp bpdu-protection"]
+  Desativar BPDU Protection: ["undo stp bpdu-protection"]
+  Ativar + definir modo:    ["stp enable", "stp mode rstp", "stp bpdu-protection"]
+
+STP — por porta (dentro do bloco de interface, antes do "quit"):
+  " stp edged-port enable"   → ativa portfast (edge port)
+  " undo stp edged-port"     → desativa portfast
+  " stp disable"             → desativa STP nesta porta
+  " undo stp disable"        → reativa STP nesta porta
 
 REGRAS IMPORTANTES PARA HP COMWARE:
 - SEMPRE use "quit" para sair de cada bloco — NUNCA use "exit" (não existe!)
