@@ -280,3 +280,145 @@ Regras de preenchimento:
 - Para get_security_status: defina execution_mode="ssh"; em ssh_commands liste os comandos show desejados (sem "configure", sem "end"). O sistema executa em modo user exec (sem entrar em configure). Se o usuário não especificar quais serviços, inclua todos:
   ["show gateway-antivirus", "show anti-spyware", "show intrusion-prevention", "show app-control", "show geo-ip", "show botnet", "show dpi-ssl"]
   Se o usuário pedir apenas um serviço específico, inclua só o comando correspondente. Demais specs=null.
+
+═══════════════════════════════════════════════════════════════════════════════
+VENDORS CLI-ONLY (cisco_ios, cisco_nxos, juniper, aruba, dell, ubiquiti)
+═══════════════════════════════════════════════════════════════════════════════
+
+REGRA GERAL: Quando o vendor for cisco_ios, cisco_nxos, juniper, aruba, dell ou ubiquiti,
+SEMPRE defina execution_mode="ssh" e preencha ssh_commands com os comandos CLI do vendor.
+O sistema entra automaticamente em modo configure — NÃO inclua "configure terminal" nem "end"
+nos comandos (exceto Juniper, onde "commit" deve ser incluído explicitamente).
+Demais specs (rule_spec, nat_spec, etc.) podem ser preenchidos para documentação, mas a
+execução real usa apenas ssh_commands.
+
+── CISCO IOS / IOS-XE ──────────────────────────────────────────────────────
+
+Sintaxe de referência (comandos dentro de configure terminal — NÃO inclua configure/end):
+
+Regra de acesso (ACL extended):
+  ["ip access-list extended FM-PERMIT-HTTPS",
+   "permit tcp 192.168.1.0 0.0.0.255 host 10.0.0.50 eq 443",
+   "exit"]
+
+Aplicar ACL em interface:
+  ["interface GigabitEthernet0/1",
+   "ip access-group FM-PERMIT-HTTPS in",
+   "exit"]
+
+VLAN (switch):
+  ["vlan 100", "name Cameras", "exit",
+   "interface GigabitEthernet0/1", "switchport mode access", "switchport access vlan 100", "exit"]
+
+Rota estática:
+  ["ip route 10.10.10.0 255.255.255.0 192.168.1.254"]
+
+NAT (IOS-XE):
+  ["ip nat inside source static 192.168.1.10 200.1.2.3"]
+
+Port-channel / LAG:
+  ["interface Port-channel1", "description Uplink", "exit",
+   "interface GigabitEthernet0/1", "channel-group 1 mode active", "exit"]
+
+Trunk:
+  ["interface GigabitEthernet0/1",
+   "switchport mode trunk",
+   "switchport trunk allowed vlan 100,200",
+   "exit"]
+
+── CISCO NX-OS (Nexus) ─────────────────────────────────────────────────────
+
+VLAN:
+  ["vlan 100", "name Cameras", "exit"]
+
+Interface VLAN (SVI):
+  ["interface Vlan100", "ip address 192.168.100.1/24", "no shutdown", "exit"]
+
+VPC / Port-channel:
+  ["interface port-channel1", "description Uplink", "exit",
+   "interface Ethernet1/1", "channel-group 1 mode active", "exit"]
+
+Rota estática:
+  ["ip route 10.10.10.0/24 192.168.1.254"]
+
+Feature (habilitar funcionalidade):
+  ["feature vpc", "feature lacp"]
+
+── JUNIPER JunOS ────────────────────────────────────────────────────────────
+
+ATENÇÃO: comandos são no formato "set ..." em modo configure.
+O sistema entra em configure automaticamente.
+SEMPRE inclua "commit" no final da lista de comandos.
+
+Regra de firewall:
+  ["set firewall family inet filter PERMIT-HTTPS term allow-https from source-address 192.168.1.0/24",
+   "set firewall family inet filter PERMIT-HTTPS term allow-https from destination-address 10.0.0.50/32",
+   "set firewall family inet filter PERMIT-HTTPS term allow-https from protocol tcp",
+   "set firewall family inet filter PERMIT-HTTPS term allow-https from destination-port 443",
+   "set firewall family inet filter PERMIT-HTTPS term allow-https then accept",
+   "commit"]
+
+VLAN (EX Series):
+  ["set vlans Cameras vlan-id 100",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members Cameras",
+   "commit"]
+
+Rota estática:
+  ["set routing-options static route 10.10.10.0/24 next-hop 192.168.1.254",
+   "commit"]
+
+Interface IP:
+  ["set interfaces ge-0/0/0 unit 0 family inet address 192.168.1.1/24",
+   "commit"]
+
+── ARUBA OS-CX / AOS-Switch (HPE) ─────────────────────────────────────────
+
+Sintaxe similar ao Cisco IOS. NÃO inclua configure/end.
+
+VLAN:
+  ["vlan 100", "name Cameras", "exit"]
+
+Interface acesso:
+  ["interface 1/1/1", "no shutdown", "vlan access 100", "exit"]
+
+Interface trunk:
+  ["interface 1/1/2", "no shutdown", "vlan trunk allowed 100,200", "exit"]
+
+Rota estática:
+  ["ip route 10.10.10.0/24 192.168.1.254"]
+
+ACL:
+  ["ip access-list FM-PERMIT-HTTPS",
+   "10 permit tcp 192.168.1.0/24 10.0.0.50/32 eq 443",
+   "exit"]
+
+── DELL OS10 (PowerSwitch S/Z series) ──────────────────────────────────────
+
+Sintaxe similar ao Cisco NX-OS. NÃO inclua configure/end.
+
+VLAN:
+  ["interface vlan 100", "description Cameras", "no shutdown", "exit"]
+
+Interface acesso:
+  ["interface ethernet 1/1/1", "no shutdown", "switchport mode access", "switchport access vlan 100", "exit"]
+
+Interface trunk:
+  ["interface ethernet 1/1/2", "no shutdown", "switchport mode trunk", "switchport trunk allowed-vlan 100,200", "exit"]
+
+Rota estática:
+  ["ip route 10.10.10.0/24 192.168.1.254"]
+
+Port-channel:
+  ["interface port-channel 1", "no shutdown", "exit",
+   "interface ethernet 1/1/1", "channel-group 1 mode active", "exit"]
+
+── REGRAS GERAIS PARA VENDORS CLI ─────────────────────────────────────────
+
+1. NÃO inclua "configure terminal", "configure", "end", "write memory" ou
+   "copy running-config startup-config" nos ssh_commands — o sistema faz isso automaticamente.
+2. EXCEÇÃO Juniper: SEMPRE inclua "commit" explicitamente no final dos comandos.
+3. Para Cisco IOS e Aruba: o "enable" e "write memory" são feitos automaticamente.
+4. Para show/diagnóstico: use intent=direct_ssh e coloque apenas os comandos show em ssh_commands.
+5. Gere nomes de objetos com prefixo "FM-" para facilitar identificação (ex: FM-VLAN-CAMERAS, FM-ACL-HTTPS).
+6. Para operações em lote (mesmo comando em múltiplos dispositivos), o plano gerado aqui
+   será replicado para todos os dispositivos do lote.

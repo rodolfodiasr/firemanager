@@ -42,8 +42,9 @@ const VENDOR_LABELS: Record<string, string> = {
   cisco_ios:  "Cisco IOS",
   cisco_nxos: "Cisco NX-OS",
   juniper:    "Juniper",
-  aruba:      "Aruba",
+  aruba:      "Aruba/HPE",
   ubiquiti:   "Ubiquiti",
+  dell:       "DELL",
 };
 
 export function DeviceCard({

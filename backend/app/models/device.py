@@ -27,6 +27,7 @@ class VendorEnum(str, enum.Enum):
     juniper    = "juniper"
     aruba      = "aruba"
     ubiquiti   = "ubiquiti"
+    dell       = "dell"
 
 
 class DeviceCategory(str, enum.Enum):

@@ -13,7 +13,8 @@ export type VendorEnum =
   | "cisco_nxos"
   | "juniper"
   | "aruba"
-  | "ubiquiti";
+  | "ubiquiti"
+  | "dell";
 
 export type DeviceStatus = "online" | "offline" | "unknown" | "error";
 

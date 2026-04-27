@@ -152,7 +152,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.agent import AgentSession
 from app.connectors.base import RuleSpec
-from app.connectors.factory import get_connector, get_ssh_connector
+from app.connectors.factory import CLI_VENDORS, get_connector, get_ssh_connector
 from app.models.operation import Operation, OperationStatus
 from app.models.operation_step import OperationStep, StepStatus
 from app.models.snapshot import Snapshot
@@ -230,10 +230,49 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
         raise ValueError("Operation has no action plan")
 
     device = await get_device(db, operation.device_id)
-    connector = get_connector(device)
 
     from app.policy_engine.schemas import ActionPlan
     plan = ActionPlan.model_validate(operation.action_plan)
+
+    # ── CLI-only vendors: all execution goes through SSH ──────────────────────
+    if device.vendor in CLI_VENDORS:
+        ssh_commands = plan.ssh_commands or []
+        if not ssh_commands:
+            operation.status = OperationStatus.failed
+            operation.error_message = (
+                f"Nenhum comando SSH foi gerado para o vendor '{device.vendor.value}'. "
+                "Verifique o plano de ação ou use o Modo Técnico para inserir comandos manualmente."
+            )
+            await db.flush()
+            await db.refresh(operation)
+            return operation
+
+        operation.status = OperationStatus.executing
+        await db.flush()
+        try:
+            ssh_connector = get_ssh_connector(device)
+            ssh_result = await ssh_connector.execute_commands(ssh_commands)
+            operation.action_plan = {
+                **(operation.action_plan or {}),
+                "result": {
+                    "commands": ssh_result.commands_executed,
+                    "output": ssh_result.output,
+                },
+            }
+            if ssh_result.success:
+                operation.status = OperationStatus.completed
+            else:
+                operation.status = OperationStatus.failed
+                operation.error_message = ssh_result.error
+        except Exception as exc:
+            operation.status = OperationStatus.failed
+            operation.error_message = str(exc)
+        await db.flush()
+        await db.refresh(operation)
+        return operation
+    # ── REST-API vendors (existing routing below) ─────────────────────────────
+
+    connector = get_connector(device)
 
     try:
         validate_action_plan(plan)

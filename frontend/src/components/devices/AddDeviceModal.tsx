@@ -120,24 +120,34 @@ const VENDOR_CONFIG: Record<VendorEnum, VendorConfig> = {
     hint: "JunOS · SSH + NETCONF (set system services netconf ssh)",
   },
   aruba: {
-    label: "Aruba / HPE",
+    label: "Aruba / HPE ProCurve",
     authType: "user_pass",
-    connProtocol: "rest",
+    connProtocol: "ssh",
+    usernameLabel: "Usuário",
+    usernamePlaceholder: "admin",
+    passwordLabel: "Senha (enable)",
+    defaultPort: 22,
+    hint: "Aruba OS-CX / AOS-Switch (HPE ProCurve) · SSH habilitado",
+  },
+  ubiquiti: {
+    label: "Ubiquiti EdgeOS / EdgeSwitch",
+    authType: "user_pass",
+    connProtocol: "ssh",
     usernameLabel: "Usuário",
     usernamePlaceholder: "admin",
     passwordLabel: "Senha",
-    defaultPort: 443,
-    hint: "Aruba OS-CX / AOS-Switch · REST API habilitada",
+    defaultPort: 22,
+    hint: "EdgeOS / EdgeSwitch · SSH habilitado",
   },
-  ubiquiti: {
-    label: "Ubiquiti UniFi",
+  dell: {
+    label: "DELL PowerSwitch (OS10)",
     authType: "user_pass",
-    connProtocol: "rest",
-    usernameLabel: "Usuário (local)",
+    connProtocol: "ssh",
+    usernameLabel: "Usuário",
     usernamePlaceholder: "admin",
     passwordLabel: "Senha",
-    defaultPort: 8443,
-    hint: "UniFi Network Application · conta local (não UniFi Cloud)",
+    defaultPort: 22,
+    hint: "DELL EMC PowerSwitch S/Z-series (OS10) ou PowerConnect · SSH habilitado",
   },
 };
 
@@ -151,8 +161,8 @@ const CATEGORY_LABELS: Record<DeviceCategory, string> = {
 const CATEGORY_VENDORS: Record<DeviceCategory, VendorEnum[]> = {
   firewall:  ["fortinet", "sonicwall", "pfsense", "opnsense", "mikrotik", "endian"],
   router:    ["cisco_ios", "juniper", "mikrotik", "ubiquiti"],
-  switch:    ["cisco_ios", "cisco_nxos", "aruba", "ubiquiti"],
-  l3_switch: ["cisco_ios", "cisco_nxos", "juniper", "aruba"],
+  switch:    ["cisco_ios", "cisco_nxos", "aruba", "dell", "ubiquiti"],
+  l3_switch: ["cisco_ios", "cisco_nxos", "juniper", "aruba", "dell"],
 };
 
 export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProps) {

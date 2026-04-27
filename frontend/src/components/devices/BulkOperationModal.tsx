@@ -19,7 +19,7 @@ const VENDOR_LABELS: Record<string, string> = {
   fortinet: "Fortinet", sonicwall: "SonicWall", pfsense: "pfSense",
   opnsense: "OPNsense", mikrotik: "MikroTik", endian: "Endian",
   cisco_ios: "Cisco IOS", cisco_nxos: "Cisco NX-OS", juniper: "Juniper",
-  aruba: "Aruba", ubiquiti: "Ubiquiti",
+  aruba: "Aruba/HPE", ubiquiti: "Ubiquiti", dell: "DELL",
 };
 
 export function BulkOperationModal({ isOpen, devices, onClose }: BulkOperationModalProps) {
