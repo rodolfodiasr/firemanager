@@ -11,7 +11,9 @@ class DeviceCredentials(BaseModel):
     token: str | None = None
     username: str | None = None
     password: str | None = None
-    ssh_port: int = 22  # SSH port for CLI fallback (default 22)
+    ssh_port: int = 22
+    vdom: str | None = None        # Fortinet: VDOM name (default "root")
+    os_version: int | None = None  # SonicWall: 6 or 7
 
 
 class DeviceCreate(BaseModel):

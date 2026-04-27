@@ -19,6 +19,7 @@ from app.schemas.user import (
     LoginRequest,
     MFASetupResponse,
     MFAVerifyRequest,
+    PasswordChange,
     TenantInfo,
     TokenResponse,
     UserCreate,
@@ -349,6 +350,18 @@ async def verify_mfa(
     current_user.mfa_enabled = True
     await db.flush()
     return {"mfa_enabled": True}
+
+
+@router.post("/me/password", status_code=204)
+async def change_password(
+    data: PasswordChange,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    if not _verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Senha atual incorreta")
+    current_user.hashed_password = _hash_password(data.new_password)
+    await db.flush()
 
 
 @router.get("/me", response_model=UserRead)
