@@ -423,7 +423,14 @@ export function Inspector() {
 
         {/* Recommendations tab */}
         {deviceId && activeTab === "recommendations" && (
-          <InspectorRecommendations deviceId={deviceId} deviceName={selectedDevice?.name} />
+          <InspectorRecommendations
+            deviceId={deviceId}
+            deviceName={selectedDevice?.name}
+            onViewRule={(name) => {
+              setSearchText(name);
+              changeResource("rules");
+            }}
+          />
         )}
 
         {/* Rules toolbar: search + action + zone + object filters */}

@@ -20,17 +20,17 @@ router = APIRouter()
 _INTERNAL_ZONES = {"LAN", "DMZ", "WLAN", "MGMT", "VOIP", "TRUSTED"}
 
 _SECURITY_LABEL_MAP = {
-    "gateway anti-virus":        "gateway_antivirus",
-    "anti-spyware":              "anti_spyware",
-    "intrusion prevention (ips)":"intrusion_prevention",
-    "app control":               "app_control",
-    "geo-ip filter":             "geo_ip",
-    "botnet filter":             "botnet",
-    "dpi-ssl":                   "dpi_ssl",
+    "gateway anti-virus":         "gateway_antivirus",
+    "anti-spyware":               "anti_spyware",
+    "intrusion prevention (ips)": "intrusion_prevention",
+    "app control":                "app_control",
+    "geo-ip filter":              "geo_ip",
+    "botnet filter":              "botnet",
+    "dpi-ssl":                    "dpi_ssl",
 }
 
 
-# ── IP overlap helpers ────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _ip_contains(broader: str, narrower: str) -> bool:
     try:
@@ -42,8 +42,7 @@ def _ip_contains(broader: str, narrower: str) -> bool:
 
 
 def _field_shadows(a_val: str, b_val: str) -> bool:
-    av = a_val.lower()
-    if av == "any":
+    if a_val.lower() == "any":
         return True
     if a_val == b_val:
         return True
@@ -62,19 +61,34 @@ def _zone_pair_matches(a: FirewallRule, b: FirewallRule) -> bool:
     return True
 
 
-# ── Individual checks ─────────────────────────────────────────────────────────
+def _rule_to_dict(rule: FirewallRule, pos_map: dict[str, int]) -> dict:
+    return {
+        "pos":      pos_map.get(rule.rule_id),
+        "rule_id":  rule.rule_id,
+        "name":     rule.name,
+        "src_zone": rule.src_zone,
+        "dst_zone": rule.dst_zone,
+        "src":      rule.src,
+        "dst":      rule.dst,
+        "service":  rule.service,
+        "action":   rule.action,
+        "enabled":  rule.enabled,
+        "hit_count": rule.hit_count,
+    }
 
-def _check_group_opportunities(rules: list[FirewallRule]) -> list[dict]:
+
+def _names(affected: list[dict]) -> str:
+    return ", ".join(r["name"] for r in affected)
+
+
+# ── Checks ────────────────────────────────────────────────────────────────────
+
+def _check_group_opportunities(rules: list[FirewallRule], pos_map: dict[str, int]) -> list[dict]:
     groups: dict[tuple, list[FirewallRule]] = defaultdict(list)
     for r in rules:
         if not r.enabled or r.action.lower() != "allow":
             continue
-        key = (
-            (r.src_zone or "").upper(),
-            (r.dst_zone or "").upper(),
-            r.dst,
-            r.service,
-        )
+        key = ((r.src_zone or "").upper(), (r.dst_zone or "").upper(), r.dst, r.service)
         groups[key].append(r)
 
     results = []
@@ -82,24 +96,24 @@ def _check_group_opportunities(rules: list[FirewallRule]) -> list[dict]:
         srcs = [r.src for r in grp if r.src.lower() != "any"]
         if len(srcs) < 2:
             continue
-        names = [r.name for r in grp]
-        safe_dst = dst.replace(" ", "_").upper()
+        affected = [_rule_to_dict(r, pos_map) for r in grp]
+        safe_dst  = dst.replace(" ", "_").upper()
         group_name = f"GRP_{safe_dst}_ORIGENS"
         route = f"{src_zone}→{dst_zone}" if src_zone and dst_zone else "mesma zona"
         results.append({
-            "id": f"group_src_{dst}_{service}",
+            "id":       f"group_src_{dst}_{service}",
             "severity": "medium",
-            "title": f"{len(grp)} regras com mesmo destino podem ser agrupadas",
+            "title":    f"{len(grp)} regras com mesmo destino podem ser agrupadas",
             "description": (
-                f'As regras abaixo têm destino "{dst}", serviço "{service}" ({route}) '
-                f"e origens diferentes: {', '.join(srcs)}. "
-                "Consolidar em um grupo de endereços reduz duplicação e simplifica auditorias."
+                f'Destino "{dst}", serviço "{service}" ({route}). '
+                f"Origens diferentes: {', '.join(srcs)}. "
+                "Criar um address group consolida em uma única regra."
             ),
-            "affected_rules": names,
+            "affected_rules": affected,
             "agent_seed": (
                 f'Quero criar um grupo de endereços chamado "{group_name}" '
                 f"com os objetos {', '.join(srcs)} e consolidar as regras "
-                f"{', '.join(names)} em uma única regra — "
+                f"{_names(affected)} em uma única regra — "
             ),
             "manual_hint": (
                 f"# 1. Criar grupo de endereços\n"
@@ -107,35 +121,34 @@ def _check_group_opportunities(rules: list[FirewallRule]) -> list[dict]:
                 + "".join(f"  member {s}\n" for s in srcs)
                 + f"\n# 2. Criar regra consolidada\n"
                 f"access-rule {src_zone} {dst_zone} {group_name} {dst} {service} allow\n"
-                + "".join(f"\n# 3. Remover regra duplicada: {n}" for n in names)
+                + "".join(f"\n# 3. Remover regra duplicada: {r['name']}" for r in affected)
             ),
         })
     return results
 
 
-def _check_any_source_internal(rules: list[FirewallRule]) -> list[dict]:
-    issues = []
-    for r in rules:
-        if not r.enabled or r.action.lower() != "allow":
-            continue
-        if r.src.lower() != "any":
-            continue
-        dst_zone = (r.dst_zone or "").upper()
-        if any(dst_zone.startswith(z) for z in _INTERNAL_ZONES):
-            issues.append(r.name)
-    if not issues:
+def _check_any_source_internal(rules: list[FirewallRule], pos_map: dict[str, int]) -> list[dict]:
+    matched = [
+        r for r in rules
+        if r.enabled
+        and r.action.lower() == "allow"
+        and r.src.lower() == "any"
+        and any((r.dst_zone or "").upper().startswith(z) for z in _INTERNAL_ZONES)
+    ]
+    if not matched:
         return []
+    affected = [_rule_to_dict(r, pos_map) for r in matched]
     return [{
-        "id": "any_src_internal",
+        "id":       "any_src_internal",
         "severity": "high",
-        "title": f"{len(issues)} regra(s) permitem qualquer origem para zonas internas",
+        "title":    f"{len(matched)} regra(s) permitem qualquer origem para zonas internas",
         "description": (
-            'Regras com origem "Any" permitem que qualquer endereço IP alcance zonas internas '
-            "(LAN, DMZ, WLAN). Restrinja a origem ao menor conjunto de endereços necessário."
+            'Origem "Any" permite que qualquer IP alcance zonas internas (LAN, DMZ, WLAN). '
+            "Restrinja ao menor conjunto de endereços necessário."
         ),
-        "affected_rules": issues,
+        "affected_rules": affected,
         "agent_seed": (
-            f"Quero revisar as regras {', '.join(issues)} que usam origem Any para zonas internas. "
+            f"Quero revisar as regras {_names(affected)} que usam origem Any para zonas internas. "
             "Ajude-me a restringir a origem ao mínimo necessário — "
         ),
         "manual_hint": (
@@ -147,29 +160,28 @@ def _check_any_source_internal(rules: list[FirewallRule]) -> list[dict]:
     }]
 
 
-def _check_any_service_wan(rules: list[FirewallRule]) -> list[dict]:
-    issues = []
-    for r in rules:
-        if not r.enabled or r.action.lower() != "allow":
-            continue
-        if r.service.lower() != "any":
-            continue
-        dst_zone = (r.dst_zone or "").upper()
-        if "WAN" in dst_zone or not dst_zone:
-            issues.append(r.name)
-    if not issues:
+def _check_any_service_wan(rules: list[FirewallRule], pos_map: dict[str, int]) -> list[dict]:
+    matched = [
+        r for r in rules
+        if r.enabled
+        and r.action.lower() == "allow"
+        and r.service.lower() == "any"
+        and ("WAN" in (r.dst_zone or "").upper() or not r.dst_zone)
+    ]
+    if not matched:
         return []
+    affected = [_rule_to_dict(r, pos_map) for r in matched]
     return [{
-        "id": "any_service_wan",
+        "id":       "any_service_wan",
         "severity": "high",
-        "title": f"{len(issues)} regra(s) permitem qualquer serviço para WAN",
+        "title":    f"{len(matched)} regra(s) permitem qualquer serviço para WAN",
         "description": (
-            'Regras com serviço "Any" saindo para a WAN expõem todos os protocolos e portas. '
-            "Restrinja ao conjunto mínimo de portas necessárias para cada fluxo."
+            'Serviço "Any" para WAN expõe todos os protocolos e portas. '
+            "Restrinja ao conjunto mínimo de serviços necessários."
         ),
-        "affected_rules": issues,
+        "affected_rules": affected,
         "agent_seed": (
-            f"Quero revisar as regras {', '.join(issues)} que usam serviço Any para WAN. "
+            f"Quero revisar as regras {_names(affected)} que usam serviço Any para WAN. "
             "Ajude-me a especificar apenas os serviços necessários — "
         ),
         "manual_hint": (
@@ -181,10 +193,11 @@ def _check_any_service_wan(rules: list[FirewallRule]) -> list[dict]:
     }]
 
 
-def _check_shadow_rules(rules: list[FirewallRule]) -> list[dict]:
+def _check_shadow_rules(rules: list[FirewallRule], pos_map: dict[str, int]) -> list[dict]:
     active = [r for r in rules if r.enabled]
     shadows: list[dict] = []
     seen: set[str] = set()
+    by_map: dict[str, str] = {}
 
     for j, later in enumerate(active):
         for earlier in active[:j]:
@@ -197,27 +210,33 @@ def _check_shadow_rules(rules: list[FirewallRule]) -> list[dict]:
             ):
                 if later.name not in seen:
                     seen.add(later.name)
-                    shadows.append({"shadowed": later.name, "by": earlier.name})
+                    shadows.append({"shadowed": later, "by": earlier})
+                    by_map[later.name] = earlier.name
 
     if not shadows:
         return []
 
     detail = "\n".join(
-        f'  • "{s["shadowed"]}" → encoberta por "{s["by"]}"' for s in shadows
+        f'  • "{s["shadowed"].name}" → encoberta por "{s["by"].name}"' for s in shadows
     )
-    shadowed_names = [s["shadowed"] for s in shadows]
+    shadowed_rules = [s["shadowed"] for s in shadows]
+    affected = [_rule_to_dict(r, pos_map) for r in shadowed_rules]
+    # Annotate each affected rule with which rule shadows it
+    for a in affected:
+        a["shadowed_by"] = by_map.get(a["name"])
+
     return [{
-        "id": "shadow_rules",
+        "id":       "shadow_rules",
         "severity": "high",
-        "title": f"{len(shadows)} regra(s) inatingível(is) — shadow rules",
+        "title":    f"{len(shadows)} regra(s) inatingível(is) — shadow rules",
         "description": (
             "As regras abaixo nunca serão avaliadas porque uma regra anterior mais genérica "
             "já captura o mesmo tráfego. Revise a ordem ou remova as redundantes.\n\n"
             + detail
         ),
-        "affected_rules": shadowed_names,
+        "affected_rules": affected,
         "agent_seed": (
-            f"Tenho shadow rules (regras inatingíveis): {', '.join(shadowed_names)}. "
+            f"Tenho shadow rules (regras inatingíveis): {_names(affected)}. "
             "Ajude-me a reordenar ou remover as regras redundantes — "
         ),
         "manual_hint": (
@@ -230,37 +249,32 @@ def _check_shadow_rules(rules: list[FirewallRule]) -> list[dict]:
     }]
 
 
-def _check_dpi_ssl(rules: list[FirewallRule]) -> list[dict]:
-    issues = []
+def _check_dpi_ssl(rules: list[FirewallRule], pos_map: dict[str, int]) -> list[dict]:
+    matched = []
     for r in rules:
         if not r.enabled or r.action.lower() != "allow":
             continue
-        src_zone = (r.src_zone or "").upper()
-        dst_zone = (r.dst_zone or "").upper()
-        if "WAN" not in src_zone and "WAN" not in dst_zone:
+        if "WAN" not in (r.src_zone or "").upper() and "WAN" not in (r.dst_zone or "").upper():
             continue
         raw_action = r.raw.get("action", {})
         if not isinstance(raw_action, dict):
             continue
-        client = raw_action.get("dpi_ssl_client", None)
-        server = raw_action.get("dpi_ssl_server", None)
-        # Only flag if fields exist and are explicitly False
-        if client is False or server is False:
-            issues.append(r.name)
-    if not issues:
+        if raw_action.get("dpi_ssl_client") is False or raw_action.get("dpi_ssl_server") is False:
+            matched.append(r)
+    if not matched:
         return []
+    affected = [_rule_to_dict(r, pos_map) for r in matched]
     return [{
-        "id": "dpi_ssl_disabled",
+        "id":       "dpi_ssl_disabled",
         "severity": "high",
-        "title": f"{len(issues)} regra(s) cruzam a WAN sem inspeção DPI-SSL",
+        "title":    f"{len(matched)} regra(s) cruzam a WAN sem inspeção DPI-SSL",
         "description": (
-            "Regras WAN com DPI-SSL desativado permitem tráfego HTTPS sem inspeção de conteúdo, "
-            "possibilitando exfiltração de dados e malware em túneis TLS. "
-            "Ative DPI-SSL Client e/ou Server nessas regras."
+            "DPI-SSL desativado permite tráfego HTTPS sem inspeção de conteúdo, "
+            "possibilitando exfiltração e malware em túneis TLS."
         ),
-        "affected_rules": issues,
+        "affected_rules": affected,
         "agent_seed": (
-            f"Quero ativar a inspeção DPI-SSL nas regras {', '.join(issues)} que cruzam a WAN — "
+            f"Quero ativar a inspeção DPI-SSL nas regras {_names(affected)} que cruzam a WAN — "
         ),
         "manual_hint": (
             "# GUI: Security > Access Rules > editar regra > aba Advanced\n"
@@ -277,46 +291,35 @@ def _check_dpi_ssl(rules: list[FirewallRule]) -> list[dict]:
     }]
 
 
-def _check_disabled_rules(rules: list[FirewallRule]) -> list[dict]:
+def _check_disabled_rules(rules: list[FirewallRule], pos_map: dict[str, int]) -> list[dict]:
     disabled = [r for r in rules if not r.enabled]
     if not disabled:
         return []
 
-    zero_hit = [r.name for r in disabled if r.hit_count == 0]
-    has_hit  = [r.name for r in disabled if r.hit_count and r.hit_count > 0]
-    unknown  = [r.name for r in disabled if r.hit_count is None]
-
-    # Build per-rule detail lines for description
-    detail_lines = []
-    for r in disabled:
-        if r.hit_count is None:
-            detail_lines.append(f'  • "{r.name}" — hits: N/D')
-        else:
-            detail_lines.append(f'  • "{r.name}" — {r.hit_count:,} hit(s)')
+    zero_hit = sum(1 for r in disabled if r.hit_count == 0)
+    has_hit  = sum(1 for r in disabled if r.hit_count and r.hit_count > 0)
+    unknown  = sum(1 for r in disabled if r.hit_count is None)
 
     notes = []
     if zero_hit:
-        notes.append(f"{len(zero_hit)} com zero hits (nunca usadas ou stats zeradas)")
+        notes.append(f"{zero_hit} com zero hits — nunca usadas")
     if has_hit:
-        notes.append(f"{len(has_hit)} com hits registrados (avaliar se ainda são necessárias)")
+        notes.append(f"{has_hit} com hits registrados — avaliar necessidade")
     if unknown:
-        notes.append(f"{len(unknown)} sem dados de hits disponíveis")
+        notes.append(f"{unknown} sem dados de hits")
 
+    affected = [_rule_to_dict(r, pos_map) for r in disabled]
     return [{
-        "id": "disabled_rules",
+        "id":       "disabled_rules",
         "severity": "low",
-        "title": f"{len(disabled)} regra(s) desativada(s) — candidatas à remoção",
+        "title":    f"{len(disabled)} regra(s) desativada(s) — candidatas à remoção",
         "description": (
-            "Regras desativadas não afetam o tráfego mas ocupam espaço na política e podem "
-            "causar confusão durante auditorias. Revise se ainda são necessárias.\n\n"
-            + "\n".join(detail_lines)
-            + ("\n\n" + " · ".join(notes) if notes else "")
+            "Regras desativadas não afetam o tráfego mas ocupam espaço na política. "
+            + (" · ".join(notes) if notes else "Revise se ainda são necessárias.")
         ),
-        "affected_rules": [r.name for r in disabled],
-        "hit_counts": {r.name: r.hit_count for r in disabled},
+        "affected_rules": affected,
         "agent_seed": (
-            f"Quero revisar e possivelmente remover as regras desativadas: "
-            f"{', '.join(r.name for r in disabled)} — "
+            f"Quero revisar e possivelmente remover as regras desativadas: {_names(affected)} — "
         ),
         "manual_hint": (
             "# Listar regras desativadas:\n"
@@ -329,48 +332,48 @@ def _check_disabled_rules(rules: list[FirewallRule]) -> list[dict]:
 
 
 def _check_wan_lan_no_inspection(
-    rules: list[FirewallRule], security_enabled: dict[str, bool]
+    rules: list[FirewallRule], pos_map: dict[str, int], security_enabled: dict[str, bool]
 ) -> list[dict]:
     if not security_enabled:
         return []
     key_services = ["gateway_antivirus", "anti_spyware", "intrusion_prevention"]
-    disabled = [k for k in key_services if security_enabled.get(k) is False]
-    if not disabled:
+    disabled_svcs = [k for k in key_services if security_enabled.get(k) is False]
+    if not disabled_svcs:
         return []
 
-    wan_to_lan = [
-        r.name for r in rules
+    matched = [
+        r for r in rules
         if r.enabled
         and r.action.lower() == "allow"
         and (r.src_zone or "").upper() == "WAN"
         and any((r.dst_zone or "").upper().startswith(z) for z in _INTERNAL_ZONES)
     ]
-    if not wan_to_lan:
+    if not matched:
         return []
 
     label_map = {
-        "gateway_antivirus": "Gateway Anti-Virus",
-        "anti_spyware": "Anti-Spyware",
-        "intrusion_prevention": "Intrusion Prevention (IPS)",
+        "gateway_antivirus":   "Gateway Anti-Virus",
+        "anti_spyware":        "Anti-Spyware",
+        "intrusion_prevention":"Intrusion Prevention (IPS)",
     }
-    off_labels = [label_map.get(k, k) for k in disabled]
+    off_labels = [label_map.get(k, k) for k in disabled_svcs]
+    affected = [_rule_to_dict(r, pos_map) for r in matched]
     return [{
-        "id": "wan_lan_no_inspection",
+        "id":       "wan_lan_no_inspection",
         "severity": "high",
-        "title": f"{len(wan_to_lan)} regra(s) WAN→LAN com serviços de segurança desativados",
+        "title":    f"{len(matched)} regra(s) WAN→LAN com serviços de segurança desativados",
         "description": (
-            f"As regras abaixo permitem tráfego da WAN para zonas internas, mas os seguintes "
-            f"serviços estão desativados globalmente: {', '.join(off_labels)}. "
-            "Todo tráfego entrante passa sem inspeção."
+            f"Serviços desativados globalmente: {', '.join(off_labels)}. "
+            "Todo tráfego WAN→LAN passa sem inspeção."
         ),
-        "affected_rules": wan_to_lan,
+        "affected_rules": affected,
         "agent_seed": (
             f"Quero ativar {', '.join(off_labels)} que estão desativados e que protegem "
-            f"as regras WAN→LAN: {', '.join(wan_to_lan)} — "
+            f"as regras WAN→LAN: {_names(affected)} — "
         ),
         "manual_hint": (
             "# Ativar serviços de segurança via SSH:\n"
-            + "".join(f"security-service {k.replace('_', '-')} enable\n" for k in disabled)
+            + "".join(f"security-service {k.replace('_', '-')} enable\n" for k in disabled_svcs)
             + "commit"
         ),
     }]
@@ -395,7 +398,10 @@ async def get_recommendations(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Erro ao buscar regras: {exc}")
 
-    # Enrich rules with hit counts — best-effort, non-fatal
+    # Position map: rule_id → 1-based index in device policy order
+    pos_map = {r.rule_id: i + 1 for i, r in enumerate(rules)}
+
+    # Enrich rules with hit counts — best-effort
     stats_fetched = False
     try:
         rule_stats = await connector.get_rule_statistics()
@@ -405,7 +411,6 @@ async def get_recommendations(
                 if rule.rule_id in rule_stats:
                     rule.hit_count = rule_stats[rule.rule_id]
                 else:
-                    # Also try matching by name as fallback
                     for rid, count in rule_stats.items():
                         if rid == rule.name:
                             rule.hit_count = count
@@ -413,7 +418,7 @@ async def get_recommendations(
     except Exception:
         pass
 
-    # Security status — non-fatal, best-effort via SSH
+    # Security status — non-fatal via SSH
     security_enabled: dict[str, bool] = {}
     try:
         ssh = get_ssh_connector(device)
@@ -428,21 +433,21 @@ async def get_recommendations(
         pass
 
     checks: list[dict] = []
-    checks.extend(_check_any_source_internal(rules))
-    checks.extend(_check_any_service_wan(rules))
-    checks.extend(_check_shadow_rules(rules))
-    checks.extend(_check_dpi_ssl(rules))
-    checks.extend(_check_wan_lan_no_inspection(rules, security_enabled))
-    checks.extend(_check_group_opportunities(rules))
-    checks.extend(_check_disabled_rules(rules))
+    checks.extend(_check_any_source_internal(rules, pos_map))
+    checks.extend(_check_any_service_wan(rules, pos_map))
+    checks.extend(_check_shadow_rules(rules, pos_map))
+    checks.extend(_check_dpi_ssl(rules, pos_map))
+    checks.extend(_check_wan_lan_no_inspection(rules, pos_map, security_enabled))
+    checks.extend(_check_group_opportunities(rules, pos_map))
+    checks.extend(_check_disabled_rules(rules, pos_map))
 
     _order = {"high": 0, "medium": 1, "low": 2}
     checks.sort(key=lambda c: _order.get(c["severity"], 9))
 
     return {
-        "total": len(checks),
-        "rules_analyzed": len(rules),
+        "total":            len(checks),
+        "rules_analyzed":   len(rules),
         "security_fetched": bool(security_enabled),
-        "stats_fetched": stats_fetched,
-        "checks": checks,
+        "stats_fetched":    stats_fetched,
+        "checks":           checks,
     }

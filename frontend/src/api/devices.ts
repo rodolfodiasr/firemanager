@@ -1,5 +1,6 @@
 import type { Device, DeviceCreate } from "../types/device";
 import type { Recommendation } from "../types/recommendation";
+// RuleRow is embedded in Recommendation — no separate import needed
 import apiClient from "./client";
 
 export const devicesApi = {
