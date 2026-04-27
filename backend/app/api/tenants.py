@@ -1,3 +1,4 @@
+import secrets
 from typing import Annotated
 from uuid import UUID
 
@@ -5,13 +6,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import TenantContext, require_super_admin, require_tenant_admin
+from app.api.auth import (
+    oauth2_scheme,
+    require_super_admin,
+    resolve_tenant_access,
+    _hash_password,
+)
 from app.database import get_db
 from app.models.tenant import Tenant
-from app.models.user import User
-from app.models.user_tenant_role import UserTenantRole
+from app.models.user import User, UserRole
+from app.models.user_tenant_role import TenantRole, UserTenantRole
 from app.schemas.tenant import (
     MemberInvite,
+    MemberInviteByEmail,
+    MemberInviteResponse,
     MemberRoleUpdate,
     TenantCreate,
     TenantMemberRead,
@@ -90,11 +98,10 @@ async def delete_tenant(
 @router.get("/{tenant_id}/members", response_model=list[TenantMemberRead])
 async def list_members(
     tenant_id: UUID,
-    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
-    db:  Annotated[AsyncSession, Depends(get_db)],
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db:    Annotated[AsyncSession, Depends(get_db)],
 ) -> list[TenantMemberRead]:
-    if ctx.tenant.id != tenant_id:
-        raise HTTPException(status_code=403, detail="Sem acesso a este tenant")
+    await resolve_tenant_access(token, tenant_id, db)
     result = await db.execute(
         select(UserTenantRole, User)
         .join(User, UserTenantRole.user_id == User.id)
@@ -119,11 +126,10 @@ async def list_members(
 async def invite_member(
     tenant_id: UUID,
     data: MemberInvite,
-    ctx:  Annotated[TenantContext, Depends(require_tenant_admin)],
-    db:   Annotated[AsyncSession, Depends(get_db)],
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db:    Annotated[AsyncSession, Depends(get_db)],
 ) -> TenantMemberRead:
-    if ctx.tenant.id != tenant_id:
-        raise HTTPException(status_code=403, detail="Sem acesso a este tenant")
+    await resolve_tenant_access(token, tenant_id, db)
 
     result = await db.execute(select(User).where(User.id == data.user_id))
     user = result.scalar_one_or_none()
@@ -152,16 +158,64 @@ async def invite_member(
     )
 
 
+@router.post("/{tenant_id}/members/by-email", response_model=MemberInviteResponse, status_code=201)
+async def invite_member_by_email(
+    tenant_id: UUID,
+    data: MemberInviteByEmail,
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db:    Annotated[AsyncSession, Depends(get_db)],
+) -> MemberInviteResponse:
+    await resolve_tenant_access(token, tenant_id, db)
+
+    result = await db.execute(select(User).where(User.email == data.email))
+    user = result.scalar_one_or_none()
+    temp_password: str | None = None
+
+    if not user:
+        temp_password = secrets.token_urlsafe(10)
+        user = User(
+            email=data.email,
+            name=data.name or data.email.split("@")[0],
+            hashed_password=_hash_password(temp_password),
+            role=UserRole.operator,
+        )
+        db.add(user)
+        await db.flush()
+        await db.refresh(user)
+
+    existing = await db.execute(
+        select(UserTenantRole).where(
+            UserTenantRole.user_id == user.id,
+            UserTenantRole.tenant_id == tenant_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Usuário já é membro deste tenant")
+
+    utr = UserTenantRole(user_id=user.id, tenant_id=tenant_id, role=data.role)
+    db.add(utr)
+    await db.flush()
+
+    member = TenantMemberRead(
+        user_id=utr.user_id,
+        tenant_id=utr.tenant_id,
+        role=utr.role,
+        email=user.email,
+        name=user.name,
+        is_active=user.is_active,
+    )
+    return MemberInviteResponse(member=member, temp_password=temp_password)
+
+
 @router.patch("/{tenant_id}/members/{user_id}", response_model=TenantMemberRead)
 async def update_member_role(
     tenant_id: UUID,
     user_id:   UUID,
     data: MemberRoleUpdate,
-    ctx:  Annotated[TenantContext, Depends(require_tenant_admin)],
-    db:   Annotated[AsyncSession, Depends(get_db)],
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db:    Annotated[AsyncSession, Depends(get_db)],
 ) -> TenantMemberRead:
-    if ctx.tenant.id != tenant_id:
-        raise HTTPException(status_code=403, detail="Sem acesso a este tenant")
+    await resolve_tenant_access(token, tenant_id, db)
 
     result = await db.execute(
         select(UserTenantRole, User)
@@ -189,11 +243,10 @@ async def update_member_role(
 async def remove_member(
     tenant_id: UUID,
     user_id:   UUID,
-    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
-    db:  Annotated[AsyncSession, Depends(get_db)],
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db:    Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    if ctx.tenant.id != tenant_id:
-        raise HTTPException(status_code=403, detail="Sem acesso a este tenant")
+    ctx = await resolve_tenant_access(token, tenant_id, db)
     if user_id == ctx.user.id:
         raise HTTPException(status_code=400, detail="Não é possível remover a si mesmo")
 

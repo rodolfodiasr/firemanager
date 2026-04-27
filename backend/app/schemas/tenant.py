@@ -42,5 +42,16 @@ class MemberInvite(BaseModel):
     role: TenantRole = TenantRole.analyst
 
 
+class MemberInviteByEmail(BaseModel):
+    email: str
+    name: str | None = None
+    role: TenantRole = TenantRole.analyst
+
+
+class MemberInviteResponse(BaseModel):
+    member: TenantMemberRead
+    temp_password: str | None = None
+
+
 class MemberRoleUpdate(BaseModel):
     role: TenantRole

@@ -12,6 +12,7 @@ import {
   Terminal,
   BookMarked,
   Radar,
+  Building2,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -31,7 +32,9 @@ const navItems = [
 
 export function Sidebar() {
   const user = useAuthStore((s) => s.user);
+  const tenantRole = useAuthStore((s) => s.tenantRole);
   const isAdmin = user?.role === "admin";
+  const showTenants = user?.is_super_admin || tenantRole === "admin";
 
   const { data: pendingCount = 0 } = useQuery({
     queryKey: ["audit-pending-count"],
@@ -69,6 +72,21 @@ export function Sidebar() {
             )}
           </NavLink>
         ))}
+        {showTenants && (
+          <NavLink
+            to="/tenants"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-brand-600 text-white"
+                  : "text-gray-400 hover:bg-gray-800 hover:text-white"
+              }`
+            }
+          >
+            <Building2 size={18} />
+            <span className="flex-1">Tenants</span>
+          </NavLink>
+        )}
       </nav>
       <div className="px-6 py-4 border-t border-gray-700 text-xs text-gray-500">
         FireManager v0.1.0

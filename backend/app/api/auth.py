@@ -167,6 +167,43 @@ async def require_tenant_admin(ctx: Annotated[TenantContext, Depends(get_tenant_
     return ctx
 
 
+async def resolve_tenant_access(token: str, tenant_id: UUID, db: AsyncSession) -> TenantContext:
+    """Super admin OR tenant admin can access the given tenant's members."""
+    payload = _decode_token(token)
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+
+    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+
+    result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant não encontrado")
+
+    if payload.get("super") and user.is_super_admin:
+        return TenantContext(user=user, tenant=tenant, role=TenantRole.admin)
+
+    jwt_tenant_id = payload.get("tenant_id")
+    if not jwt_tenant_id or UUID(jwt_tenant_id) != tenant_id:
+        raise HTTPException(status_code=403, detail="Sem acesso a este tenant")
+
+    result = await db.execute(
+        select(UserTenantRole).where(
+            UserTenantRole.user_id == user.id,
+            UserTenantRole.tenant_id == tenant.id,
+        )
+    )
+    utr = result.scalar_one_or_none()
+    if not utr or utr.role != TenantRole.admin:
+        raise HTTPException(status_code=403, detail="Requer papel de administrador no tenant")
+
+    return TenantContext(user=user, tenant=tenant, role=utr.role)
+
+
 # ── Auth endpoints ────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=UserRead, status_code=201)

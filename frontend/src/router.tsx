@@ -11,6 +11,7 @@ import { Audit } from "./pages/Audit";
 import { DirectMode } from "./pages/DirectMode";
 import { Templates } from "./pages/Templates";
 import { Inspector } from "./pages/Inspector";
+import { Tenants } from "./pages/Tenants";
 import { Sidebar } from "./components/layout/Sidebar";
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -105,6 +106,14 @@ export function AppRouter() {
         element={
           <ProtectedLayout>
             <Inspector />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/tenants"
+        element={
+          <ProtectedLayout>
+            <Tenants />
           </ProtectedLayout>
         }
       />

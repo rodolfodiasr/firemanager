@@ -1,6 +1,11 @@
 import type { TenantMember, TenantRead, TenantRole } from "../types/tenant";
 import apiClient from "./client";
 
+export interface InviteByEmailResponse {
+  member: TenantMember;
+  temp_password?: string;
+}
+
 export const tenantsApi = {
   list: () =>
     apiClient.get<TenantRead[]>("/tenants").then((r) => r.data),
@@ -19,6 +24,9 @@ export const tenantsApi = {
 
   inviteMember: (tenantId: string, data: { user_id: string; role: TenantRole }) =>
     apiClient.post<TenantMember>(`/tenants/${tenantId}/members`, data).then((r) => r.data),
+
+  inviteByEmail: (tenantId: string, data: { email: string; name?: string; role: TenantRole }) =>
+    apiClient.post<InviteByEmailResponse>(`/tenants/${tenantId}/members/by-email`, data).then((r) => r.data),
 
   updateMemberRole: (tenantId: string, userId: string, role: TenantRole) =>
     apiClient.patch<TenantMember>(`/tenants/${tenantId}/members/${userId}`, { role }).then((r) => r.data),
