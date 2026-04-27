@@ -232,7 +232,7 @@ function BulkJobDetailView({ id }: { id: string }) {
     queryKey: ["bulk-job", id],
     queryFn: () => bulkJobsApi.get(id),
     refetchInterval: (q) =>
-      q.state.data?.status === "executing" || q.state.data?.status === "pending" ? 3000 : false,
+      q.state.data?.status === "executing" ? 3000 : false,
   });
 
   const executeMut = useMutation({

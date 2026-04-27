@@ -160,7 +160,7 @@ async def create_bulk_job(
         first_id = cat_device_ids[0]
 
         # Generate plan via AI for the first device in this category
-        first_op, _ = await start_or_continue_operation(
+        first_op, agent_message = await start_or_continue_operation(
             db=db,
             user_id=ctx.user.id,
             operation_id=None,
@@ -169,6 +169,19 @@ async def create_bulk_job(
         )
         first_op.bulk_job_id = bulk_job.id
         await db.flush()
+
+        # If the AI couldn't generate a complete plan (e.g. asked a follow-up),
+        # fail the job immediately so the frontend doesn't poll forever.
+        if first_op.status != OperationStatus.approved:
+            bulk_job.status = BulkJobStatus.failed
+            bulk_job.error_summary = (
+                f"Não foi possível gerar o plano automaticamente para a categoria '{category}'. "
+                f"O assistente respondeu: {agent_message}"
+            )
+            await db.flush()
+            await db.refresh(bulk_job)
+            ops = await _get_job_operations(db, bulk_job.id)
+            return await _build_detail(db, bulk_job, ops)
 
         intents_by_category[category] = first_op.intent
 
