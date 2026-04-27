@@ -344,6 +344,15 @@ class SonicWallConnector(BaseConnector):
             action = r.get("action", "allow")
             if isinstance(action, dict):
                 action = action.get("action", "allow")
+
+            src_zone = r.get("from", "")
+            if isinstance(src_zone, dict):
+                src_zone = src_zone.get("name", "")
+
+            dst_zone = r.get("to", "")
+            if isinstance(dst_zone, dict):
+                dst_zone = dst_zone.get("name", "")
+
             rules.append(
                 FirewallRule(
                     rule_id=str(r.get("rule_id", r.get("uuid", ""))),
@@ -353,6 +362,8 @@ class SonicWallConnector(BaseConnector):
                     service=r.get("service", {}).get("name", "Any"),
                     action=action,
                     enabled=r.get("enable", True),
+                    src_zone=src_zone,
+                    dst_zone=dst_zone,
                     raw=r,
                 )
             )

@@ -20,6 +20,8 @@ class FirewallRule:
     service: str
     action: str
     enabled: bool
+    src_zone: str = ""
+    dst_zone: str = ""
     raw: dict = field(default_factory=dict)
 
 
