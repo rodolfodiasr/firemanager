@@ -1,4 +1,4 @@
-export type IntegrationType = "shodan" | "wazuh" | "openvas" | "nmap";
+export type IntegrationType = "shodan" | "wazuh" | "openvas" | "nmap" | "zabbix";
 
 export interface Integration {
   id: string;

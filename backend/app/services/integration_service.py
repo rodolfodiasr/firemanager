@@ -235,11 +235,24 @@ async def test_nmap(config: dict) -> dict:
         return {"success": False, "message": str(exc)}
 
 
+async def test_zabbix(config: dict) -> dict:
+    from app.connectors.zabbix import ZabbixConnector
+    connector = ZabbixConnector(
+        url=config.get("url", ""),
+        token=config.get("token", ""),
+        version=config.get("version", "7"),
+        verify_ssl=config.get("verify_ssl", False),
+    )
+    ok, message = await connector.ping()
+    return {"success": ok, "message": message}
+
+
 _TESTERS = {
     IntegrationType.shodan:  test_shodan,
     IntegrationType.wazuh:   test_wazuh,
     IntegrationType.openvas: test_openvas,
     IntegrationType.nmap:    test_nmap,
+    IntegrationType.zabbix:  test_zabbix,
 }
 
 

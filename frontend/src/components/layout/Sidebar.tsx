@@ -17,6 +17,8 @@ import {
   Layers,
   FolderOpen,
   Braces,
+  Brain,
+  HardDrive,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -31,6 +33,8 @@ const navItems = [
   { to: "/device-groups", icon: FolderOpen, label: "Grupos" },
   { to: "/bulk-jobs", icon: Layers, label: "Lote" },
   { to: "/variables", icon: Braces, label: "Variáveis" },
+  { to: "/servers", icon: HardDrive, label: "Servidores" },
+  { to: "/server-analysis", icon: Brain, label: "Analista N3" },
   { to: "/operations", icon: ClipboardList, label: "Operações" },
   { to: "/audit", icon: Shield, label: "Auditoria" },
   { to: "/logs", icon: FileText, label: "Logs" },

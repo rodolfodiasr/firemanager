@@ -82,7 +82,7 @@ const INTEGRATION_META: Record<IntegrationType, {
   label: string;
   description: string;
   color: string;
-  fields: { key: string; label: string; type?: string; placeholder?: string; defaultValue?: string }[];
+  fields: { key: string; label: string; type?: string; placeholder?: string; defaultValue?: string; options?: { value: string; label: string }[] }[];
 }> = {
   shodan: {
     label: "Shodan",
@@ -100,6 +100,10 @@ const INTEGRATION_META: Record<IntegrationType, {
       { key: "url", label: "URL", placeholder: "https://wazuh.empresa.com:55000" },
       { key: "username", label: "Usuário", placeholder: "wazuh-api" },
       { key: "password", label: "Senha", type: "password", placeholder: "••••••••" },
+      {
+        key: "version", label: "Versão", type: "select", defaultValue: "4",
+        options: [{ value: "4", label: "Wazuh 4.x" }, { value: "5", label: "Wazuh 5.x" }],
+      },
       { key: "verify_ssl", label: "Verificar SSL", type: "checkbox" },
     ],
   },
@@ -121,6 +125,20 @@ const INTEGRATION_META: Record<IntegrationType, {
     fields: [
       { key: "binary_path", label: "Caminho do binário", placeholder: "/usr/bin/nmap", defaultValue: "/usr/bin/nmap" },
       { key: "default_args", label: "Args padrão", placeholder: "-sS -T4", defaultValue: "-sS -T4" },
+    ],
+  },
+  zabbix: {
+    label: "Zabbix",
+    description: "Monitoramento de infraestrutura — hosts, métricas, alertas e triggers.",
+    color: "bg-orange-100 text-orange-700",
+    fields: [
+      { key: "url", label: "URL", placeholder: "https://zabbix.empresa.com" },
+      { key: "token", label: "API Token", type: "password", placeholder: "Token gerado no Zabbix" },
+      {
+        key: "version", label: "Versão", type: "select", defaultValue: "7",
+        options: [{ value: "6", label: "Zabbix 6.x" }, { value: "7", label: "Zabbix 7.x (7.2.5+)" }],
+      },
+      { key: "verify_ssl", label: "Verificar SSL", type: "checkbox" },
     ],
   },
 };
@@ -227,6 +245,18 @@ function IntegrationCard({ type, existing, tenantId, isSuperAdmin }: Integration
                 <input type="checkbox" {...register(f.key)} className="rounded" />
                 {f.label}
               </label>
+            ) : f.type === "select" ? (
+              <div key={f.key}>
+                <label className="block text-xs font-medium text-gray-600 mb-1">{f.label}</label>
+                <select
+                  {...register(f.key)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  {f.options?.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
             ) : (
               <div key={f.key}>
                 <label className="block text-xs font-medium text-gray-600 mb-1">{f.label}</label>
@@ -311,7 +341,7 @@ function IntegrationsSection() {
     );
   }
 
-  const types: IntegrationType[] = ["shodan", "wazuh", "openvas", "nmap"];
+  const types: IntegrationType[] = ["shodan", "wazuh", "zabbix", "openvas", "nmap"];
 
   return (
     <div>

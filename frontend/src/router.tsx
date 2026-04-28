@@ -17,6 +17,8 @@ import { AcceptInvite } from "./pages/AcceptInvite";
 import { BulkJobs } from "./pages/BulkJobs";
 import { DeviceGroups } from "./pages/DeviceGroups";
 import { Variables } from "./pages/Variables";
+import { Servers } from "./pages/Servers";
+import { ServerAnalysis } from "./pages/ServerAnalysis";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -164,6 +166,22 @@ export function AppRouter() {
         element={
           <ProtectedLayout>
             <Variables />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/servers"
+        element={
+          <ProtectedLayout>
+            <Servers />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/server-analysis"
+        element={
+          <ProtectedLayout>
+            <ServerAnalysis />
           </ProtectedLayout>
         }
       />
