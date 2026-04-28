@@ -105,6 +105,35 @@ def _strip_json(raw: str) -> str:
     return raw.strip()
 
 
+def _safe_parse_json(raw: str) -> dict:
+    """Try json.loads; if it fails, extract the outermost {...} block and retry."""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Find the first { and last } to extract the JSON object
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(raw[start : end + 1])
+            except json.JSONDecodeError:
+                pass
+        raise
+
+
+def _sanitize_ssh_output(data: dict[str, str], max_chars: int = 600) -> dict[str, str]:
+    """Truncate long outputs and remove characters that break JSON strings."""
+    cleaned: dict[str, str] = {}
+    for key, value in data.items():
+        # Remove null bytes and other control chars except newline/tab
+        value = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", value)
+        # Truncate
+        if len(value) > max_chars:
+            value = value[:max_chars] + f"... [truncado, {len(value)} chars total]"
+        cleaned[key] = value
+    return cleaned
+
+
 # ── Source detection ──────────────────────────────────────────────────────────
 
 async def _get_wazuh_connector(db: AsyncSession, tenant_id: UUID) -> WazuhConnector | None:
@@ -257,15 +286,16 @@ async def _call_ai(system: str, user_msg: str) -> dict:
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     msg = await client.messages.create(
         model="claude-opus-4-7",
-        max_tokens=4096,
+        max_tokens=8192,
         system=system,
         messages=[{"role": "user", "content": user_msg}],
     )
-    return json.loads(_strip_json(msg.content[0].text))
+    return _safe_parse_json(_strip_json(msg.content[0].text))
 
 
 async def enrich_ssh_with_ai(raw_data: dict[str, str], server: Server) -> dict:
-    formatted = "\n\n".join(f"=== {k} ===\n{v}" for k, v in raw_data.items())
+    sanitized = _sanitize_ssh_output(raw_data, max_chars=600)
+    formatted = "\n\n".join(f"=== {k} ===\n{v}" for k, v in sanitized.items())
     user_msg = f"Server: {server.name} ({server.host})\nOS type: Linux\n\n{formatted}"
     return await _call_ai(_AI_SYSTEM_SSH, user_msg)
 
