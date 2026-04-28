@@ -16,6 +16,7 @@ import {
   Globe,
   Layers,
   FolderOpen,
+  Braces,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -29,6 +30,7 @@ const navItems = [
   { to: "/devices", icon: Server, label: "Dispositivos" },
   { to: "/device-groups", icon: FolderOpen, label: "Grupos" },
   { to: "/bulk-jobs", icon: Layers, label: "Lote" },
+  { to: "/variables", icon: Braces, label: "Variáveis" },
   { to: "/operations", icon: ClipboardList, label: "Operações" },
   { to: "/audit", icon: Shield, label: "Auditoria" },
   { to: "/logs", icon: FileText, label: "Logs" },

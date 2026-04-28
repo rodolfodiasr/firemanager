@@ -16,6 +16,7 @@ import { MSSPDashboard } from "./pages/MSSPDashboard";
 import { AcceptInvite } from "./pages/AcceptInvite";
 import { BulkJobs } from "./pages/BulkJobs";
 import { DeviceGroups } from "./pages/DeviceGroups";
+import { Variables } from "./pages/Variables";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -155,6 +156,14 @@ export function AppRouter() {
         element={
           <ProtectedLayout>
             <BulkJobs />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/variables"
+        element={
+          <ProtectedLayout>
+            <Variables />
           </ProtectedLayout>
         }
       />
