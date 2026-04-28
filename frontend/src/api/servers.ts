@@ -1,4 +1,7 @@
-import type { Server, ServerCreate, ServerUpdate, AnalyzeRequest, AnalyzeResponse } from "../types/server";
+import type {
+  Server, ServerCreate, ServerUpdate,
+  AnalyzeRequest, AnalyzeResponse, AnalysisSession,
+} from "../types/server";
 import apiClient from "./client";
 
 export const serversApi = {
@@ -19,4 +22,13 @@ export const serversApi = {
 
   analyze: (data: AnalyzeRequest) =>
     apiClient.post<AnalyzeResponse>("/servers/analyze", data).then((r) => r.data),
+
+  listSessions: (limit = 50) =>
+    apiClient.get<AnalysisSession[]>("/servers/sessions", { params: { limit } }).then((r) => r.data),
+
+  deleteSession: (id: string) =>
+    apiClient.delete(`/servers/sessions/${id}`),
+
+  exportSessionPdfUrl: (id: string) =>
+    `${apiClient.defaults.baseURL}/servers/sessions/${id}/export-pdf`,
 };

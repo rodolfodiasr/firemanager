@@ -52,3 +52,14 @@ export interface AnalyzeResponse {
   answer: string;
   sources_used: string[];
 }
+
+export interface AnalysisSession {
+  id: string;
+  question: string;
+  answer: string;
+  sources_used: string[];
+  server_ids: string[];
+  integration_ids: string[];
+  host_filter: string | null;
+  created_at: string;
+}
