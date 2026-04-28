@@ -64,12 +64,17 @@ async def chat_with_agent(
     except DeviceNotFoundError:
         raise HTTPException(status_code=404, detail="Dispositivo não encontrado")
 
+    from app.services.variable_service import resolve_and_substitute
+    resolved_input, _vars, _unresolved = await resolve_and_substitute(
+        db, data.device_id, ctx.tenant.id, data.natural_language_input
+    )
+
     operation, agent_response = await start_or_continue_operation(
         db=db,
         user_id=ctx.user.id,
         operation_id=None,
         device_id=data.device_id,
-        user_message=data.natural_language_input,
+        user_message=resolved_input,
         parent_operation_id=data.parent_operation_id,
     )
     return await _chat_response(db, ctx, operation, agent_response)

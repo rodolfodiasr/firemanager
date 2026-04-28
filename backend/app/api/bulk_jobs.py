@@ -15,8 +15,10 @@ from app.models.operation import Operation, OperationStatus
 from app.models.user_tenant_role import TenantRole
 from app.schemas.bulk_job import BulkJobCreate, BulkJobDetail, BulkJobRead, CategoryPlanSummary
 from app.schemas.operation import OperationRead
+from app.schemas.variable import BulkJobPreviewRequest, BulkJobPreviewResponse, DevicePreview
 from app.services.device_service import DeviceNotFoundError, get_device
 from app.services.operation_service import execute_operation, start_or_continue_operation
+from app.services.variable_service import resolve_and_substitute
 
 router = APIRouter()
 
@@ -112,6 +114,47 @@ async def _build_detail(db: AsyncSession, job: BulkJob, ops: list[Operation]) ->
     )
 
 
+# ── Preview (dry-run com resolução de variáveis) ──────────────────────────────
+
+@router.post("/preview", response_model=BulkJobPreviewResponse)
+async def preview_bulk_job(
+    data: BulkJobPreviewRequest,
+    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> BulkJobPreviewResponse:
+    """
+    Valida variáveis {{nome}} para cada device SEM criar o job nem chamar o AI.
+    Use antes do deploy em massa para confirmar que todos os valores estão corretos.
+    """
+    previews: list[DevicePreview] = []
+
+    for device_id in data.device_ids:
+        try:
+            device = await get_device(db, device_id, tenant_id=ctx.tenant.id)
+        except DeviceNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Dispositivo {device_id} não encontrado.")
+
+        resolved_text, vars_used, unresolved = await resolve_and_substitute(
+            db, device_id, ctx.tenant.id, data.natural_language_input
+        )
+
+        previews.append(DevicePreview(
+            device_id=device_id,
+            device_name=device.name,
+            original_input=data.natural_language_input,
+            resolved_input=resolved_text,
+            variables_resolved=vars_used,
+            unresolved_variables=unresolved,
+            ready=len(unresolved) == 0,
+        ))
+
+    return BulkJobPreviewResponse(
+        original_input=data.natural_language_input,
+        devices=previews,
+        all_ready=all(p.ready for p in previews),
+    )
+
+
 # ── Create ────────────────────────────────────────────────────────────────────
 
 @router.post("", response_model=BulkJobDetail, status_code=201)
@@ -159,13 +202,29 @@ async def create_bulk_job(
     for category, cat_device_ids in category_groups.items():
         first_id = cat_device_ids[0]
 
+        # Substituir variáveis {{nome}} com os valores do device/tenant antes de chamar o AI
+        resolved_input, _vars_used, unresolved = await resolve_and_substitute(
+            db, first_id, ctx.tenant.id, data.natural_language_input
+        )
+        if unresolved:
+            bulk_job.status = BulkJobStatus.failed
+            bulk_job.error_summary = (
+                f"Variáveis não definidas para o dispositivo '{devices_map[first_id].name}': "
+                + ", ".join(f"{{{{{v}}}}}" for v in unresolved)
+                + ". Cadastre os valores em Variáveis antes de executar."
+            )
+            await db.flush()
+            await db.refresh(bulk_job)
+            ops = await _get_job_operations(db, bulk_job.id)
+            return await _build_detail(db, bulk_job, ops)
+
         # Generate plan via AI for the first device in this category
         first_op, agent_message = await start_or_continue_operation(
             db=db,
             user_id=ctx.user.id,
             operation_id=None,
             device_id=first_id,
-            user_message=data.natural_language_input,
+            user_message=resolved_input,
         )
         first_op.bulk_job_id = bulk_job.id
         await db.flush()

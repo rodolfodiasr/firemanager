@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, audit, auth, bulk_jobs, device_groups, devices, documents, inspect, integrations, invite, operations, recommendations, templates, tenants
+from app.api import admin, audit, auth, bulk_jobs, device_groups, devices, documents, inspect, integrations, invite, operations, recommendations, templates, tenants, variables
 from app.config import settings
 
 log = structlog.get_logger()
@@ -53,6 +53,7 @@ app.include_router(admin.router, prefix="/admin", tags=["admin"])
 app.include_router(invite.router, prefix="/invite", tags=["invite"])
 app.include_router(bulk_jobs.router, prefix="/bulk-jobs", tags=["bulk-jobs"])
 app.include_router(device_groups.router, prefix="/device-groups", tags=["device-groups"])
+app.include_router(variables.router, prefix="/variables", tags=["variables"])
 
 
 class FireManagerError(Exception):
