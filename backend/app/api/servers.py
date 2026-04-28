@@ -119,6 +119,9 @@ async def test_server(
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     from app.connectors.ssh_linux import SshLinuxConnector
+    from app.connectors.winrm_windows import WinRMConnector
+    from app.models.server import ServerOsType
+
     result = await db.execute(
         select(Server).where(Server.id == server_id, Server.tenant_id == ctx.tenant.id)
     )
@@ -127,13 +130,25 @@ async def test_server(
         raise HTTPException(status_code=404, detail="Servidor não encontrado")
 
     creds = decrypt_credentials(server.encrypted_credentials)
-    connector = SshLinuxConnector(
-        host=server.host,
-        port=server.ssh_port,
-        username=creds.get("username", ""),
-        password=creds.get("password", ""),
-        private_key=creds.get("private_key", ""),
-    )
+
+    if server.os_type == ServerOsType.windows:
+        connector: SshLinuxConnector | WinRMConnector = WinRMConnector(
+            host=server.host,
+            port=server.ssh_port,
+            username=creds.get("username", ""),
+            password=creds.get("password", ""),
+            auth_type=creds.get("auth_type", "ntlm"),
+            verify_ssl=creds.get("verify_ssl", False),
+        )
+    else:
+        connector = SshLinuxConnector(
+            host=server.host,
+            port=server.ssh_port,
+            username=creds.get("username", ""),
+            password=creds.get("password", ""),
+            private_key=creds.get("private_key", ""),
+        )
+
     ok, message = await connector.ping()
     return {"success": ok, "message": message}
 

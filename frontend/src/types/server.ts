@@ -13,17 +13,23 @@ export interface Server {
   updated_at: string;
 }
 
+export interface ServerCredentials {
+  username: string;
+  password?: string;
+  // Linux SSH
+  private_key?: string;
+  // Windows WinRM
+  auth_type?: "ntlm" | "ssl" | "kerberos";
+  verify_ssl?: boolean;
+}
+
 export interface ServerCreate {
   name: string;
   host: string;
   ssh_port?: number;
   os_type?: ServerOsType;
   description?: string;
-  credentials: {
-    username: string;
-    password?: string;
-    private_key?: string;
-  };
+  credentials: ServerCredentials;
   is_active?: boolean;
 }
 
@@ -33,11 +39,7 @@ export interface ServerUpdate {
   ssh_port?: number;
   os_type?: ServerOsType;
   description?: string;
-  credentials?: {
-    username: string;
-    password?: string;
-    private_key?: string;
-  };
+  credentials?: ServerCredentials;
   is_active?: boolean;
 }
 

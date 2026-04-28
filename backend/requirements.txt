@@ -24,3 +24,4 @@ python-multipart==0.0.9
 aiofiles==23.2.1
 structlog==24.2.0
 prometheus-fastapi-instrumentator==7.0.0
+pywinrm==0.4.3
