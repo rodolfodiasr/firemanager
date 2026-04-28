@@ -19,6 +19,7 @@ import { DeviceGroups } from "./pages/DeviceGroups";
 import { Variables } from "./pages/Variables";
 import { Servers } from "./pages/Servers";
 import { ServerAnalysis } from "./pages/ServerAnalysis";
+import { Remediation } from "./pages/Remediation";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -182,6 +183,14 @@ export function AppRouter() {
         element={
           <ProtectedLayout>
             <ServerAnalysis />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/remediation"
+        element={
+          <ProtectedLayout>
+            <Remediation />
           </ProtectedLayout>
         }
       />

@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import {
   Brain, Send, Loader2, Database, Shield, History,
-  FileDown, Trash2, ChevronRight, Server as ServerIcon,
+  FileDown, Trash2, ChevronRight, Server as ServerIcon, ShieldCheck,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { serversApi } from "../api/servers";
@@ -158,9 +159,16 @@ interface Message {
   content: string;
   sources?: string[];
   sessionId?: string;
+  question?: string;
 }
 
-function MessageBubble({ msg, onExport }: { msg: Message; onExport?: () => void }) {
+function MessageBubble({
+  msg, onExport, onRemediate,
+}: {
+  msg: Message;
+  onExport?: () => void;
+  onRemediate?: () => void;
+}) {
   if (msg.role === "user") {
     return (
       <div className="flex justify-end">
@@ -184,12 +192,20 @@ function MessageBubble({ msg, onExport }: { msg: Message; onExport?: () => void 
           {msg.sources && msg.sources.length > 0 && msg.sources.map((s) => (
             <span key={s} className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{s}</span>
           ))}
-          {onExport && (
-            <button onClick={onExport}
-              className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 font-medium ml-auto">
-              <FileDown size={12} /> Exportar PDF
-            </button>
-          )}
+          <div className="flex items-center gap-2 ml-auto">
+            {onRemediate && (
+              <button onClick={onRemediate}
+                className="flex items-center gap-1 text-xs text-green-700 hover:text-green-900 font-medium">
+                <ShieldCheck size={12} /> Solicitar remediação
+              </button>
+            )}
+            {onExport && (
+              <button onClick={onExport}
+                className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 font-medium">
+                <FileDown size={12} /> Exportar PDF
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -200,6 +216,7 @@ function MessageBubble({ msg, onExport }: { msg: Message; onExport?: () => void 
 
 export function ServerAnalysis() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
@@ -268,6 +285,7 @@ export function ServerAnalysis() {
         content: res.answer,
         sources: res.sources_used,
         sessionId,
+        question: q,
       }]);
       qc.invalidateQueries({ queryKey: ["analysis-sessions"] });
     } catch (err: unknown) {
@@ -367,6 +385,13 @@ export function ServerAnalysis() {
                   onExport={m.role === "analyst" && m.sessionId
                     ? () => handleExportPdf(m.sessionId!)
                     : undefined}
+                  onRemediate={
+                    m.role === "analyst" && selectedServers.length === 1 && m.question
+                      ? () => navigate("/remediation", {
+                          state: { server_id: selectedServers[0], request: m.question },
+                        })
+                      : undefined
+                  }
                 />
               ))
             )}
