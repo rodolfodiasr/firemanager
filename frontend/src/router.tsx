@@ -20,6 +20,7 @@ import { Variables } from "./pages/Variables";
 import { Servers } from "./pages/Servers";
 import { ServerAnalysis } from "./pages/ServerAnalysis";
 import { Remediation } from "./pages/Remediation";
+import { Compliance } from "./pages/Compliance";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -191,6 +192,14 @@ export function AppRouter() {
         element={
           <ProtectedLayout>
             <Remediation />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/compliance"
+        element={
+          <ProtectedLayout>
+            <Compliance />
           </ProtectedLayout>
         }
       />

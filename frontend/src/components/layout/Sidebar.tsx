@@ -21,6 +21,7 @@ import {
   Brain,
   HardDrive,
   ShieldCheck,
+  ClipboardCheck,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -59,9 +60,10 @@ const navSections: NavSection[] = [
   {
     title: "Servidores & Análise",
     items: [
-      { to: "/servers",         icon: HardDrive,  label: "Servidores"   },
-      { to: "/server-analysis", icon: Brain,      label: "Analista N3"  },
-      { to: "/remediation",     icon: ShieldCheck, label: "Remediações" },
+      { to: "/servers",         icon: HardDrive,     label: "Servidores"   },
+      { to: "/server-analysis", icon: Brain,         label: "Analista N3"  },
+      { to: "/remediation",     icon: ShieldCheck,   label: "Remediações"  },
+      { to: "/compliance",      icon: ClipboardCheck, label: "Conformidade" },
     ],
   },
   {

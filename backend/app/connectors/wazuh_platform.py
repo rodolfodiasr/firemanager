@@ -107,6 +107,43 @@ class WazuhConnector:
         except Exception:
             return {}
 
+    async def get_sca_policies(self, agent_id: str) -> list[dict[str, Any]]:
+        """List SCA policies available for an agent (e.g. CIS Ubuntu 22.04 L1)."""
+        try:
+            data = await self._get(f"/sca/{agent_id}", {"limit": 50})
+            return data.get("data", {}).get("affected_items", [])
+        except Exception:
+            return []
+
+    async def get_sca_checks(
+        self, agent_id: str, policy_id: str, limit: int = 500
+    ) -> list[dict[str, Any]]:
+        """List individual SCA checks for a policy with pass/fail results."""
+        try:
+            data = await self._get(
+                f"/sca/{agent_id}/checks/{policy_id}",
+                {"limit": limit, "offset": 0},
+            )
+            return data.get("data", {}).get("affected_items", [])
+        except Exception:
+            return []
+
+    async def find_agent_by_host(self, host: str) -> dict[str, Any] | None:
+        """Search for an agent matching the given IP or hostname."""
+        try:
+            agents = await self.get_agents(limit=500)
+            host_lower = host.lower()
+            for agent in agents:
+                if (
+                    agent.get("ip", "").lower() == host_lower
+                    or agent.get("name", "").lower() == host_lower
+                    or host_lower in agent.get("name", "").lower()
+                ):
+                    return agent
+        except Exception:
+            pass
+        return None
+
     async def get_alerts(self, limit: int = 30) -> list[dict[str, Any]]:
         """Recent alerts from all agents."""
         try:
