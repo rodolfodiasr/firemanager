@@ -1017,9 +1017,15 @@ Comandos por vendor:
   hp_comware: ssh_show_commands: ["display interface"]
   ubiquiti:   ssh_show_commands: ["show interfaces"]
 
+HP Comware — porta específica:
+  Se o usuário informar um número de porta (ex: "porta 1", "interface 2"), use:
+    ssh_show_commands: ["display interface GigabitEthernet 1/0/1"]
+  Substituindo o último número pelo número da porta informada.
+  Se não informar porta, use "display interface" (lista todas).
+
 Pode combinar VLANs + portas na mesma operação usando múltiplos comandos:
   dell_n:     ssh_show_commands: ["show vlan", "show interfaces status"]
-  hp_comware: ssh_show_commands: ["display vlan", "display interface brief"]
+  hp_comware: ssh_show_commands: ["display vlan", "display interface"]
   cisco_ios:  ssh_show_commands: ["show vlan brief", "show interfaces status"]
 
 ── REGRAS GERAIS PARA VENDORS CLI ─────────────────────────────────────────
