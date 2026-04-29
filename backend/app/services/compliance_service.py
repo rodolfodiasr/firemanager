@@ -268,6 +268,14 @@ def _ssh_collect_sync(
 
 
 async def collect_ssh(server: Server, creds: dict) -> dict[str, str]:
+    import socket
+    try:
+        socket.getaddrinfo(server.host, server.ssh_port)
+    except socket.gaierror:
+        raise ValueError(
+            f"Não foi possível resolver o hostname '{server.host}'. "
+            "Se for um endereço interno/privado, cadastre o servidor usando o IP em vez do hostname."
+        )
     return await asyncio.to_thread(
         _ssh_collect_sync,
         server.host,

@@ -133,8 +133,9 @@ async def generate_plan(
         db.add(cmd)
 
     await db.flush()
-    await db.refresh(plan)
-    return plan
+    loaded = await get_plan(db, tenant_id, plan.id)
+    assert loaded is not None
+    return loaded
 
 
 async def get_plan(db: AsyncSession, tenant_id: UUID, plan_id: UUID) -> RemediationPlan | None:
@@ -245,12 +246,22 @@ async def execute_plan(
 
     plan.reviewed_at = datetime.now(timezone.utc)
     await db.flush()
-    await db.refresh(plan)
-    return plan
+    refreshed = await get_plan(db, tenant_id, plan_id)
+    assert refreshed is not None
+    return refreshed
 
 
 async def _run_command(server: Server, creds: dict, command: str) -> str:
     import asyncio
+    import socket
+
+    try:
+        socket.getaddrinfo(server.host, server.ssh_port)
+    except socket.gaierror:
+        raise ValueError(
+            f"Não foi possível resolver o hostname '{server.host}'. "
+            "Se for um endereço interno/privado, cadastre o servidor usando o IP em vez do hostname."
+        )
 
     if server.os_type == ServerOsType.windows:
         from app.connectors.winrm_windows import WinRMConnector
