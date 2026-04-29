@@ -119,8 +119,19 @@ class GenericSSHConnector:
                 expect_string=r"[>#\]]",
                 read_timeout=10,
             )
+        # Re-sync Netmiko's prompt detection after _cmdline-mode changes device state
+        conn.set_base_prompt()
+
+    _COMWARE_SHOW_PREFIXES = ("display ", "ping ", "tracert ", "traceroute ")
+
+    def _is_comware_show(self, cmd: str) -> bool:
+        return cmd.strip().lower().startswith(self._COMWARE_SHOW_PREFIXES)
 
     def _config_sync(self, commands: list[str]) -> SSHResult:
+        # For hp_comware, display/ping commands are user-view only — redirect to show mode
+        if self.vendor == "hp_comware" and all(self._is_comware_show(c) for c in commands):
+            return self._show_sync(commands)
+
         try:
             with ConnectHandler(**self._connect_params()) as conn:
                 if self.vendor in _NEEDS_ENABLE:
