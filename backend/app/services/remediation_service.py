@@ -63,6 +63,33 @@ Rules:
 """
 
 
+_SYSTEM_PROMPT_CORRECTIVE = """\
+You are a senior infrastructure engineer analyzing the complete results of an executed remediation plan.
+The user ran a series of commands on a server and is observing a problem with the final state.
+
+Respond ONLY with a valid JSON object — no markdown, no explanation — with this structure:
+{
+  "summary": "one-paragraph analysis of what went wrong and the corrective strategy",
+  "commands": [
+    {
+      "order": 1,
+      "description": "what this command does",
+      "command": "exact shell command to run",
+      "risk": "low|medium|high"
+    }
+  ]
+}
+
+Rules:
+- Analyze ALL command outputs — a command may return exit 0 but leave the system in a bad state
+- Use the user's observation to understand the actual symptom, not just exit codes
+- Start with diagnostic/read-only commands to confirm current state, then corrective actions
+- For Windows servers use PowerShell syntax; for Linux use bash/sh
+- Keep the command list concise (max 12 steps)
+- Never include commands that could destroy data or make the server unresponsive
+"""
+
+
 def _is_dangerous(command: str) -> bool:
     return bool(_BLOCKLIST.search(command))
 
@@ -266,6 +293,103 @@ async def retry_plan(
         server_id=plan.server_id,
         session_id=plan.session_id,
         request=f"[Retentativa] {plan.request}",
+        summary=summary,
+        status=RemediationStatus.pending_approval,
+    )
+    db.add(new_plan)
+    await db.flush()
+
+    for item in raw_commands:
+        cmd_text = item.get("command", "")
+        if _is_dangerous(cmd_text):
+            continue
+        risk_val = item.get("risk", "low")
+        if risk_val not in ("low", "medium", "high"):
+            risk_val = "low"
+        db.add(RemediationCommand(
+            plan_id=new_plan.id,
+            order=item.get("order", 0),
+            description=item.get("description", ""),
+            command=cmd_text,
+            risk=RemediationRisk(risk_val),
+            status=CommandStatus.pending,
+        ))
+
+    await db.flush()
+    loaded = await get_plan(db, tenant_id, new_plan.id)
+    assert loaded is not None
+    return loaded
+
+
+async def corrective_plan(
+    db: AsyncSession,
+    tenant_id: UUID,
+    plan_id: UUID,
+    observation: str,
+) -> RemediationPlan:
+    """Generate a corrective plan using the full execution log + user observation."""
+    plan = await get_plan(db, tenant_id, plan_id)
+    if not plan:
+        raise ValueError("Plano não encontrado")
+
+    executed = [c for c in plan.commands if c.executed_at is not None]
+    if not executed:
+        raise ValueError("Nenhum comando foi executado neste plano ainda")
+
+    result_srv = await db.execute(
+        select(Server).where(Server.id == plan.server_id, Server.tenant_id == tenant_id)
+    )
+    server = result_srv.scalar_one_or_none()
+    if not server:
+        raise ValueError("Servidor não encontrado")
+
+    os_hint = (
+        "Windows Server (use PowerShell)"
+        if server.os_type == ServerOsType.windows
+        else "Linux (use bash/sh)"
+    )
+
+    exec_log = "\n\n".join(
+        f"[{c.order}] {c.description}\n"
+        f"Status: {c.status.value}\n"
+        f"Command: {c.command}\n"
+        f"Output:\n{c.output or '(sem saída)'}"
+        for c in sorted(plan.commands, key=lambda x: x.order)
+    )
+
+    corrective_msg = (
+        f"OS: {os_hint}\n"
+        f"Server: {server.name} ({server.host})\n"
+        f"Original task: {plan.request}\n\n"
+        f"=== EXECUTION LOG (all commands and outputs) ===\n{exec_log}\n\n"
+        f"=== USER OBSERVATION ===\n{observation}\n\n"
+        "Based on the execution log and the user's observation, generate a corrective/diagnostic plan."
+    )
+
+    from anthropic import AsyncAnthropic
+
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    msg = await client.messages.create(
+        model="claude-opus-4-7",
+        max_tokens=2048,
+        system=_SYSTEM_PROMPT_CORRECTIVE,
+        messages=[{"role": "user", "content": corrective_msg}],
+    )
+
+    raw = msg.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+
+    data = _parse_ai_json(raw)
+    summary = data.get("summary", "")
+    raw_commands = data.get("commands", [])
+
+    new_plan = RemediationPlan(
+        tenant_id=tenant_id,
+        server_id=plan.server_id,
+        session_id=plan.session_id,
+        request=f"[Corretivo] {plan.request}",
         summary=summary,
         status=RemediationStatus.pending_approval,
     )

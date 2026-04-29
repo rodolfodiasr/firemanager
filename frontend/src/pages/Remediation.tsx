@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom";
 import {
   ShieldCheck, ShieldX, Play, Trash2, ChevronDown, ChevronUp,
   AlertTriangle, CheckCircle2, XCircle, Clock, Loader2, Plus,
-  Terminal, Pencil, RotateCcw, Check, X,
+  Terminal, Pencil, RotateCcw, Check, X, FileDown, Wrench,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { remediationApi } from "../api/remediation";
@@ -310,11 +310,15 @@ function CommandRow({
 
 function PlanCard({ plan }: { plan: RemediationPlan }) {
   const [expanded, setExpanded] = useState(false);
+  const [showCorrective, setShowCorrective] = useState(false);
+  const [observation, setObservation] = useState("");
   const qc = useQueryClient();
 
   const approvedCount = plan.commands.filter((c) => c.status === "approved").length;
   const pendingCount = plan.commands.filter((c) => c.status === "pending").length;
+  const executedCount = plan.commands.filter((c) => c.executed_at !== null).length;
   const canExecute = plan.status !== "executing" && plan.status !== "rejected" && approvedCount > 0;
+  const canCorrectiveOrExport = executedCount > 0;
 
   const execute = useMutation({
     mutationFn: () => remediationApi.execute(plan.id),
@@ -325,6 +329,23 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
     mutationFn: () => remediationApi.retry(plan.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["remediation"] }),
   });
+
+  const corrective = useMutation({
+    mutationFn: () => remediationApi.corrective(plan.id, observation),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["remediation"] });
+      setShowCorrective(false);
+      setObservation("");
+    },
+  });
+
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const handleExportPdf = async () => {
+    setPdfLoading(true);
+    try { await remediationApi.exportPdf(plan.id); }
+    catch { /* error handled silently */ }
+    finally { setPdfLoading(false); }
+  };
 
   const remove = useMutation({
     mutationFn: () => remediationApi.remove(plan.id),
@@ -372,16 +393,14 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-3 pt-2 flex-wrap">
+          <div className="flex items-center gap-2 pt-2 flex-wrap">
             {canExecute && (
               <button
                 disabled={execute.isPending}
                 onClick={() => execute.mutate()}
                 className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
-                {execute.isPending
-                  ? <Loader2 size={15} className="animate-spin" />
-                  : <Play size={15} />}
+                {execute.isPending ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
                 {execute.isPending ? "Executando…" : `Executar ${approvedCount} aprovado(s)`}
               </button>
             )}
@@ -391,16 +410,32 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
                 onClick={() => retry.mutate()}
                 className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
-                {retry.isPending
-                  ? <Loader2 size={15} className="animate-spin" />
-                  : <RotateCcw size={15} />}
-                {retry.isPending ? "Analisando erros…" : "Retentar com IA"}
+                {retry.isPending ? <Loader2 size={15} className="animate-spin" /> : <RotateCcw size={15} />}
+                {retry.isPending ? "Analisando…" : "Retentar falhas"}
+              </button>
+            )}
+            {canCorrectiveOrExport && !showCorrective && (
+              <button
+                onClick={() => { setShowCorrective(true); setExpanded(true); }}
+                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                <Wrench size={15} /> Plano corretivo
+              </button>
+            )}
+            {canCorrectiveOrExport && (
+              <button
+                disabled={pdfLoading}
+                onClick={handleExportPdf}
+                className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                {pdfLoading ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />}
+                {pdfLoading ? "Gerando…" : "Exportar PDF"}
               </button>
             )}
             {!canExecute && plan.status !== "executing" && plan.status !== "rejected" && pendingCount > 0 && (
               <p className="text-xs text-gray-400 flex items-center gap-1">
                 <AlertTriangle size={12} />
-                {pendingCount} comando(s) pendente(s) — aprove para executar
+                {pendingCount} pendente(s) — aprove para executar
               </p>
             )}
             <div className="flex-1" />
@@ -413,15 +448,48 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
             </button>
           </div>
 
+          {/* Corrective plan form */}
+          {showCorrective && (
+            <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-4 space-y-3">
+              <p className="text-sm font-medium text-purple-800">
+                Descreva o que você observou após a execução
+              </p>
+              <textarea
+                rows={3}
+                placeholder="Ex: O Wazuh não subiu após a atualização, o container reinicia em loop…"
+                className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                value={observation}
+                onChange={(e) => setObservation(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <button
+                  disabled={corrective.isPending || !observation.trim()}
+                  onClick={() => corrective.mutate()}
+                  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                >
+                  {corrective.isPending
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : <Wrench size={14} />}
+                  {corrective.isPending ? "Analisando com IA…" : "Gerar plano corretivo"}
+                </button>
+                <button
+                  onClick={() => { setShowCorrective(false); setObservation(""); }}
+                  className="text-sm text-gray-500 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+              {corrective.isError && (
+                <p className="text-xs text-red-600">{errMsg(corrective.error)}</p>
+              )}
+            </div>
+          )}
+
           {execute.isError && (
-            <p className="text-xs text-red-600">
-              Erro: {errMsg(execute.error)}
-            </p>
+            <p className="text-xs text-red-600 mt-1">Erro: {errMsg(execute.error)}</p>
           )}
           {retry.isError && (
-            <p className="text-xs text-red-600">
-              Erro ao retentar: {errMsg(retry.error)}
-            </p>
+            <p className="text-xs text-red-600 mt-1">Erro ao retentar: {errMsg(retry.error)}</p>
           )}
         </div>
       )}
