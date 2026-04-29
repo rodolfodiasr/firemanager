@@ -157,6 +157,130 @@ async def list_plans(db: AsyncSession, tenant_id: UUID) -> list[RemediationPlan]
     return list(result.scalars().all())
 
 
+async def update_command(
+    db: AsyncSession,
+    tenant_id: UUID,
+    plan_id: UUID,
+    command_id: UUID,
+    new_command: str,
+    new_description: str | None = None,
+) -> RemediationCommand:
+    plan = await get_plan(db, tenant_id, plan_id)
+    if not plan:
+        raise ValueError("Plano não encontrado")
+    if plan.status != RemediationStatus.pending_approval:
+        raise ValueError("Comandos só podem ser editados antes da execução")
+    cmd = next((c for c in plan.commands if c.id == command_id), None)
+    if not cmd:
+        raise ValueError("Comando não encontrado")
+    if cmd.status != CommandStatus.pending:
+        raise ValueError("Só é possível editar comandos pendentes")
+    if _is_dangerous(new_command):
+        raise ValueError("Comando bloqueado por política de segurança")
+    cmd.command = new_command
+    if new_description is not None:
+        cmd.description = new_description
+    await db.flush()
+    return cmd
+
+
+async def retry_plan(
+    db: AsyncSession,
+    tenant_id: UUID,
+    plan_id: UUID,
+) -> RemediationPlan:
+    plan = await get_plan(db, tenant_id, plan_id)
+    if not plan:
+        raise ValueError("Plano não encontrado")
+    if plan.status != RemediationStatus.partial:
+        raise ValueError("Retentativa com IA só está disponível para planos com status 'parcial'")
+
+    failed = [c for c in plan.commands if c.status == CommandStatus.failed]
+    skipped = [c for c in plan.commands if c.status == CommandStatus.skipped]
+    if not failed and not skipped:
+        raise ValueError("Nenhum comando falhou ou foi pulado neste plano")
+
+    result_srv = await db.execute(
+        select(Server).where(Server.id == plan.server_id, Server.tenant_id == tenant_id)
+    )
+    server = result_srv.scalar_one_or_none()
+    if not server:
+        raise ValueError("Servidor não encontrado")
+
+    os_hint = (
+        "Windows Server (use PowerShell)"
+        if server.os_type == ServerOsType.windows
+        else "Linux (use bash/sh)"
+    )
+
+    failures_detail = "\n".join(
+        f"- command: {c.command}\n  error: {c.output or '(sem saída)'}"
+        for c in failed
+    )
+    skipped_detail = "\n".join(f"- {c.description}: {c.command}" for c in skipped)
+
+    retry_msg = (
+        f"OS: {os_hint}\n"
+        f"Server: {server.name} ({server.host})\n"
+        f"Original task: {plan.request}\n\n"
+        f"The following commands FAILED during execution:\n{failures_detail}\n\n"
+        f"The following commands were SKIPPED because earlier ones failed:\n{skipped_detail}\n\n"
+        "Analyze the error outputs and generate corrected commands that fix the failures "
+        "and complete the skipped steps. Only address what failed — do not repeat steps that already succeeded."
+    )
+
+    from anthropic import AsyncAnthropic
+
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    msg = await client.messages.create(
+        model="claude-opus-4-7",
+        max_tokens=2048,
+        system=_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": retry_msg}],
+    )
+
+    raw = msg.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+
+    data = json.loads(raw)
+    summary = data.get("summary", "")
+    raw_commands = data.get("commands", [])
+
+    new_plan = RemediationPlan(
+        tenant_id=tenant_id,
+        server_id=plan.server_id,
+        session_id=plan.session_id,
+        request=f"[Retentativa] {plan.request}",
+        summary=summary,
+        status=RemediationStatus.pending_approval,
+    )
+    db.add(new_plan)
+    await db.flush()
+
+    for item in raw_commands:
+        cmd_text = item.get("command", "")
+        if _is_dangerous(cmd_text):
+            continue
+        risk_val = item.get("risk", "low")
+        if risk_val not in ("low", "medium", "high"):
+            risk_val = "low"
+        db.add(RemediationCommand(
+            plan_id=new_plan.id,
+            order=item.get("order", 0),
+            description=item.get("description", ""),
+            command=cmd_text,
+            risk=RemediationRisk(risk_val),
+            status=CommandStatus.pending,
+        ))
+
+    await db.flush()
+    loaded = await get_plan(db, tenant_id, new_plan.id)
+    assert loaded is not None
+    return loaded
+
+
 async def approve_command(
     db: AsyncSession, tenant_id: UUID, plan_id: UUID, command_id: UUID
 ) -> RemediationCommand:

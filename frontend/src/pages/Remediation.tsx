@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom";
 import {
   ShieldCheck, ShieldX, Play, Trash2, ChevronDown, ChevronUp,
   AlertTriangle, CheckCircle2, XCircle, Clock, Loader2, Plus,
-  Terminal,
+  Terminal, Pencil, RotateCcw, Check, X,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { remediationApi } from "../api/remediation";
@@ -158,10 +158,13 @@ function CommandRow({
   planStatus: RemediationStatus;
   onAction: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(cmd.status === "failed" || cmd.status === "completed");
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(cmd.command);
   const qc = useQueryClient();
 
   const canReview = planStatus === "pending_approval" && cmd.status === "pending";
+  const canEdit = canReview;
 
   const approve = useMutation({
     mutationFn: () => remediationApi.approveCommand(planId, cmd.id),
@@ -173,20 +176,39 @@ function CommandRow({
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["remediation"] }); onAction(); },
   });
 
+  const edit = useMutation({
+    mutationFn: () => remediationApi.updateCommand(planId, cmd.id, { command: editValue }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["remediation"] }); setEditing(false); },
+  });
+
+  const statusBg =
+    cmd.status === "failed"    ? "bg-red-50 border-red-200" :
+    cmd.status === "completed" ? "bg-green-50 border-green-200" :
+    "bg-gray-50 border-gray-100";
+
   return (
-    <div className="border border-gray-100 rounded-lg overflow-hidden">
+    <div className={`border rounded-lg overflow-hidden ${statusBg}`}>
       <div
-        className="flex items-center gap-3 px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
-        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-black/5 transition-colors"
+        onClick={() => !editing && setExpanded((v) => !v)}
       >
         <span className="text-xs font-mono text-gray-400 w-5 text-right shrink-0">{cmd.order}</span>
         {CMD_STATUS_ICON[cmd.status]}
-        <span className="flex-1 text-sm text-gray-700">{cmd.description}</span>
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${RISK_STYLES[cmd.risk]}`}>
+        <span className="flex-1 text-sm text-gray-700 truncate">{cmd.description}</span>
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${RISK_STYLES[cmd.risk]}`}>
           {cmd.risk}
         </span>
         {canReview && (
-          <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {canEdit && !editing && (
+              <button
+                onClick={() => { setEditing(true); setExpanded(true); }}
+                title="Editar comando"
+                className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-500 transition-colors"
+              >
+                <Pencil size={14} />
+              </button>
+            )}
             <button
               disabled={approve.isPending}
               onClick={() => approve.mutate()}
@@ -209,17 +231,56 @@ function CommandRow({
       </div>
 
       {expanded && (
-        <div className="px-4 py-3 bg-white space-y-3">
+        <div className="px-4 py-3 bg-white space-y-3 border-t border-inherit">
           <div>
             <p className="text-xs font-medium text-gray-500 mb-1">Comando</p>
-            <pre className="bg-gray-900 text-green-400 text-xs rounded-lg px-4 py-3 overflow-x-auto font-mono">
-              {cmd.command}
-            </pre>
+            {editing ? (
+              <div className="space-y-2">
+                <textarea
+                  rows={3}
+                  className="w-full bg-gray-900 text-green-400 text-xs rounded-lg px-4 py-3 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-brand-400"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    disabled={edit.isPending || !editValue.trim()}
+                    onClick={() => edit.mutate()}
+                    className="flex items-center gap-1.5 text-xs bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    {edit.isPending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                    Salvar
+                  </button>
+                  <button
+                    onClick={() => { setEditing(false); setEditValue(cmd.command); }}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <X size={12} /> Cancelar
+                  </button>
+                  {edit.isError && (
+                    <span className="text-xs text-red-600 self-center">
+                      {(edit.error as Error).message}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <pre className="bg-gray-900 text-green-400 text-xs rounded-lg px-4 py-3 overflow-x-auto font-mono whitespace-pre-wrap">
+                {cmd.command}
+              </pre>
+            )}
           </div>
           {cmd.output && (
             <div>
-              <p className="text-xs font-medium text-gray-500 mb-1">Saída</p>
-              <pre className="bg-gray-50 text-gray-700 text-xs rounded-lg px-4 py-3 overflow-x-auto font-mono whitespace-pre-wrap border border-gray-100">
+              <p className={`text-xs font-medium mb-1 ${cmd.status === "failed" ? "text-red-500" : "text-gray-500"}`}>
+                {cmd.status === "failed" ? "Erro / Saída" : "Saída"}
+              </p>
+              <pre className={`text-xs rounded-lg px-4 py-3 overflow-x-auto font-mono whitespace-pre-wrap border ${
+                cmd.status === "failed"
+                  ? "bg-red-50 text-red-700 border-red-200"
+                  : "bg-gray-50 text-gray-700 border-gray-100"
+              }`}>
                 {cmd.output}
               </pre>
             </div>
@@ -246,6 +307,11 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
 
   const execute = useMutation({
     mutationFn: () => remediationApi.execute(plan.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["remediation"] }),
+  });
+
+  const retry = useMutation({
+    mutationFn: () => remediationApi.retry(plan.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["remediation"] }),
   });
 
@@ -295,7 +361,7 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-3 pt-2">
+          <div className="flex items-center gap-3 pt-2 flex-wrap">
             {canExecute && (
               <button
                 disabled={execute.isPending}
@@ -306,6 +372,18 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
                   ? <Loader2 size={15} className="animate-spin" />
                   : <Play size={15} />}
                 {execute.isPending ? "Executando…" : `Executar ${approvedCount} aprovado(s)`}
+              </button>
+            )}
+            {plan.status === "partial" && (
+              <button
+                disabled={retry.isPending}
+                onClick={() => retry.mutate()}
+                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                {retry.isPending
+                  ? <Loader2 size={15} className="animate-spin" />
+                  : <RotateCcw size={15} />}
+                {retry.isPending ? "Analisando erros…" : "Retentar com IA"}
               </button>
             )}
             {plan.status === "pending_approval" && approvedCount === 0 && (
@@ -326,6 +404,11 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
           {execute.isError && (
             <p className="text-xs text-red-600">
               Erro: {(execute.error as Error).message}
+            </p>
+          )}
+          {retry.isError && (
+            <p className="text-xs text-red-600">
+              Erro ao retentar: {(retry.error as Error).message}
             </p>
           )}
         </div>

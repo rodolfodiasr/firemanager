@@ -49,3 +49,8 @@ class CommandReview(BaseModel):
 
 class ReviewerComment(BaseModel):
     comment: str | None = None
+
+
+class CommandEdit(BaseModel):
+    command: str
+    description: str | None = None

@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import TenantContext, get_tenant_context
 from app.database import get_db
 from app.schemas.remediation import (
+    CommandEdit,
     CommandReview,
+    RemediationCommandRead,
     RemediationPlanRead,
     RemediationRequest,
     ReviewerComment,
@@ -56,6 +58,40 @@ async def get_plan(
     plan = await remediation_service.get_plan(db, tenant_id=ctx.tenant.id, plan_id=plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plano não encontrado")
+    return RemediationPlanRead.model_validate(plan)
+
+
+@router.patch("/{plan_id}/commands/{command_id}", response_model=RemediationCommandRead)
+async def update_command(
+    plan_id: UUID,
+    command_id: UUID,
+    body: CommandEdit,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RemediationCommandRead:
+    try:
+        cmd = await remediation_service.update_command(
+            db, ctx.tenant.id, plan_id, command_id,
+            new_command=body.command,
+            new_description=body.description,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return RemediationCommandRead.model_validate(cmd)
+
+
+@router.post("/{plan_id}/retry", response_model=RemediationPlanRead, status_code=201)
+async def retry_plan(
+    plan_id: UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RemediationPlanRead:
+    try:
+        plan = await remediation_service.retry_plan(db, ctx.tenant.id, plan_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro ao retentar: {exc}")
     return RemediationPlanRead.model_validate(plan)
 
 

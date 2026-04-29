@@ -1,4 +1,4 @@
-import type { RemediationPlan, RemediationRequest } from "../types/remediation";
+import type { RemediationCommand, RemediationPlan, RemediationRequest } from "../types/remediation";
 import apiClient from "./client";
 
 export const remediationApi = {
@@ -10,6 +10,11 @@ export const remediationApi = {
 
   create: (data: RemediationRequest) =>
     apiClient.post<RemediationPlan>("/remediation", data).then((r) => r.data),
+
+  updateCommand: (planId: string, commandId: string, data: { command: string; description?: string }) =>
+    apiClient
+      .patch<RemediationCommand>(`/remediation/${planId}/commands/${commandId}`, data)
+      .then((r) => r.data),
 
   approveCommand: (planId: string, commandId: string) =>
     apiClient
@@ -23,6 +28,9 @@ export const remediationApi = {
 
   execute: (planId: string) =>
     apiClient.post<RemediationPlan>(`/remediation/${planId}/execute`).then((r) => r.data),
+
+  retry: (planId: string) =>
+    apiClient.post<RemediationPlan>(`/remediation/${planId}/retry`).then((r) => r.data),
 
   remove: (id: string) =>
     apiClient.delete(`/remediation/${id}`),
