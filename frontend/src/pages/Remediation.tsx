@@ -163,7 +163,7 @@ function CommandRow({
   const [editValue, setEditValue] = useState(cmd.command);
   const qc = useQueryClient();
 
-  const canReview = planStatus === "pending_approval" && cmd.status === "pending";
+  const canReview = planStatus !== "executing" && planStatus !== "rejected" && cmd.status === "pending";
   const canEdit = canReview;
 
   const approve = useMutation({
@@ -303,7 +303,8 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
   const qc = useQueryClient();
 
   const approvedCount = plan.commands.filter((c) => c.status === "approved").length;
-  const canExecute = plan.status === "pending_approval" && approvedCount > 0;
+  const pendingCount = plan.commands.filter((c) => c.status === "pending").length;
+  const canExecute = plan.status !== "executing" && plan.status !== "rejected" && approvedCount > 0;
 
   const execute = useMutation({
     mutationFn: () => remediationApi.execute(plan.id),
@@ -386,9 +387,10 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
                 {retry.isPending ? "Analisando erros…" : "Retentar com IA"}
               </button>
             )}
-            {plan.status === "pending_approval" && approvedCount === 0 && (
+            {!canExecute && plan.status !== "executing" && plan.status !== "rejected" && pendingCount > 0 && (
               <p className="text-xs text-gray-400 flex items-center gap-1">
-                <AlertTriangle size={12} /> Aprove pelo menos um comando para executar
+                <AlertTriangle size={12} />
+                {pendingCount} comando(s) pendente(s) — aprove para executar
               </p>
             )}
             <div className="flex-1" />

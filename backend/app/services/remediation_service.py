@@ -287,6 +287,8 @@ async def approve_command(
     plan = await get_plan(db, tenant_id, plan_id)
     if not plan:
         raise ValueError("Plano não encontrado")
+    if plan.status == RemediationStatus.executing:
+        raise ValueError("Não é possível aprovar comandos durante a execução")
     cmd = next((c for c in plan.commands if c.id == command_id), None)
     if not cmd:
         raise ValueError("Comando não encontrado")
@@ -303,6 +305,8 @@ async def reject_command(
     plan = await get_plan(db, tenant_id, plan_id)
     if not plan:
         raise ValueError("Plano não encontrado")
+    if plan.status == RemediationStatus.executing:
+        raise ValueError("Não é possível rejeitar comandos durante a execução")
     cmd = next((c for c in plan.commands if c.id == command_id), None)
     if not cmd:
         raise ValueError("Comando não encontrado")
@@ -319,7 +323,7 @@ async def execute_plan(
     plan = await get_plan(db, tenant_id, plan_id)
     if not plan:
         raise ValueError("Plano não encontrado")
-    if plan.status not in (RemediationStatus.pending_approval, RemediationStatus.approved):
+    if plan.status in (RemediationStatus.executing, RemediationStatus.rejected):
         raise ValueError(f"Plano não pode ser executado no estado '{plan.status.value}'")
 
     approved_cmds = [c for c in plan.commands if c.status == CommandStatus.approved]
@@ -352,18 +356,14 @@ async def execute_plan(
         cmd.executed_at = datetime.now(timezone.utc)
         await db.flush()
 
-    # Mark pending commands as skipped
-    for cmd in plan.commands:
-        if cmd.status == CommandStatus.pending:
-            cmd.status = CommandStatus.skipped
-            await db.flush()
+    # Recalculate status without touching pending commands — user can approve more later
+    has_pending = any(c.status == CommandStatus.pending for c in plan.commands)
+    has_failed = any(c.status == CommandStatus.failed for c in plan.commands)
 
-    completed = [c for c in plan.commands if c.status == CommandStatus.completed]
-    failed = [c for c in plan.commands if c.status == CommandStatus.failed]
-
-    if failed and completed:
-        plan.status = RemediationStatus.partial
-    elif failed:
+    if has_pending:
+        # Still commands waiting to be approved/executed
+        plan.status = RemediationStatus.partial if has_failed else RemediationStatus.pending_approval
+    elif has_failed:
         plan.status = RemediationStatus.partial
     else:
         plan.status = RemediationStatus.completed
