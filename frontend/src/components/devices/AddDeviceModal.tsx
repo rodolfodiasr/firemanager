@@ -22,7 +22,7 @@ interface VendorConfig {
   passwordLabel?: string;
   defaultPort: number;
   hint: string;
-  extraFields?: "vdom" | "os_version";
+  extraFields?: "vdom" | "os_version" | "cmdline_password";
 }
 
 const VENDOR_CONFIG: Record<VendorEnum, VendorConfig> = {
