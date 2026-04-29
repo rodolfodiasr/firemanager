@@ -220,6 +220,29 @@ class GenericSSHConnector:
         except Exception as exc:
             return SSHResult(success=False, error=str(exc), commands_executed=commands)
 
+    def _comware_show_sysview_sync(self, commands: list[str]) -> SSHResult:
+        """
+        Run Comware display commands that require system-view (e.g. display current-configuration).
+        Opens a fresh connection WITHOUT _cmdline-mode on — standard display commands don't need it.
+        Enters system-view via raw send_command so Netmiko's config-mode machinery is never invoked.
+        """
+        try:
+            parts: list[str] = []
+            with ConnectHandler(**self._connect_params()) as conn:
+                conn.send_command("system-view", expect_string=r"\[", read_timeout=15)
+                for cmd in commands:
+                    out = conn.send_command(cmd, read_timeout=30)
+                    parts.append(out)
+                conn.send_command("quit", expect_string=r"[><]", read_timeout=10)
+            combined = self._clean("\n".join(parts))
+            return SSHResult(success=True, output=combined, commands_executed=commands)
+        except NetmikoAuthenticationException as exc:
+            return SSHResult(success=False, error=f"Autenticação falhou: {exc}")
+        except NetmikoTimeoutException as exc:
+            return SSHResult(success=False, error=f"Timeout: {exc}")
+        except Exception as exc:
+            return SSHResult(success=False, error=str(exc))
+
     def _show_sync(self, commands: list[str]) -> SSHResult:
         try:
             parts: list[str] = []
@@ -229,23 +252,7 @@ class GenericSSHConnector:
                 if self.vendor == "hp_comware":
                     self._enter_cmdline_mode(conn)
                 for cmd in commands:
-                    needs_sysview = (
-                        self.vendor == "hp_comware"
-                        and cmd.strip().lower().startswith(self._COMWARE_SYSVIEW_DISPLAY)
-                    )
-                    if needs_sysview:
-                        conn.send_command(
-                            "system-view",
-                            expect_string=r"\[",
-                            read_timeout=15,
-                        )
                     out = conn.send_command(cmd, read_timeout=30)
-                    if needs_sysview:
-                        conn.send_command(
-                            "quit",
-                            expect_string=r"[>#]",
-                            read_timeout=10,
-                        )
                     parts.append(out)
             combined = self._clean("\n".join(parts))
             return SSHResult(success=True, output=combined, commands_executed=commands)
@@ -284,6 +291,10 @@ class GenericSSHConnector:
     async def execute_show_commands(self, commands: list[str]) -> SSHResult:
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=1) as pool:
+            if self.vendor == "hp_comware" and any(
+                c.strip().lower().startswith(self._COMWARE_SYSVIEW_DISPLAY) for c in commands
+            ):
+                return await loop.run_in_executor(pool, self._comware_show_sysview_sync, commands)
             return await loop.run_in_executor(pool, self._show_sync, commands)
 
     async def test_connection(self) -> SSHResult:
