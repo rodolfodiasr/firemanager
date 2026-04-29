@@ -221,7 +221,15 @@ class GenericSSHConnector:
                 if self.vendor == "hp_comware":
                     self._enter_cmdline_mode(conn)
                 for cmd in commands:
+                    needs_sysview = (
+                        self.vendor == "hp_comware"
+                        and cmd.strip().lower().startswith(self._COMWARE_SYSVIEW_DISPLAY)
+                    )
+                    if needs_sysview:
+                        conn.config_mode()
                     out = conn.send_command(cmd, read_timeout=30)
+                    if needs_sysview:
+                        conn.exit_config_mode()
                     parts.append(out)
             combined = self._clean("\n".join(parts))
             return SSHResult(success=True, output=combined, commands_executed=commands)
