@@ -1014,7 +1014,7 @@ Comandos por vendor:
   aruba:      ssh_show_commands: ["show interfaces brief"]
   dell:       ssh_show_commands: ["show interface status"]
   dell_n:     ssh_show_commands: ["show interfaces status"]
-  hp_comware: ssh_show_commands: ["display interface brief"]
+  hp_comware: ssh_show_commands: ["display interface"]
   ubiquiti:   ssh_show_commands: ["show interfaces"]
 
 Pode combinar VLANs + portas na mesma operação usando múltiplos comandos:
