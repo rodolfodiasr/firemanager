@@ -67,6 +67,20 @@ def _is_dangerous(command: str) -> bool:
     return bool(_BLOCKLIST.search(command))
 
 
+def _parse_ai_json(raw: str) -> dict:
+    """Parse JSON from AI response with fallback extraction. Raises RuntimeError on failure."""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        start, end = raw.find("{"), raw.rfind("}")
+        if start != -1 and end > start:
+            try:
+                return json.loads(raw[start:end + 1])
+            except json.JSONDecodeError:
+                pass
+        raise RuntimeError(f"A IA retornou uma resposta inválida (não foi possível extrair JSON). Tente novamente.")
+
+
 async def generate_plan(
     db: AsyncSession,
     tenant_id: UUID,
@@ -95,12 +109,11 @@ async def generate_plan(
     )
 
     raw = msg.content[0].text.strip()
-    # Strip markdown code fences if present
     if raw.startswith("```"):
         raw = re.sub(r"^```[a-z]*\n?", "", raw)
         raw = re.sub(r"\n?```$", "", raw)
 
-    data = json.loads(raw)
+    data = _parse_ai_json(raw)
     summary = data.get("summary", "")
     raw_commands = data.get("commands", [])
 
@@ -244,7 +257,7 @@ async def retry_plan(
         raw = re.sub(r"^```[a-z]*\n?", "", raw)
         raw = re.sub(r"\n?```$", "", raw)
 
-    data = json.loads(raw)
+    data = _parse_ai_json(raw)
     summary = data.get("summary", "")
     raw_commands = data.get("commands", [])
 

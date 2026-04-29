@@ -47,6 +47,16 @@ const CMD_STATUS_ICON: Record<CommandStatus, React.ReactNode> = {
   skipped:   <Clock size={14} className="text-gray-300" />,
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function errMsg(err: unknown): string {
+  if (!err) return "";
+  const detail = (err as any)?.response?.data?.detail;
+  if (detail) return typeof detail === "string" ? detail : JSON.stringify(detail);
+  return (err as Error).message ?? "Erro desconhecido";
+}
+
 // ── New plan form ─────────────────────────────────────────────────────────────
 
 interface NewPlanFormProps {
@@ -137,7 +147,7 @@ function NewPlanForm({ onCreated, initialServerId, initialRequest }: NewPlanForm
         </div>
         {create.isError && (
           <p className="text-xs text-red-600 mt-1">
-            Erro: {(create.error as Error).message}
+            Erro: {errMsg(create.error)}
           </p>
         )}
       </div>
@@ -260,7 +270,7 @@ function CommandRow({
                   </button>
                   {edit.isError && (
                     <span className="text-xs text-red-600 self-center">
-                      {(edit.error as Error).message}
+                      {errMsg(edit.error)}
                     </span>
                   )}
                 </div>
@@ -405,12 +415,12 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
 
           {execute.isError && (
             <p className="text-xs text-red-600">
-              Erro: {(execute.error as Error).message}
+              Erro: {errMsg(execute.error)}
             </p>
           )}
           {retry.isError && (
             <p className="text-xs text-red-600">
-              Erro ao retentar: {(retry.error as Error).message}
+              Erro ao retentar: {errMsg(retry.error)}
             </p>
           )}
         </div>
