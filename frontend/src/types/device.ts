@@ -45,6 +45,7 @@ export interface DeviceCredentials {
   ssh_port?: number;
   vdom?: string;
   os_version?: number;
+  cmdline_password?: string;
 }
 
 export interface DeviceCreate {

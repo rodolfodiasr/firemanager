@@ -167,6 +167,7 @@ const VENDOR_CONFIG: Record<VendorEnum, VendorConfig> = {
     usernamePlaceholder: "admin",
     passwordLabel: "Senha",
     defaultPort: 22,
+    extraFields: "cmdline_password",
     hint: "HP V1910 / V3600 / A-Series · Comware 5.x · SSH habilitado (ip ssh server enable)",
   },
 };
@@ -379,6 +380,25 @@ export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProp
                 <option value={7}>SonicOS 7.x (padrão)</option>
                 <option value={6}>SonicOS 6.x</option>
               </select>
+            </div>
+          )}
+
+          {/* HP Comware extra: cmdline-mode password */}
+          {cfg.extraFields === "cmdline_password" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Senha cmdline-mode{" "}
+                <span className="text-gray-400 font-normal">(opcional — necessária para system-view no V1910)</span>
+              </label>
+              <input
+                {...register("credentials.cmdline_password")}
+                type="password"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                placeholder="Ex: 512900"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Usada no comando <code className="bg-gray-100 px-1 rounded">_cmdline-mode on</code> antes de entrar em system-view
+              </p>
             </div>
           )}
 

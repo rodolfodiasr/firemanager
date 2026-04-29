@@ -103,11 +103,30 @@ class GenericSSHConnector:
 
     # ── sync helpers (run inside ThreadPoolExecutor) ─────────────────────────
 
+    def _enter_cmdline_mode(self, conn) -> None:
+        """Send _cmdline-mode on + password for HP Comware V1910/V1920 switches."""
+        cmdline_pwd = self.credentials.get("cmdline_password", "")
+        if not cmdline_pwd:
+            return
+        output = conn.send_command(
+            "_cmdline-mode on",
+            expect_string=r"[Pp]assword|[>#\]]",
+            read_timeout=10,
+        )
+        if "assword" in output:
+            conn.send_command(
+                cmdline_pwd,
+                expect_string=r"[>#\]]",
+                read_timeout=10,
+            )
+
     def _config_sync(self, commands: list[str]) -> SSHResult:
         try:
             with ConnectHandler(**self._connect_params()) as conn:
                 if self.vendor in _NEEDS_ENABLE:
                     conn.enable()
+                if self.vendor == "hp_comware":
+                    self._enter_cmdline_mode(conn)
 
                 if self.vendor == "juniper":
                     # JunOS: set commands run in configure mode; commit must be in list
@@ -182,6 +201,8 @@ class GenericSSHConnector:
             with ConnectHandler(**self._connect_params()) as conn:
                 if self.vendor in _NEEDS_ENABLE:
                     conn.enable()
+                if self.vendor == "hp_comware":
+                    self._enter_cmdline_mode(conn)
                 for cmd in commands:
                     out = conn.send_command(cmd, read_timeout=30)
                     parts.append(out)
@@ -195,11 +216,13 @@ class GenericSSHConnector:
             return SSHResult(success=False, error=str(exc))
 
     def _test_sync(self) -> SSHResult:
-        cmd = "show version" if self.vendor != "juniper" else "show version"
+        cmd = "display version" if self.vendor == "hp_comware" else "show version"
         try:
             with ConnectHandler(**self._connect_params()) as conn:
                 if self.vendor in _NEEDS_ENABLE:
                     conn.enable()
+                if self.vendor == "hp_comware":
+                    self._enter_cmdline_mode(conn)
                 out = conn.send_command(cmd, read_timeout=20)
             clean = self._clean(out)
             return SSHResult(success=True, output=clean[:400])
