@@ -104,19 +104,27 @@ class GenericSSHConnector:
     # ── sync helpers (run inside ThreadPoolExecutor) ─────────────────────────
 
     def _enter_cmdline_mode(self, conn) -> None:
-        """Send _cmdline-mode on + password for HP Comware V1910/V1920 switches."""
+        """Send _cmdline-mode on + Y/N confirm + password for HP Comware V1910/V1920."""
         cmdline_pwd = self.credentials.get("cmdline_password", "")
         if not cmdline_pwd:
             return
+        # Wait for [Y/N] confirm or direct password prompt
         output = conn.send_command(
             "_cmdline-mode on",
-            expect_string=r"[Pp]assword|[>#\]]",
+            expect_string=r"[Pp]assword|\[Y/N\]|[>#]",
             read_timeout=10,
         )
-        if "assword" in output:
+        # HP 1910 asks "Continue? [Y/N]" before the password prompt
+        if "Y/N" in output or "Continue" in output:
+            output = conn.send_command(
+                "y",
+                expect_string=r"[Pp]assword|[>#]",
+                read_timeout=10,
+            )
+        if "assword" in output or "password" in output.lower():
             conn.send_command(
                 cmdline_pwd,
-                expect_string=r"[>#\]]",
+                expect_string=r"[>#]",
                 read_timeout=10,
             )
         # Re-sync Netmiko's prompt detection after _cmdline-mode changes device state
@@ -226,10 +234,18 @@ class GenericSSHConnector:
                         and cmd.strip().lower().startswith(self._COMWARE_SYSVIEW_DISPLAY)
                     )
                     if needs_sysview:
-                        conn.config_mode()
+                        conn.send_command(
+                            "system-view",
+                            expect_string=r"\[",
+                            read_timeout=15,
+                        )
                     out = conn.send_command(cmd, read_timeout=30)
                     if needs_sysview:
-                        conn.exit_config_mode()
+                        conn.send_command(
+                            "quit",
+                            expect_string=r"[>#]",
+                            read_timeout=10,
+                        )
                     parts.append(out)
             combined = self._clean("\n".join(parts))
             return SSHResult(success=True, output=combined, commands_executed=commands)
