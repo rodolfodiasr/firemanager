@@ -349,11 +349,21 @@ async def corrective_plan(
         else "Linux (use bash/sh)"
     )
 
+    MAX_OUTPUT = 1500
+
+    def _trim(text: str | None) -> str:
+        if not text:
+            return "(sem saída)"
+        if len(text) <= MAX_OUTPUT:
+            return text
+        half = MAX_OUTPUT // 2
+        return text[:half] + f"\n... [{len(text) - MAX_OUTPUT} chars truncated] ...\n" + text[-half:]
+
     exec_log = "\n\n".join(
         f"[{c.order}] {c.description}\n"
         f"Status: {c.status.value}\n"
         f"Command: {c.command}\n"
-        f"Output:\n{c.output or '(sem saída)'}"
+        f"Output:\n{_trim(c.output)}"
         for c in sorted(plan.commands, key=lambda x: x.order)
     )
 
@@ -371,7 +381,7 @@ async def corrective_plan(
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     msg = await client.messages.create(
         model="claude-opus-4-7",
-        max_tokens=2048,
+        max_tokens=4096,
         system=_SYSTEM_PROMPT_CORRECTIVE,
         messages=[{"role": "user", "content": corrective_msg}],
     )
