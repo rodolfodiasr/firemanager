@@ -1014,18 +1014,19 @@ Comandos por vendor:
   aruba:      ssh_show_commands: ["show interfaces brief"]
   dell:       ssh_show_commands: ["show interface status"]
   dell_n:     ssh_show_commands: ["show interfaces status"]
-  hp_comware: ssh_show_commands: ["display interface"]
+  hp_comware: ssh_show_commands: ["display current-configuration interface"]
   ubiquiti:   ssh_show_commands: ["show interfaces"]
 
 HP Comware — porta específica:
-  Se o usuário informar um número de porta (ex: "porta 1", "interface 2"), use:
-    ssh_show_commands: ["display interface GigabitEthernet 1/0/1"]
+  Se o usuário informar um número de porta (ex: "porta 1", "interface 2", "configuração da porta 1"), use:
+    ssh_show_commands: ["display current-configuration interface GigabitEthernet 1/0/1"]
   Substituindo o último número pelo número da porta informada.
-  Se não informar porta, use "display interface" (lista todas).
+  Se não informar porta, use "display current-configuration interface" (lista configuração de todas).
+  NUNCA use "display interface brief" — esse comando NÃO existe no HP 1910 / Comware 5 Lite.
 
 Pode combinar VLANs + portas na mesma operação usando múltiplos comandos:
   dell_n:     ssh_show_commands: ["show vlan", "show interfaces status"]
-  hp_comware: ssh_show_commands: ["display vlan", "display interface"]
+  hp_comware: ssh_show_commands: ["display vlan", "display current-configuration interface"]
   cisco_ios:  ssh_show_commands: ["show vlan brief", "show interfaces status"]
 
 ── REGRAS GERAIS PARA VENDORS CLI ─────────────────────────────────────────
@@ -1040,7 +1041,8 @@ Pode combinar VLANs + portas na mesma operação usando múltiplos comandos:
    - ssh_commands → comandos de CONFIGURAÇÃO (entram em configure/system-view)
    - ssh_show_commands → comandos de LEITURA (show/display, sem entrar em configure)
    - NUNCA coloque show/display em ssh_commands nem comandos de config em ssh_show_commands
-7. HP Comware: use "display" em vez de "show" (ex: "display vlan", "display interface brief").
+7. HP Comware: use "display" em vez de "show" (ex: "display vlan", "display interface").
+   PROIBIDO para HP Comware: "display interface brief" — esse comando NÃO existe no HP 1910 / Comware 5 Lite e causa erro de sintaxe. Use SEMPRE "display interface" (sem "brief").
 8. Ubiquiti EdgeOS: use "show" em modo exec; comandos de config usam sintaxe "set ...".
 9. Gere nomes de objetos com prefixo "FM-" para facilitar identificação (ex: FM-VLAN-CAMERAS).
 10. NÃO assuma números de VLAN ou seus propósitos — use apenas os que o usuário informar.
