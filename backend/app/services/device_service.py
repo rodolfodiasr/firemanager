@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.connectors.factory import get_connector
+from app.connectors.factory import CLI_VENDORS, get_connector, get_ssh_connector
 from app.models.device import Device, DeviceStatus
 from app.schemas.device import DeviceCreate, DeviceUpdate
 from app.utils.crypto import encrypt_credentials
@@ -95,13 +95,17 @@ async def health_check_device(
 ) -> Device:
     device = await get_device(db, device_id, tenant_id)
     try:
-        connector = get_connector(device)
+        if device.vendor in CLI_VENDORS:
+            connector = get_ssh_connector(device)
+        else:
+            connector = get_connector(device)
         result = await connector.test_connection()
         if result.success:
             device.status = DeviceStatus.online
             device.last_error = None
-            if result.firmware_version:
-                device.firmware_version = result.firmware_version
+            fw = getattr(result, "firmware_version", None)
+            if fw:
+                device.firmware_version = fw
         else:
             logger.warning("Health check failed for device %s: %s", device_id, result.error)
             device.status = DeviceStatus.offline
