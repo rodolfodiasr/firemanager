@@ -123,9 +123,14 @@ class GenericSSHConnector:
         conn.set_base_prompt()
 
     _COMWARE_SHOW_PREFIXES = ("display ", "ping ", "tracert ", "traceroute ")
+    # display current-configuration only works in system-view on HP 1910 Comware Lite
+    _COMWARE_SYSVIEW_DISPLAY = ("display current-configuration",)
 
     def _is_comware_show(self, cmd: str) -> bool:
-        return cmd.strip().lower().startswith(self._COMWARE_SHOW_PREFIXES)
+        stripped = cmd.strip().lower()
+        if stripped.startswith(self._COMWARE_SYSVIEW_DISPLAY):
+            return False
+        return stripped.startswith(self._COMWARE_SHOW_PREFIXES)
 
     def _config_sync(self, commands: list[str]) -> SSHResult:
         # For hp_comware, display/ping commands are user-view only — redirect to show mode
@@ -172,7 +177,8 @@ class GenericSSHConnector:
                     )
                     combined = self._clean(raw)
                     conn.exit_config_mode()  # sends 'quit' back to user view
-                    if self.vendor in _AUTO_SAVE:
+                    display_only = all(c.strip().lower().startswith("display ") for c in commands)
+                    if self.vendor in _AUTO_SAVE and not display_only:
                         try:
                             save_out = conn.save_config()
                             combined += "\n" + self._clean(save_out)
