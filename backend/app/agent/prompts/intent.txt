@@ -25,6 +25,9 @@ Analise a solicitação do usuário e identifique:
    - get_security_status: Consultar/verificar status dos serviços de segurança (ativo/inativo) — antivírus, anti-spyware, IPS, app-control, geo-ip, botnet, DPI-SSL
    - health_check: Verificar status/conectividade do dispositivo
    - get_snapshot: Obter snapshot da configuração atual
+   - list_vlans: Listar VLANs configuradas no switch/roteador
+   - list_ports: Listar portas/interfaces e seus status
+   - get_info: Executar um comando específico de leitura/consulta (display, show, ping, traceroute) que o usuário mencionou explicitamente — use quando o usuário pede para "executar o comando X", "rodar display X", "fazer show X"
    - unknown: Solicitação não reconhecida
 
 2. **present_fields**: Campos já fornecidos pelo usuário (ex: src_address, dst_address, service, action, name)

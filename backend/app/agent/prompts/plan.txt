@@ -10,7 +10,7 @@ Dispositivo alvo:
 
 Intenção identificada: {intent}
 
-Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, toggle_gateway_av, toggle_anti_spyware, toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl, configure_app_rules, add_security_exclusion, get_security_status, health_check, get_snapshot, list_vlans, list_ports
+Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, toggle_gateway_av, toggle_anti_spyware, toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl, configure_app_rules, add_security_exclusion, get_security_status, health_check, get_snapshot, list_vlans, list_ports, get_info
 
 Gere o ActionPlan no seguinte formato JSON (sem markdown):
 {
@@ -956,6 +956,28 @@ REGRAS IMPORTANTES PARA HP COMWARE:
 - NÃO inclua "system-view", "save", nem "return" — o sistema gerencia automaticamente
 - Para VLANs em trunk: sintaxe "vlan X to Y Z" (separar ranges com "to", individuais com espaço)
   Exemplo: "port trunk permit vlan 2 to 3 8 11 15 100 200 600" (correto)
+
+── GET_INFO — executar qualquer comando de leitura (show/display) arbitrário ──
+
+Use get_info quando o usuário pedir para executar um comando específico de leitura
+(display, show, ping, traceroute, etc.) que não se encaixa em list_vlans ou list_ports.
+Exemplos: "execute display current-configuration", "rode o comando show running-config",
+          "execute display ip interface brief", "faça um ping para 8.8.8.8".
+
+- Defina intent="get_info", execution_mode="ssh"
+- Coloque os comandos em ssh_show_commands (NÃO em ssh_commands)
+- ssh_commands deve ser null
+- O sistema executa em modo exec/user (sem entrar em configure/system-view)
+- Coloque EXATAMENTE o(s) comando(s) que o usuário pediu — não adicione outros
+
+Exemplo para HP Comware:
+  ssh_show_commands: ["display current-configuration"]
+  ssh_show_commands: ["display ip interface brief", "display vlan"]
+  ssh_show_commands: ["ping 8.8.8.8"]
+
+Exemplo para Cisco IOS:
+  ssh_show_commands: ["show running-config"]
+  ssh_show_commands: ["show interfaces status", "show ip route"]
 
 ── LIST_VLANS — listar VLANs configuradas no switch ────────────────────────
 

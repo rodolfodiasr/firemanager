@@ -33,6 +33,7 @@ class IntentType(str, Enum):
     direct_ssh = "direct_ssh"
     list_vlans = "list_vlans"
     list_ports = "list_ports"
+    get_info = "get_info"
     unknown = "unknown"
 
 
