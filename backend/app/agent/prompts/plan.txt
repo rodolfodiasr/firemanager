@@ -1014,19 +1014,21 @@ Comandos por vendor:
   aruba:      ssh_show_commands: ["show interfaces brief"]
   dell:       ssh_show_commands: ["show interface status"]
   dell_n:     ssh_show_commands: ["show interfaces status"]
-  hp_comware: ssh_show_commands: ["display current-configuration interface"]
+  hp_comware: ssh_show_commands: ["display interface"]
   ubiquiti:   ssh_show_commands: ["show interfaces"]
 
 HP Comware — porta específica:
   Se o usuário informar um número de porta (ex: "porta 1", "interface 2", "configuração da porta 1"), use:
-    ssh_show_commands: ["display current-configuration interface GigabitEthernet 1/0/1"]
+    ssh_show_commands: ["display interface GigabitEthernet 1/0/1"]
   Substituindo o último número pelo número da porta informada.
-  Se não informar porta, use "display current-configuration interface" (lista configuração de todas).
+  Se não informar porta, use "display interface" (lista status de todas as interfaces).
   NUNCA use "display interface brief" — esse comando NÃO existe no HP 1910 / Comware 5 Lite.
+  NUNCA use "display current-configuration interface X" — o filtro por interface NÃO existe no Comware 5 Lite.
+  Para ver a config de uma porta específica, use "display interface GigabitEthernet X/X/X".
 
 Pode combinar VLANs + portas na mesma operação usando múltiplos comandos:
   dell_n:     ssh_show_commands: ["show vlan", "show interfaces status"]
-  hp_comware: ssh_show_commands: ["display vlan", "display current-configuration interface"]
+  hp_comware: ssh_show_commands: ["display vlan", "display interface"]
   cisco_ios:  ssh_show_commands: ["show vlan brief", "show interfaces status"]
 
 ── REGRAS GERAIS PARA VENDORS CLI ─────────────────────────────────────────
