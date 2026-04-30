@@ -223,20 +223,23 @@ class GenericSSHConnector:
     def _comware_show_sysview_sync(self, commands: list[str]) -> SSHResult:
         """
         Run Comware display commands that require system-view (e.g. display current-configuration).
-        Uses send_config_set — the same proven path as _config_sync — which internally enters
-        system-view and collects output. _enter_cmdline_mode is called first if configured.
+        Uses send_command_timing to enter/exit system-view, bypassing Netmiko's check_config_mode()
+        which consistently fails on HP 1910 Comware Lite due to a race on the prompt buffer.
+        After system-view, base_prompt ("HP V1910 Switch") is present inside "[HP V1910 Switch]"
+        so regular send_command prompt detection still works for the display commands.
         """
         try:
+            parts: list[str] = []
             with ConnectHandler(**self._connect_params()) as conn:
                 self._enter_cmdline_mode(conn)
-                # send_config_set enters system-view, sends each command, collects all output
-                raw = conn.send_config_set(
-                    commands,
-                    exit_config_mode=False,
-                    read_timeout=60,
-                )
-                conn.exit_config_mode()  # sends "quit" back to user-view
-            combined = self._clean(raw)
+                # Enter system-view without check_config_mode()
+                conn.send_command_timing("system-view", last_read=2)
+                for cmd in commands:
+                    out = conn.send_command(cmd, read_timeout=30)
+                    parts.append(out)
+                # Return to user-view
+                conn.send_command_timing("quit", last_read=1)
+            combined = self._clean("\n".join(parts))
             return SSHResult(success=True, output=combined, commands_executed=commands)
         except NetmikoAuthenticationException as exc:
             return SSHResult(success=False, error=f"Autenticação falhou: {exc}")
