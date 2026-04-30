@@ -151,7 +151,9 @@ class WinRMConnector:
                 self.verify_ssl,
                 {"ping": "Write-Output 'ok'"},
             )
-            ok = result.get("ping", "").strip() == "ok"
-            return ok, "WinRM OK" if ok else "Resposta inesperada"
+            ping_out = result.get("ping", "").strip()
+            if ping_out == "ok":
+                return True, "WinRM OK"
+            return False, ping_out or "Resposta inesperada"
         except Exception as exc:
             return False, str(exc)
