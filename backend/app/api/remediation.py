@@ -144,6 +144,21 @@ async def execute_plan(
     return RemediationPlanRead.model_validate(plan)
 
 
+@router.post("/{plan_id}/rollback", response_model=RemediationPlanRead, status_code=201)
+async def create_rollback_plan(
+    plan_id: UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> RemediationPlanRead:
+    try:
+        plan = await remediation_service.create_rollback_plan(db, ctx.tenant.id, plan_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro ao criar plano de rollback: {exc}")
+    return RemediationPlanRead.model_validate(plan)
+
+
 @router.post("/{plan_id}/corrective", response_model=RemediationPlanRead, status_code=201)
 async def corrective_plan(
     plan_id: UUID,

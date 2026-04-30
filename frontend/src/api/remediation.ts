@@ -37,6 +37,11 @@ export const remediationApi = {
       .post<RemediationPlan>(`/remediation/${planId}/corrective`, { observation })
       .then((r) => r.data),
 
+  createRollback: (planId: string) =>
+    apiClient
+      .post<RemediationPlan>(`/remediation/${planId}/rollback`)
+      .then((r) => r.data),
+
   exportPdf: async (planId: string) => {
     const token = localStorage.getItem("access_token");
     const res = await fetch(`/api/remediation/${planId}/export`, {

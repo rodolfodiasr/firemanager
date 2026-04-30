@@ -50,16 +50,34 @@ Respond ONLY with a valid JSON object — no markdown, no explanation — with t
       "command": "exact shell command to run",
       "risk": "low|medium|high"
     }
+  ],
+  "rollback_steps": [
+    {
+      "order": 1,
+      "description": "what this rollback step undoes",
+      "command": "exact shell command to revert the change",
+      "risk": "low|medium|high"
+    }
   ]
 }
 
-Rules:
+Rules for commands:
+- Before modifying any config file, include a backup step: cp /path/file /path/file.bak
 - Include only commands that fix the described problem.
-- Use read-only commands for verification steps.
+- Use read-only commands for verification steps (risk: low).
 - Mark any command that modifies files, services, or packages as medium or high risk.
 - Never include commands that could destroy data or make the server unresponsive.
 - Keep the command list concise (max 10 steps).
 - For Windows servers use PowerShell syntax; for Linux use bash/sh.
+
+Rules for rollback_steps:
+- Generate steps that UNDO the changes made by commands, in reverse dependency order.
+- If a config file was backed up, restore it: cp /path/file.bak /path/file
+- If a service was enabled, disable it; if a package was installed, remove it.
+- If a change is irreversible (e.g. password changes, kernel parameters without backup),
+  include a descriptive step explaining why it cannot be undone automatically.
+- rollback_steps may be an empty list [] if nothing done by commands can be reversed.
+- Keep rollback concise (max 8 steps).
 """
 
 
@@ -150,6 +168,7 @@ async def generate_plan(
         raise
     summary = data.get("summary", "")
     raw_commands = data.get("commands", [])
+    rollback_steps = data.get("rollback_steps", [])
 
     plan = RemediationPlan(
         tenant_id=tenant_id,
@@ -158,6 +177,7 @@ async def generate_plan(
         request=request,
         summary=summary,
         status=RemediationStatus.pending_approval,
+        rollback_steps=rollback_steps if isinstance(rollback_steps, list) else [],
     )
     db.add(plan)
     await db.flush()
@@ -229,6 +249,58 @@ async def update_command(
         cmd.description = new_description
     await db.flush()
     return cmd
+
+
+async def create_rollback_plan(
+    db: AsyncSession,
+    tenant_id: UUID,
+    plan_id: UUID,
+) -> RemediationPlan:
+    """Create a new RemediationPlan from the rollback_steps of an existing plan."""
+    plan = await get_plan(db, tenant_id, plan_id)
+    if not plan:
+        raise ValueError("Plano não encontrado")
+    if not plan.rollback_steps:
+        raise ValueError(
+            "Este plano não possui passos de rollback. "
+            "Apenas planos gerados após a atualização possuem rollback automático."
+        )
+
+    rollback = RemediationPlan(
+        tenant_id=tenant_id,
+        server_id=plan.server_id,
+        session_id=plan.session_id,
+        request=f"[ROLLBACK] {plan.request}",
+        summary=(
+            f"Plano de rollback para desfazer as alterações aplicadas em: "
+            f"{plan.request[:120]}"
+        ),
+        status=RemediationStatus.pending_approval,
+        rollback_steps=[],
+    )
+    db.add(rollback)
+    await db.flush()
+
+    for step in plan.rollback_steps:
+        cmd_text = step.get("command", "")
+        if _is_dangerous(cmd_text):
+            continue
+        risk_val = step.get("risk", "low")
+        if risk_val not in ("low", "medium", "high"):
+            risk_val = "low"
+        db.add(RemediationCommand(
+            plan_id=rollback.id,
+            order=step.get("order", 0),
+            description=step.get("description", ""),
+            command=cmd_text,
+            risk=RemediationRisk(risk_val),
+            status=CommandStatus.pending,
+        ))
+
+    await db.flush()
+    loaded = await get_plan(db, tenant_id, rollback.id)
+    assert loaded is not None
+    return loaded
 
 
 async def retry_plan(

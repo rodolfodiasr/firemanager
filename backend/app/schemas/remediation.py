@@ -28,6 +28,7 @@ class RemediationPlanRead(BaseModel):
     request: str
     summary: str
     status: RemediationStatus
+    rollback_steps: list | None
     reviewer_comment: str | None
     reviewed_at: datetime | None
     created_at: datetime

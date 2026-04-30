@@ -4,12 +4,12 @@ import { useLocation } from "react-router-dom";
 import {
   ShieldCheck, ShieldX, Play, Trash2, ChevronDown, ChevronUp,
   AlertTriangle, CheckCircle2, XCircle, Clock, Loader2, Plus,
-  Terminal, Pencil, RotateCcw, Check, X, FileDown, Wrench,
+  Terminal, Pencil, RotateCcw, Check, X, FileDown, Wrench, Undo2,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { remediationApi } from "../api/remediation";
 import { serversApi } from "../api/servers";
-import type { RemediationCommand, RemediationPlan, RemediationStatus, CommandStatus, RemediationRisk } from "../types/remediation";
+import type { RemediationCommand, RemediationPlan, RemediationStatus, CommandStatus, RemediationRisk, RollbackStep } from "../types/remediation";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -306,6 +306,91 @@ function CommandRow({
   );
 }
 
+// ── Rollback section ──────────────────────────────────────────────────────────
+
+function RollbackSection({
+  steps,
+  planId,
+  onRollbackCreated,
+}: {
+  steps: RollbackStep[];
+  planId: string;
+  onRollbackCreated: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
+
+  const createRollback = useMutation({
+    mutationFn: () => remediationApi.createRollback(planId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["remediation"] });
+      onRollbackCreated();
+    },
+  });
+
+  return (
+    <div className="border border-amber-200 rounded-lg overflow-hidden bg-amber-50">
+      <button
+        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-amber-100 transition-colors"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Undo2 size={15} className="text-amber-600 shrink-0" />
+        <span className="flex-1 text-sm font-medium text-amber-800">
+          Plano de Rollback ({steps.length} passo{steps.length !== 1 ? "s" : ""})
+        </span>
+        {open
+          ? <ChevronUp size={14} className="text-amber-500 shrink-0" />
+          : <ChevronDown size={14} className="text-amber-500 shrink-0" />}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-amber-200 bg-white">
+          <p className="text-xs text-gray-500 pt-3">
+            Estes passos desfazem as alterações aplicadas por este plano.
+            Revise antes de criar o plano de rollback.
+          </p>
+
+          <div className="space-y-2">
+            {steps.map((step) => (
+              <div key={step.order} className="border border-gray-100 rounded-lg bg-gray-50 px-4 py-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono text-gray-400 w-4 text-right shrink-0">{step.order}</span>
+                  <span className="flex-1 text-sm text-gray-700">{step.description}</span>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${RISK_STYLES[step.risk]}`}>
+                    {step.risk}
+                  </span>
+                </div>
+                <pre className="bg-gray-900 text-amber-400 text-xs rounded-lg px-4 py-2.5 overflow-x-auto font-mono whitespace-pre-wrap ml-6">
+                  {step.command}
+                </pre>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              disabled={createRollback.isPending}
+              onClick={() => createRollback.mutate()}
+              className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            >
+              {createRollback.isPending
+                ? <Loader2 size={14} className="animate-spin" />
+                : <Undo2 size={14} />}
+              {createRollback.isPending ? "Criando…" : "Criar plano de rollback"}
+            </button>
+            <p className="text-xs text-gray-400">
+              O rollback será criado como um novo plano pendente de aprovação.
+            </p>
+          </div>
+          {createRollback.isError && (
+            <p className="text-xs text-red-600">{errMsg(createRollback.error)}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Plan card ─────────────────────────────────────────────────────────────────
 
 function PlanCard({ plan }: { plan: RemediationPlan }) {
@@ -391,6 +476,15 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
               />
             ))}
           </div>
+
+          {/* Rollback */}
+          {plan.rollback_steps && plan.rollback_steps.length > 0 && (
+            <RollbackSection
+              steps={plan.rollback_steps}
+              planId={plan.id}
+              onRollbackCreated={() => setExpanded(true)}
+            />
+          )}
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-2 flex-wrap">

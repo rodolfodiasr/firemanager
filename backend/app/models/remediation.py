@@ -3,7 +3,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, Text, TIMESTAMP
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -64,6 +64,7 @@ class RemediationPlan(Base):
         default=RemediationStatus.pending_approval,
         index=True,
     )
+    rollback_steps: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     reviewer_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

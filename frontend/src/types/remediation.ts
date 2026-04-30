@@ -29,6 +29,13 @@ export interface RemediationCommand {
   executed_at: string | null;
 }
 
+export interface RollbackStep {
+  order: number;
+  description: string;
+  command: string;
+  risk: RemediationRisk;
+}
+
 export interface RemediationPlan {
   id: string;
   tenant_id: string;
@@ -37,6 +44,7 @@ export interface RemediationPlan {
   request: string;
   summary: string;
   status: RemediationStatus;
+  rollback_steps: RollbackStep[] | null;
   reviewer_comment: string | null;
   reviewed_at: string | null;
   created_at: string;
