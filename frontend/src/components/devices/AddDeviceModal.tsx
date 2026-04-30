@@ -388,7 +388,7 @@ export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProp
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Senha cmdline-mode{" "}
-                <span className="text-gray-400 font-normal">(opcional — necessária para system-view no V1910)</span>
+                <span className="text-red-500 font-normal">(obrigatória para V1910 — necessária para todas as operações)</span>
               </label>
               <input
                 {...register("credentials.cmdline_password")}

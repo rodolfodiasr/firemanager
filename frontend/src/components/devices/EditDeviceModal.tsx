@@ -110,15 +110,46 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
 
           {changeCredentials && (
             <div className="border rounded-lg p-3 bg-gray-50 space-y-2">
-              <select
-                {...register("credentials.auth_type")}
-                className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
-              >
-                <option value="token">API Token</option>
-                <option value="user_pass">Usuário / Senha</option>
-              </select>
+              {device.vendor !== "hp_comware" && (
+                <select
+                  {...register("credentials.auth_type")}
+                  className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
+                >
+                  <option value="token">API Token</option>
+                  <option value="user_pass">Usuário / Senha</option>
+                </select>
+              )}
 
-              {authType === "token" ? (
+              {device.vendor === "hp_comware" ? (
+                <>
+                  <input
+                    {...register("credentials.username")}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    placeholder="Usuário SSH"
+                  />
+                  <input
+                    {...register("credentials.password")}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    placeholder="Senha SSH"
+                    type="password"
+                  />
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Senha cmdline-mode{" "}
+                      <span className="text-red-500 font-normal">(obrigatória para V1910)</span>
+                    </label>
+                    <input
+                      {...register("credentials.cmdline_password")}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      placeholder="Ex: 512900"
+                      type="password"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                      Usada no <code className="bg-gray-100 px-1 rounded">_cmdline-mode on</code> — necessária para todas as operações
+                    </p>
+                  </div>
+                </>
+              ) : authType === "token" ? (
                 <input
                   {...register("credentials.token")}
                   className="w-full border rounded-lg px-3 py-2 text-sm"

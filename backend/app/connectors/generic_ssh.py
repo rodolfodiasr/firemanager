@@ -107,7 +107,10 @@ class GenericSSHConnector:
         """Send _cmdline-mode on + Y/N confirm + password for HP Comware V1910/V1920."""
         cmdline_pwd = self.credentials.get("cmdline_password", "")
         if not cmdline_pwd:
-            return
+            raise ValueError(
+                "HP Comware requer 'Senha cmdline-mode' nas credenciais do dispositivo. "
+                "Edite o dispositivo e preencha o campo 'Senha cmdline-mode' (ex: 512900)."
+            )
         # Wait for [Y/N] confirm or direct password prompt
         output = conn.send_command(
             "_cmdline-mode on",
