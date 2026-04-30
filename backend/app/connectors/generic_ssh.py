@@ -223,19 +223,20 @@ class GenericSSHConnector:
     def _comware_show_sysview_sync(self, commands: list[str]) -> SSHResult:
         """
         Run Comware display commands that require system-view (e.g. display current-configuration).
-        Calls _enter_cmdline_mode first (no-op if cmdline_password is not set) then enters
-        system-view via config_mode() which sends 'system-view' and waits for '[' prompt.
+        Uses send_config_set — the same proven path as _config_sync — which internally enters
+        system-view and collects output. _enter_cmdline_mode is called first if configured.
         """
         try:
-            parts: list[str] = []
             with ConnectHandler(**self._connect_params()) as conn:
                 self._enter_cmdline_mode(conn)
-                conn.config_mode()  # sends "system-view" — works only after cmdline-mode on
-                for cmd in commands:
-                    out = conn.send_command(cmd, read_timeout=30)
-                    parts.append(out)
-                conn.exit_config_mode()  # sends "quit", returns to user-view <prompt>
-            combined = self._clean("\n".join(parts))
+                # send_config_set enters system-view, sends each command, collects all output
+                raw = conn.send_config_set(
+                    commands,
+                    exit_config_mode=False,
+                    read_timeout=60,
+                )
+                conn.exit_config_mode()  # sends "quit" back to user-view
+            combined = self._clean(raw)
             return SSHResult(success=True, output=combined, commands_executed=commands)
         except NetmikoAuthenticationException as exc:
             return SSHResult(success=False, error=f"Autenticação falhou: {exc}")
