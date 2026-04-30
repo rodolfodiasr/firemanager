@@ -1024,7 +1024,7 @@ HP Comware — porta específica:
   Se não informar porta específica, use "display interface" (mostra status de todas as interfaces).
   NUNCA use "display interface brief" — esse comando NÃO existe no HP 1910 / Comware 5 Lite.
   "display current-configuration interface GigabitEthernet X/X/X" mostra a config completa
-  (link-type, VLANs, description, STP) e é executado em system-view automaticamente pelo sistema.
+  (link-type, VLANs, description, STP). Executa em user-view após _cmdline-mode on (automático).
   Formato da interface: GigabitEthernet 1/0/X (com espaço entre o tipo e o número).
 
 Pode combinar VLANs + portas na mesma operação usando múltiplos comandos:

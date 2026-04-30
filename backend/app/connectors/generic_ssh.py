@@ -134,8 +134,9 @@ class GenericSSHConnector:
         conn.set_base_prompt()
 
     _COMWARE_SHOW_PREFIXES = ("display ", "ping ", "tracert ", "traceroute ")
-    # display current-configuration requires system-view on Comware V5.20 Lite
-    _COMWARE_SYSVIEW_DISPLAY = ("display current-configuration",)
+    # display current-configuration interface X works from user-view after _cmdline-mode on
+    # No system-view needed — _comware_show_sysview_sync is not used for this command
+    _COMWARE_SYSVIEW_DISPLAY = ()
 
     def _is_comware_show(self, cmd: str) -> bool:
         stripped = cmd.strip().lower()
