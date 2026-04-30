@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.connectors.factory import CLI_VENDORS, get_connector, get_ssh_connector
 from app.models.audit_log import AuditLog
 from app.models.device import Device, DeviceStatus
+from app.models.document import Document
 from app.models.operation import Operation
 from app.models.snapshot import Snapshot
 from app.schemas.device import DeviceCreate, DeviceUpdate
@@ -90,6 +91,11 @@ async def update_device(
 
 async def delete_device(db: AsyncSession, device_id: UUID, tenant_id: UUID | None = None) -> None:
     device = await get_device(db, device_id, tenant_id)
+    op_ids = (await db.execute(
+        select(Operation.id).where(Operation.device_id == device_id)
+    )).scalars().all()
+    if op_ids:
+        await db.execute(delete(Document).where(Document.operation_id.in_(op_ids)))
     await db.execute(delete(AuditLog).where(AuditLog.device_id == device_id))
     await db.execute(delete(Snapshot).where(Snapshot.device_id == device_id))
     await db.execute(delete(Operation).where(Operation.device_id == device_id))
