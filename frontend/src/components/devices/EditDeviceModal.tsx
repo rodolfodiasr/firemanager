@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { X } from "lucide-react";
 import type { Device, DeviceCreate } from "../../types/device";
@@ -14,6 +14,20 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
   const [changeCredentials, setChangeCredentials] = useState(false);
   const { register, handleSubmit, watch, reset, formState: { isSubmitting } } = useForm<DeviceCreate>();
   const authType = watch("credentials.auth_type", "token");
+
+  useEffect(() => {
+    if (isOpen && device) {
+      reset({
+        name: device.name,
+        host: device.host,
+        port: device.port,
+        use_ssl: device.use_ssl,
+        verify_ssl: device.verify_ssl,
+        notes: device.notes ?? "",
+      });
+      setChangeCredentials(false);
+    }
+  }, [isOpen, device, reset]);
 
   if (!isOpen || !device) return null;
 
@@ -52,7 +66,6 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
             <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
             <input
               {...register("name", { required: "Nome obrigatório" })}
-              defaultValue={device.name}
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
@@ -71,7 +84,6 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
               <label className="block text-sm font-medium text-gray-700 mb-1">Host / IP</label>
               <input
                 {...register("host", { required: "Host obrigatório" })}
-                defaultValue={device.host}
                 className="w-full border rounded-lg px-3 py-2 text-sm"
               />
             </div>
@@ -80,7 +92,6 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
               <input
                 type="number"
                 {...register("port", { valueAsNumber: true })}
-                defaultValue={device.port}
                 className="w-full border rounded-lg px-3 py-2 text-sm"
               />
             </div>
@@ -88,11 +99,11 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
 
           <div className="flex gap-4">
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" {...register("use_ssl")} defaultChecked={device.use_ssl} />
+              <input type="checkbox" {...register("use_ssl")} />
               Usar SSL/HTTPS
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" {...register("verify_ssl")} defaultChecked={device.verify_ssl} />
+              <input type="checkbox" {...register("verify_ssl")} />
               Verificar certificado
             </label>
           </div>
