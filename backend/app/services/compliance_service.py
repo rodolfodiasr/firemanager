@@ -653,3 +653,47 @@ async def get_report(db: AsyncSession, tenant_id: UUID, report_id: UUID) -> Comp
         )
     )
     return result.scalar_one_or_none()
+
+
+async def create_remediation_from_report(
+    db: AsyncSession,
+    tenant_id: UUID,
+    report: ComplianceReport,
+    recommendation_index: int | None,
+) -> list:
+    """Create RemediationPlan(s) from compliance recommendations via AI."""
+    from app.services.remediation_service import generate_plan
+
+    recs: list[dict] = report.ai_recommendations or []
+    if not recs:
+        raise ValueError("Este relatório não possui recomendações para remediar.")
+
+    if recommendation_index is not None:
+        if recommendation_index < 0 or recommendation_index >= len(recs):
+            raise ValueError(f"Índice de recomendação inválido: {recommendation_index}")
+        targets = [(recommendation_index, recs[recommendation_index])]
+    else:
+        targets = list(enumerate(recs))
+
+    plans = []
+    for _idx, rec in targets:
+        title = rec.get("title", "Remediação CIS")
+        steps = rec.get("remediation_steps", "")
+        description = rec.get("description", "")
+        priority = rec.get("priority", _idx + 1)
+
+        request = (
+            f"[CIS Benchmark — Prioridade {priority}] {title}\n\n"
+            f"Contexto: {description}\n\n"
+            f"Passos de remediação:\n{steps}"
+        )
+
+        plan = await generate_plan(
+            db=db,
+            tenant_id=tenant_id,
+            server_id=report.server_id,
+            request=request,
+        )
+        plans.append(plan)
+
+    return plans

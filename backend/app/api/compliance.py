@@ -10,9 +10,11 @@ from app.api.auth import TenantContext, get_tenant_context
 from app.database import get_db
 from app.schemas.compliance import (
     ComplianceGenerateRequest,
+    ComplianceRemediateRequest,
     ComplianceReportRead,
     ComplianceReportSummary,
 )
+from app.schemas.remediation import RemediationPlanRead
 from app.services import compliance_service
 
 router = APIRouter()
@@ -58,6 +60,30 @@ async def get_report(
     if not report:
         raise HTTPException(status_code=404, detail="Relatório não encontrado")
     return ComplianceReportRead.model_validate(report)
+
+
+@router.post("/{report_id}/remediate", response_model=list[RemediationPlanRead], status_code=201)
+async def remediate_from_report(
+    report_id: UUID,
+    data: ComplianceRemediateRequest,
+    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> list[RemediationPlanRead]:
+    report = await compliance_service.get_report(db, ctx.tenant.id, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Relatório não encontrado")
+    try:
+        plans = await compliance_service.create_remediation_from_report(
+            db=db,
+            tenant_id=ctx.tenant.id,
+            report=report,
+            recommendation_index=data.recommendation_index,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar remediação: {exc}")
+    return [RemediationPlanRead.model_validate(p) for p in plans]
 
 
 @router.delete("/{report_id}", status_code=204)

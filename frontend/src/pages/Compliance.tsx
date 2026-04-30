@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardCheck, Plus, Loader2, ChevronDown, ChevronUp,
   CheckCircle2, XCircle, Minus, Trash2, FileDown, AlertTriangle,
-  ShieldAlert, Wifi, Server as ServerIcon,
+  ShieldAlert, Wifi, Server as ServerIcon, Wrench,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { complianceApi } from "../api/compliance";
@@ -274,6 +274,28 @@ function ReportDetail({ reportId }: { reportId: string }) {
     queryFn: () => complianceApi.get(reportId),
   });
 
+  // Track which recommendation indices are loading/done
+  const [remediatingIdx, setRemediatingIdx] = useState<number | "all" | null>(null);
+  const [remediatedIdxs, setRemediatedIdxs] = useState<Set<number | "all">>(new Set());
+  const [remediateError, setRemediateError] = useState<string>("");
+
+  const remediateMutation = useMutation({
+    mutationFn: ({ idx }: { idx: number | "all" }) =>
+      complianceApi.remediate(reportId, idx === "all" ? undefined : idx),
+    onMutate: ({ idx }) => { setRemediatingIdx(idx); setRemediateError(""); },
+    onSuccess: (_, { idx }) => {
+      setRemediatingIdx(null);
+      setRemediatedIdxs((prev) => new Set([...prev, idx]));
+    },
+    onError: (err: unknown, { idx }) => {
+      setRemediatingIdx(null);
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setRemediateError(detail ?? "Erro ao criar remediação");
+      // remove from done set if it was there
+      setRemediatedIdxs((prev) => { const s = new Set(prev); s.delete(idx); return s; });
+    },
+  });
+
   const handleExport = () => {
     if (!report) return;
     const url = complianceApi.exportPdfUrl(reportId);
@@ -296,6 +318,8 @@ function ReportDetail({ reportId }: { reportId: string }) {
     );
   }
   if (!report) return null;
+
+  const hasRecs = report.ai_recommendations.length > 0;
 
   return (
     <div className="space-y-6 pt-4">
@@ -341,30 +365,79 @@ function ReportDetail({ reportId }: { reportId: string }) {
         </div>
       )}
 
-      {/* Recommendations */}
-      {report.ai_recommendations.length > 0 && (
+      {/* Recommendations + remediation */}
+      {hasRecs && (
         <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-            Recomendações prioritárias
-          </p>
-          <div className="space-y-2">
-            {report.ai_recommendations.map((rec, i) => (
-              <div key={i} className="border border-gray-100 rounded-lg px-4 py-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="bg-brand-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shrink-0">
-                    {rec.priority}
-                  </span>
-                  <span className="text-sm font-medium text-gray-800">{rec.title}</span>
-                </div>
-                <p className="text-xs text-gray-500 mb-2">{rec.description}</p>
-                {rec.remediation_steps && (
-                  <pre className="bg-gray-900 text-green-400 text-xs rounded px-3 py-2 overflow-x-auto font-mono whitespace-pre-wrap">
-                    {rec.remediation_steps}
-                  </pre>
-                )}
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Recomendações prioritárias
+            </p>
+            <button
+              disabled={remediatingIdx !== null || remediatedIdxs.has("all")}
+              onClick={() => remediateMutation.mutate({ idx: "all" })}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-brand-300 text-brand-700 hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {remediatingIdx === "all" ? (
+                <><Loader2 size={12} className="animate-spin" /> Gerando…</>
+              ) : remediatedIdxs.has("all") ? (
+                <><CheckCircle2 size={12} className="text-green-500" /> Remediações criadas</>
+              ) : (
+                <><Wrench size={12} /> Remediar todas ({report.ai_recommendations.length})</>
+              )}
+            </button>
           </div>
+
+          {remediateError && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-2">
+              {remediateError}
+            </p>
+          )}
+
+          <div className="space-y-2">
+            {report.ai_recommendations.map((rec, i) => {
+              const isDone = remediatedIdxs.has(i) || remediatedIdxs.has("all");
+              const isLoading = remediatingIdx === i;
+              const isAnyLoading = remediatingIdx !== null;
+
+              return (
+                <div key={i} className="border border-gray-100 rounded-lg px-4 py-3">
+                  <div className="flex items-start gap-2 mb-1">
+                    <span className="bg-brand-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shrink-0 mt-0.5">
+                      {rec.priority}
+                    </span>
+                    <span className="text-sm font-medium text-gray-800 flex-1">{rec.title}</span>
+                    <button
+                      disabled={isAnyLoading || isDone}
+                      onClick={() => remediateMutation.mutate({ idx: i })}
+                      className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+                    >
+                      {isLoading ? (
+                        <><Loader2 size={11} className="animate-spin" /> Gerando…</>
+                      ) : isDone ? (
+                        <><CheckCircle2 size={11} className="text-green-500" /> Criada</>
+                      ) : (
+                        <><Wrench size={11} /> Remediar</>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-2 pl-7">{rec.description}</p>
+                  {rec.remediation_steps && (
+                    <pre className="bg-gray-900 text-green-400 text-xs rounded px-3 py-2 overflow-x-auto font-mono whitespace-pre-wrap">
+                      {rec.remediation_steps}
+                    </pre>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {(remediatedIdxs.size > 0) && (
+            <p className="text-xs text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-2">
+              Remediações criadas com sucesso — acesse a página de{" "}
+              <a href="/remediation" className="underline font-medium">Remediações</a>{" "}
+              para revisar e executar.
+            </p>
+          )}
         </div>
       )}
 

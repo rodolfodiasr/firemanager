@@ -45,3 +45,7 @@ class ComplianceGenerateRequest(BaseModel):
     server_id: UUID
     policy_id: str | None = None
     force_source: str | None = None  # "wazuh" | "ssh" | None (auto)
+
+
+class ComplianceRemediateRequest(BaseModel):
+    recommendation_index: int | None = None  # None = todas as recomendações

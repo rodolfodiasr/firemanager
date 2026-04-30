@@ -3,6 +3,7 @@ import type {
   ComplianceReportSummary,
   ComplianceGenerateRequest,
 } from "../types/compliance";
+import type { RemediationPlan } from "../types/remediation";
 import apiClient from "./client";
 
 export const complianceApi = {
@@ -14,6 +15,13 @@ export const complianceApi = {
 
   generate: (data: ComplianceGenerateRequest) =>
     apiClient.post<ComplianceReport>("/compliance", data).then((r) => r.data),
+
+  remediate: (reportId: string, recommendationIndex?: number) =>
+    apiClient
+      .post<RemediationPlan[]>(`/compliance/${reportId}/remediate`, {
+        recommendation_index: recommendationIndex ?? null,
+      })
+      .then((r) => r.data),
 
   remove: (id: string) =>
     apiClient.delete(`/compliance/${id}`),
