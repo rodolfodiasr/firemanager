@@ -131,8 +131,8 @@ class GenericSSHConnector:
         conn.set_base_prompt()
 
     _COMWARE_SHOW_PREFIXES = ("display ", "ping ", "tracert ", "traceroute ")
-    # display current-configuration only works in system-view on HP 1910 Comware Lite
-    _COMWARE_SYSVIEW_DISPLAY = ("display current-configuration",)
+    # display current-configuration works from user-view on all tested Comware versions
+    _COMWARE_SYSVIEW_DISPLAY = ()
 
     def _is_comware_show(self, cmd: str) -> bool:
         stripped = cmd.strip().lower()
@@ -222,13 +222,14 @@ class GenericSSHConnector:
 
     def _comware_show_sysview_sync(self, commands: list[str]) -> SSHResult:
         """
-        Run Comware display commands that require system-view (e.g. display current-configuration).
-        Uses Netmiko's config_mode() so it handles hp_comware prompt detection internally.
+        Run Comware display commands that require system-view.
+        Must call _enter_cmdline_mode first — system-view is restricted without it.
         """
         try:
             parts: list[str] = []
             with ConnectHandler(**self._connect_params()) as conn:
-                conn.config_mode()  # sends "system-view", waits for [prompt] via Netmiko internals
+                self._enter_cmdline_mode(conn)
+                conn.config_mode()  # sends "system-view" — works only after cmdline-mode on
                 for cmd in commands:
                     out = conn.send_command(cmd, read_timeout=30)
                     parts.append(out)
