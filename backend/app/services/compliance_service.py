@@ -327,7 +327,7 @@ async def detect_source(
     connector = await _get_wazuh_connector(db, tenant_id)
     if connector:
         try:
-            agent = await connector.find_agent_by_host(server.host)
+            agent = await connector.find_agent_by_host(server.host, name_hint=server.name)
             if agent:
                 return "wazuh", agent.get("id"), connector
             if force_source == "wazuh":

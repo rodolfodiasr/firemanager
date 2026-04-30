@@ -138,20 +138,22 @@ class WazuhConnector:
         except Exception:
             return []
 
-    async def find_agent_by_host(self, host: str) -> dict[str, Any] | None:
-        """Search for an agent matching the given IP or hostname."""
-        try:
-            agents = await self.get_agents(limit=500)
-            host_lower = host.lower()
-            for agent in agents:
-                if (
-                    agent.get("ip", "").lower() == host_lower
-                    or agent.get("name", "").lower() == host_lower
-                    or host_lower in agent.get("name", "").lower()
-                ):
-                    return agent
-        except Exception:
-            pass
+    async def find_agent_by_host(self, host: str, name_hint: str | None = None) -> dict[str, Any] | None:
+        """Search for an agent matching host (IP or FQDN) or optional name_hint."""
+        agents = await self.get_agents(limit=500)
+        host_lower = host.lower()
+        name_lower = (name_hint or "").lower()
+
+        for agent in agents:
+            agent_ip = agent.get("ip", "").lower()
+            agent_name = agent.get("name", "").lower()
+            if (
+                agent_ip == host_lower
+                or agent_name == host_lower
+                or host_lower in agent_name
+                or (name_lower and (agent_name == name_lower or name_lower in agent_name))
+            ):
+                return agent
         return None
 
     async def get_alerts(self, limit: int = 30) -> list[dict[str, Any]]:
