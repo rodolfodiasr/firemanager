@@ -87,7 +87,10 @@ def _run_commands_sync(
 ) -> dict[str, str]:
     import winrm
 
-    transport = auth_type if auth_type in ("ntlm", "kerberos", "ssl", "basic") else "ntlm"
+    # kerberos requires pykerberos which is not installed; fall back to ntlm
+    if auth_type == "kerberos":
+        auth_type = "ntlm"
+    transport = auth_type if auth_type in ("ntlm", "ssl", "basic") else "ntlm"
     cert_validation = "validate" if verify_ssl else "ignore"
 
     session = winrm.Session(
