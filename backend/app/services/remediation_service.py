@@ -114,6 +114,7 @@ async def generate_plan(
     server_id: UUID,
     request: str,
     session_id: UUID | None = None,
+    max_tokens: int = 2048,
 ) -> RemediationPlan:
     result = await db.execute(
         select(Server).where(Server.id == server_id, Server.tenant_id == tenant_id)
@@ -126,11 +127,13 @@ async def generate_plan(
     user_msg = f"OS: {os_hint}\nServer: {server.name} ({server.host})\n\nTask: {request}"
 
     from anthropic import AsyncAnthropic
+    import logging
+    _log = logging.getLogger(__name__)
 
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     msg = await client.messages.create(
         model="claude-opus-4-7",
-        max_tokens=2048,
+        max_tokens=max_tokens,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_msg}],
     )
@@ -140,7 +143,11 @@ async def generate_plan(
         raw = re.sub(r"^```[a-z]*\n?", "", raw)
         raw = re.sub(r"\n?```$", "", raw)
 
-    data = _parse_ai_json(raw)
+    try:
+        data = _parse_ai_json(raw)
+    except RuntimeError:
+        _log.error("AI raw response (failed to parse): %s", raw[:2000])
+        raise
     summary = data.get("summary", "")
     raw_commands = data.get("commands", [])
 

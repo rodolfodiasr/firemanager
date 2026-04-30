@@ -738,21 +738,17 @@ async def create_remediation_from_controls(
 
     plans = []
     for category, ctrl_list in grouped.items():
-        lines = []
-        for ctrl in ctrl_list[:20]:
-            ctrl_id = ctrl.get("control_id", "")
-            title = ctrl.get("title", "")
-            remediation = (ctrl.get("remediation", "") or "").strip()[:250]
-            lines.append(f"- [{ctrl_id}] {title}\n  Fix: {remediation}")
+        sample = ctrl_list[:15]
+        lines = [f"- [{c.get('control_id','')}] {c.get('title','')}" for c in sample]
+        if len(ctrl_list) > 15:
+            lines.append(f"... and {len(ctrl_list) - 15} more controls in this category")
 
         controls_block = "\n".join(lines)
         request = (
             f"[CIS Benchmark — {category}]\n\n"
-            f"Os seguintes controles falharam na auditoria CIS e precisam ser corrigidos:\n\n"
-            f"{controls_block}\n\n"
-            f"Gere um plano de remediação ordenado por dependência (instalar pacotes antes "
-            f"de configurar, configurar antes de habilitar serviços). Consolide comandos "
-            f"relacionados quando fizer sentido."
+            f"Failed controls ({len(ctrl_list)} total):\n{controls_block}\n\n"
+            f"Generate a remediation plan ordered by dependency. "
+            f"Max 8 shell commands. Consolidate related steps."
         )
 
         plan = await generate_plan(
@@ -760,6 +756,7 @@ async def create_remediation_from_controls(
             tenant_id=tenant_id,
             server_id=report.server_id,
             request=request,
+            max_tokens=4096,
         )
         plans.append(plan)
 
