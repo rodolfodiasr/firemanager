@@ -14,6 +14,7 @@ class DeviceCredentials(BaseModel):
     ssh_port: int = 22
     vdom: str | None = None        # Fortinet: VDOM name (default "root")
     os_version: int | None = None  # SonicWall: 6 or 7
+    cmdline_password: str | None = None  # HP Comware: _cmdline-mode on password
 
 
 class DeviceCreate(BaseModel):
