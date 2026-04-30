@@ -1,4 +1,4 @@
-export type ComplianceSource = "wazuh" | "ssh";
+export type ComplianceSource = "wazuh" | "ssh" | "winrm";
 
 export interface ComplianceControl {
   control_id: string;
@@ -43,5 +43,5 @@ export interface ComplianceReport extends ComplianceReportSummary {
 export interface ComplianceGenerateRequest {
   server_id: string;
   policy_id?: string;
-  force_source?: "wazuh" | "ssh";
+  force_source?: "wazuh" | "ssh" | "winrm";
 }

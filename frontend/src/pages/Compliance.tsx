@@ -56,6 +56,10 @@ function GenerateForm({ onDone }: { onDone: () => void }) {
 
   const { data: servers = [] } = useQuery({ queryKey: ["servers"], queryFn: serversApi.list });
   const linuxServers = servers.filter((s) => s.os_type === "linux");
+  const windowsServers = servers.filter((s) => s.os_type === "windows");
+
+  const selectedServer = servers.find((s) => s.id === serverId);
+  const isWindows = selectedServer?.os_type === "windows";
 
   const qc = useQueryClient();
   const generate = useMutation({
@@ -86,36 +90,53 @@ function GenerateForm({ onDone }: { onDone: () => void }) {
       <h3 className="font-semibold text-gray-900 mb-4">Gerar relatório CIS Benchmark</h3>
       <div className="space-y-3">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Servidor Linux</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Servidor</label>
           <select
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             value={serverId}
-            onChange={(e) => setServerId(e.target.value)}
+            onChange={(e) => { setServerId(e.target.value); setForceSource(""); }}
           >
             <option value="">Selecione um servidor…</option>
-            {linuxServers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.host})
-              </option>
-            ))}
+            {linuxServers.length > 0 && (
+              <optgroup label="Linux — SSH">
+                {linuxServers.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.host})</option>
+                ))}
+              </optgroup>
+            )}
+            {windowsServers.length > 0 && (
+              <optgroup label="Windows — WinRM">
+                {windowsServers.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.host})</option>
+                ))}
+              </optgroup>
+            )}
           </select>
-          {linuxServers.length === 0 && (
-            <p className="text-xs text-amber-600 mt-1">Nenhum servidor Linux cadastrado.</p>
+          {linuxServers.length === 0 && windowsServers.length === 0 && (
+            <p className="text-xs text-amber-600 mt-1">Nenhum servidor cadastrado.</p>
           )}
         </div>
 
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Fonte de dados</label>
-          <select
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
-            value={forceSource}
-            onChange={(e) => setForceSource(e.target.value as "" | "wazuh" | "ssh")}
-          >
-            <option value="">Automático (Wazuh se disponível, SSH como fallback)</option>
-            <option value="wazuh">Forçar Wazuh SCA</option>
-            <option value="ssh">Forçar SSH</option>
-          </select>
-        </div>
+        {!isWindows && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Fonte de dados</label>
+            <select
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+              value={forceSource}
+              onChange={(e) => setForceSource(e.target.value as "" | "wazuh" | "ssh")}
+            >
+              <option value="">Automático (Wazuh se disponível, SSH como fallback)</option>
+              <option value="wazuh">Forçar Wazuh SCA</option>
+              <option value="ssh">Forçar SSH</option>
+            </select>
+          </div>
+        )}
+
+        {isWindows && (
+          <p className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+            Servidor Windows: coleta via WinRM + análise CIS Windows Server Benchmark L1.
+          </p>
+        )}
 
         {error && (
           <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -135,7 +156,7 @@ function GenerateForm({ onDone }: { onDone: () => void }) {
             onClick={() =>
               generate.mutate({
                 server_id: serverId,
-                force_source: forceSource || undefined,
+                force_source: isWindows ? undefined : (forceSource || undefined),
               })
             }
             className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
@@ -377,7 +398,9 @@ function ReportCard({
   });
 
   const SourceIcon = summary.source === "wazuh" ? Wifi : ServerIcon;
-  const sourceLabel = summary.source === "wazuh" ? "Wazuh SCA" : "SSH";
+  const sourceLabel =
+    summary.source === "wazuh" ? "Wazuh SCA" :
+    summary.source === "winrm" ? "WinRM" : "SSH";
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -460,8 +483,8 @@ export function Compliance() {
         <div className="flex items-start justify-between mb-6">
           <div>
             <p className="text-sm text-gray-500 max-w-xl">
-              Relatórios CIS Benchmark gerados automaticamente via Wazuh SCA (agente instalado) ou
-              SSH + IA (servidores sem agente). Score, controles detalhados e remediação priorizada.
+              Relatórios CIS Benchmark gerados via Wazuh SCA, SSH (Linux) ou WinRM (Windows) + IA.
+              Score, controles detalhados e remediação priorizada.
             </p>
           </div>
           <GenerateForm onDone={() => {}} />

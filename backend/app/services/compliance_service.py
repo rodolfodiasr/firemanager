@@ -1,4 +1,4 @@
-"""Compliance reporting service — CIS Benchmark via Wazuh SCA or SSH + AI."""
+"""Compliance reporting service — CIS Benchmark via Wazuh SCA, SSH, or WinRM + AI."""
 import asyncio
 import json
 import re
@@ -71,6 +71,171 @@ Respond ONLY with a valid JSON object (no markdown, no explanation):
 
 Include 15-25 controls covering: SSH hardening, kernel parameters, file permissions,
 password policy, user accounts, auditd, firewall, and SUID binaries.
+ai_recommendations must contain the top 10 most critical failures only.
+"""
+
+# ── WinRM CIS hardening commands ─────────────────────────────────────────────
+
+_WINRM_CIS_CMDS: dict[str, str] = {
+    "os_info": (
+        "Get-CimInstance Win32_OperatingSystem | "
+        "Select-Object Caption, Version, BuildNumber | ConvertTo-Json -Compress"
+    ),
+    "password_policy": "net accounts",
+    "audit_policy": (
+        "try { auditpol /get /category:* 2>&1 } catch { 'auditpol indisponivel' }"
+    ),
+    "uac_settings": (
+        "try { Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' "
+        "-Name EnableLUA,ConsentPromptBehaviorAdmin,PromptOnSecureDesktop "
+        "-ErrorAction SilentlyContinue | ConvertTo-Json -Compress } catch { 'N/A' }"
+    ),
+    "firewall_profiles": (
+        "Get-NetFirewallProfile | "
+        "Select-Object Name,Enabled,DefaultInboundAction,DefaultOutboundAction | "
+        "ConvertTo-Json -Compress"
+    ),
+    "smb_settings": (
+        "try { $v1 = (Get-SmbServerConfiguration | Select-Object EnableSMB1Protocol).EnableSMB1Protocol; "
+        "$sig = (Get-SmbServerConfiguration | Select-Object RequireSecuritySignature).RequireSecuritySignature; "
+        "\"SMBv1 Enabled: $v1 | Signing Required: $sig\" } catch { 'N/A' }"
+    ),
+    "rdp_settings": (
+        "try { $nla = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' "
+        "-Name UserAuthentication -ErrorAction SilentlyContinue).UserAuthentication; "
+        "$enc = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' "
+        "-Name MinEncryptionLevel -ErrorAction SilentlyContinue).MinEncryptionLevel; "
+        "$rdp = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server' "
+        "-Name fDenyTSConnections -ErrorAction SilentlyContinue).fDenyTSConnections; "
+        "\"RDP Disabled: $rdp | NLA Required: $nla | Encryption Level: $enc\" } catch { 'N/A' }"
+    ),
+    "windows_update": (
+        "try { Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU' "
+        "-ErrorAction SilentlyContinue | "
+        "Select-Object NoAutoUpdate,AUOptions,ScheduledInstallDay | ConvertTo-Json -Compress } "
+        "catch { 'Politica WU nao configurada via GPO' }"
+    ),
+    "defender_status": (
+        "try { Get-MpComputerStatus | "
+        "Select-Object AntivirusEnabled,RealTimeProtectionEnabled,"
+        "AntivirusSignatureAge,AntivirusSignatureLastUpdated,QuickScanAge | "
+        "ConvertTo-Json -Compress } catch { 'Windows Defender indisponivel' }"
+    ),
+    "lsass_protection": (
+        "try { $v = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' "
+        "-Name RunAsPPL -ErrorAction SilentlyContinue).RunAsPPL; "
+        "\"RunAsPPL: $v\" } catch { 'N/A' }"
+    ),
+    "ntlm_auth_level": (
+        "try { $v = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' "
+        "-Name LmCompatibilityLevel -ErrorAction SilentlyContinue).LmCompatibilityLevel; "
+        "\"LmCompatibilityLevel: $v (5=NTLMv2 only)\" } catch { 'N/A' }"
+    ),
+    "wdigest_auth": (
+        "try { $v = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest' "
+        "-Name UseLogonCredential -ErrorAction SilentlyContinue).UseLogonCredential; "
+        "\"WDigest UseLogonCredential: $v (0=disabled is secure)\" } catch { 'chave nao encontrada - seguro por padrao' }"
+    ),
+    "guest_account": (
+        "try { Get-LocalUser -Name Guest | "
+        "Select-Object Name,Enabled | ConvertTo-Json -Compress } catch { 'N/A' }"
+    ),
+    "local_admins": (
+        "try { Get-LocalGroupMember -Group 'Administrators' | "
+        "Select-Object Name,PrincipalSource | ConvertTo-Json -Compress } catch { 'N/A' }"
+    ),
+    "auto_logon": (
+        "try { $v = (Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' "
+        "-Name AutoAdminLogon -ErrorAction SilentlyContinue).AutoAdminLogon; "
+        "\"AutoAdminLogon: $v (0=disabled is secure)\" } catch { 'N/A' }"
+    ),
+    "insecure_services": (
+        "Get-Service Telnet,SNMP,FTP,W3SVC,RemoteRegistry "
+        "-ErrorAction SilentlyContinue | "
+        "Select-Object Name,Status,StartType | ConvertTo-Json -Compress"
+    ),
+    "tls_registry": (
+        "try { $paths = @("
+        "'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 2.0\\Server',"
+        "'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 3.0\\Server',"
+        "'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.0\\Server',"
+        "'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.1\\Server'"
+        "); $results = @(); foreach ($p in $paths) { "
+        "if (Test-Path $p) { $e = (Get-ItemProperty $p -Name Enabled -EA SilentlyContinue).Enabled; "
+        "$results += \"$($p.Split('\\')[-2]): Enabled=$e\" } else { $results += \"$($p.Split('\\')[-2]): not configured\" } }; "
+        "$results -join ' | ' } catch { 'N/A' }"
+    ),
+    "screen_lock": (
+        "try { $t = (Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System' "
+        "-Name InactivityTimeoutSecs -ErrorAction SilentlyContinue).InactivityTimeoutSecs; "
+        "\"InactivityTimeoutSecs: $t\" } catch { 'N/A' }"
+    ),
+    "powershell_logging": (
+        "try { $sb = (Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' "
+        "-Name EnableScriptBlockLogging -ErrorAction SilentlyContinue).EnableScriptBlockLogging; "
+        "$mod = (Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging' "
+        "-Name EnableModuleLogging -ErrorAction SilentlyContinue).EnableModuleLogging; "
+        "\"ScriptBlockLogging: $sb | ModuleLogging: $mod\" } catch { 'N/A' }"
+    ),
+    "event_log_config": (
+        "try { Get-EventLog -List | "
+        "Where-Object { $_.Log -in 'System','Security','Application' } | "
+        "Select-Object Log,MaximumKilobytes | ConvertTo-Json -Compress } catch { 'N/A' }"
+    ),
+    "bitlocker_status": (
+        "try { Get-BitLockerVolume -MountPoint 'C:' | "
+        "Select-Object VolumeStatus,ProtectionStatus,EncryptionPercentage | "
+        "ConvertTo-Json -Compress } catch { 'BitLocker indisponivel ou sem permissao' }"
+    ),
+    "open_ports": (
+        "Get-NetTCPConnection -State Listen | "
+        "Select-Object LocalAddress,LocalPort | Sort-Object LocalPort | "
+        "ConvertTo-Json -Compress"
+    ),
+    "running_services": (
+        "Get-Service | Where-Object { $_.Status -eq 'Running' } | "
+        "Select-Object Name,DisplayName | ConvertTo-Json -Compress"
+    ),
+}
+
+_AI_SYSTEM_WINRM = """\
+You are a CIS Benchmark Level 1 compliance auditor for Windows Server.
+Given raw Windows configuration data collected via WinRM/PowerShell, analyze it against
+CIS Microsoft Windows Server Benchmark L1 controls.
+
+Respond ONLY with a valid JSON object (no markdown, no explanation):
+{
+  "policy_name": "CIS Windows Server Benchmark Level 1",
+  "score_pct": <0-100 float>,
+  "passed": <int>,
+  "failed": <int>,
+  "not_applicable": <int>,
+  "controls": [
+    {
+      "control_id": "2.3.1.1",
+      "title": "...",
+      "result": "passed|failed|not_applicable",
+      "risk_level": "critical|high|medium|low",
+      "description": "what was checked and what was found",
+      "remediation": "exact PowerShell command or GPO path to fix"
+    }
+  ],
+  "ai_summary": "2-3 paragraph executive narrative for a security audit report",
+  "ai_recommendations": [
+    {
+      "priority": 1,
+      "title": "...",
+      "description": "...",
+      "remediation_steps": "step-by-step PowerShell or GPO fix"
+    }
+  ]
+}
+
+Include 15-25 controls covering: account policy, audit policy, UAC, Windows Firewall,
+SMB hardening, RDP security, Windows Defender/AV, LSASS protection, NTLMv2 level,
+WDigest authentication, guest account, auto logon, TLS/SSL protocols, screen lock,
+PowerShell logging, event log sizes, and BitLocker.
+Use CIS control IDs from the CIS Microsoft Windows Server Benchmark (e.g. 1.1.x, 2.2.x, 9.x, 18.x).
 ai_recommendations must contain the top 10 most critical failures only.
 """
 
@@ -286,6 +451,45 @@ async def collect_ssh(server: Server, creds: dict) -> dict[str, str]:
     )
 
 
+# ── WinRM collection ─────────────────────────────────────────────────────────
+
+def _winrm_collect_sync(
+    host: str, port: int, username: str, password: str, auth_type: str
+) -> dict[str, str]:
+    import winrm
+
+    if auth_type == "kerberos":
+        auth_type = "ntlm"
+    transport = auth_type if auth_type in ("ntlm", "ssl", "basic") else "ntlm"
+    session = winrm.Session(
+        target=f"http{'s' if transport == 'ssl' else ''}://{host}:{port}/wsman",
+        auth=(username, password),
+        transport=transport,
+        server_cert_validation="ignore",
+    )
+    results: dict[str, str] = {}
+    for key, cmd in _WINRM_CIS_CMDS.items():
+        try:
+            r = session.run_ps(cmd)
+            out = r.std_out.decode("utf-8", errors="replace").strip()
+            err = r.std_err.decode("utf-8", errors="replace").strip()
+            results[key] = out or err or "(sem saída)"
+        except Exception as exc:
+            results[key] = f"ERRO: {exc}"
+    return results
+
+
+async def collect_winrm(server: Server, creds: dict) -> dict[str, str]:
+    return await asyncio.to_thread(
+        _winrm_collect_sync,
+        server.host,
+        server.ssh_port,
+        creds.get("username", ""),
+        creds.get("password", ""),
+        creds.get("auth_type", "ntlm"),
+    )
+
+
 # ── AI enrichment ─────────────────────────────────────────────────────────────
 
 async def _call_ai(system: str, user_msg: str) -> dict:
@@ -306,6 +510,13 @@ async def enrich_ssh_with_ai(raw_data: dict[str, str], server: Server) -> dict:
     formatted = "\n\n".join(f"=== {k} ===\n{v}" for k, v in sanitized.items())
     user_msg = f"Server: {server.name} ({server.host})\nOS type: Linux\n\n{formatted}"
     return await _call_ai(_AI_SYSTEM_SSH, user_msg)
+
+
+async def enrich_winrm_with_ai(raw_data: dict[str, str], server: Server) -> dict:
+    sanitized = _sanitize_ssh_output(raw_data, max_chars=600)
+    formatted = "\n\n".join(f"=== {k} ===\n{v}" for k, v in sanitized.items())
+    user_msg = f"Server: {server.name} ({server.host})\nOS type: Windows\n\n{formatted}"
+    return await _call_ai(_AI_SYSTEM_WINRM, user_msg)
 
 
 async def enrich_wazuh_with_ai(sca_data: dict, server: Server) -> dict:
@@ -339,53 +550,75 @@ async def generate_report(
         raise ValueError("Servidor não encontrado")
 
     if server.os_type == ServerOsType.windows:
-        raise ValueError("Relatórios CIS via SSH suportam apenas servidores Linux nesta versão")
-
-    source, agent_id, wazuh_conn = await detect_source(server, db, tenant_id, force_source)
-
-    if source == "wazuh" and wazuh_conn and agent_id:
-        sca_data = await collect_wazuh(wazuh_conn, agent_id, policy_id)
-        ai_data = await enrich_wazuh_with_ai(sca_data, server)
-        report = ComplianceReport(
-            tenant_id=tenant_id,
-            server_id=server_id,
-            source="wazuh",
-            agent_id=agent_id,
-            policy_id=sca_data["policy_id"],
-            policy_name=sca_data["policy_name"],
-            score_pct=sca_data["score_pct"],
-            total_checks=sca_data["total_checks"],
-            passed=sca_data["passed"],
-            failed=sca_data["failed"],
-            not_applicable=sca_data["not_applicable"],
-            controls=sca_data["controls"],
-            ai_summary=ai_data.get("ai_summary", ""),
-            ai_recommendations=ai_data.get("ai_recommendations", []),
-        )
-    else:
         creds = decrypt_credentials(server.encrypted_credentials)
-        raw = await collect_ssh(server, creds)
-        ai_data = await enrich_ssh_with_ai(raw, server)
+        raw = await collect_winrm(server, creds)
+        ai_data = await enrich_winrm_with_ai(raw, server)
         controls = ai_data.get("controls", [])
         passed = sum(1 for c in controls if c.get("result") == "passed")
-        failed = sum(1 for c in controls if c.get("result") == "failed")
+        failed_cnt = sum(1 for c in controls if c.get("result") == "failed")
         na = sum(1 for c in controls if c.get("result") == "not_applicable")
         report = ComplianceReport(
             tenant_id=tenant_id,
             server_id=server_id,
-            source="ssh",
+            source="winrm",
             agent_id=None,
             policy_id=None,
-            policy_name=ai_data.get("policy_name", "CIS Linux Benchmark L1"),
+            policy_name=ai_data.get("policy_name", "CIS Windows Server Benchmark L1"),
             score_pct=ai_data.get("score_pct", 0.0),
             total_checks=len(controls),
             passed=passed,
-            failed=failed,
+            failed=failed_cnt,
             not_applicable=na,
             controls=controls,
             ai_summary=ai_data.get("ai_summary", ""),
             ai_recommendations=ai_data.get("ai_recommendations", []),
         )
+    else:
+        source, agent_id, wazuh_conn = await detect_source(server, db, tenant_id, force_source)
+
+        if source == "wazuh" and wazuh_conn and agent_id:
+            sca_data = await collect_wazuh(wazuh_conn, agent_id, policy_id)
+            ai_data = await enrich_wazuh_with_ai(sca_data, server)
+            report = ComplianceReport(
+                tenant_id=tenant_id,
+                server_id=server_id,
+                source="wazuh",
+                agent_id=agent_id,
+                policy_id=sca_data["policy_id"],
+                policy_name=sca_data["policy_name"],
+                score_pct=sca_data["score_pct"],
+                total_checks=sca_data["total_checks"],
+                passed=sca_data["passed"],
+                failed=sca_data["failed"],
+                not_applicable=sca_data["not_applicable"],
+                controls=sca_data["controls"],
+                ai_summary=ai_data.get("ai_summary", ""),
+                ai_recommendations=ai_data.get("ai_recommendations", []),
+            )
+        else:
+            creds = decrypt_credentials(server.encrypted_credentials)
+            raw = await collect_ssh(server, creds)
+            ai_data = await enrich_ssh_with_ai(raw, server)
+            controls = ai_data.get("controls", [])
+            passed = sum(1 for c in controls if c.get("result") == "passed")
+            failed_cnt = sum(1 for c in controls if c.get("result") == "failed")
+            na = sum(1 for c in controls if c.get("result") == "not_applicable")
+            report = ComplianceReport(
+                tenant_id=tenant_id,
+                server_id=server_id,
+                source="ssh",
+                agent_id=None,
+                policy_id=None,
+                policy_name=ai_data.get("policy_name", "CIS Linux Benchmark L1"),
+                score_pct=ai_data.get("score_pct", 0.0),
+                total_checks=len(controls),
+                passed=passed,
+                failed=failed_cnt,
+                not_applicable=na,
+                controls=controls,
+                ai_summary=ai_data.get("ai_summary", ""),
+                ai_recommendations=ai_data.get("ai_recommendations", []),
+            )
 
     db.add(report)
     await db.flush()
