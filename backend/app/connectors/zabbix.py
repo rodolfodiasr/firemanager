@@ -31,9 +31,10 @@ class ZabbixConnector:
         self._req_id += 1
         return self._req_id
 
-    def _build_headers(self) -> dict[str, str]:
+    def _build_headers(self, method: str = "") -> dict[str, str]:
         headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self.major_version >= 7:
+        # apiinfo.version must be called without auth header in Zabbix 7.x
+        if self.major_version >= 7 and method != "apiinfo.version":
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
@@ -53,7 +54,7 @@ class ZabbixConnector:
             resp = await client.post(
                 self.url,
                 json=self._build_payload(method, params),
-                headers=self._build_headers(),
+                headers=self._build_headers(method),
             )
             resp.raise_for_status()
             data = resp.json()
