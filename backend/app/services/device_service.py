@@ -1,11 +1,14 @@
 import logging
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.factory import CLI_VENDORS, get_connector, get_ssh_connector
+from app.models.audit_log import AuditLog
 from app.models.device import Device, DeviceStatus
+from app.models.operation import Operation
+from app.models.snapshot import Snapshot
 from app.schemas.device import DeviceCreate, DeviceUpdate
 from app.utils.crypto import encrypt_credentials
 
@@ -87,6 +90,9 @@ async def update_device(
 
 async def delete_device(db: AsyncSession, device_id: UUID, tenant_id: UUID | None = None) -> None:
     device = await get_device(db, device_id, tenant_id)
+    await db.execute(delete(AuditLog).where(AuditLog.device_id == device_id))
+    await db.execute(delete(Snapshot).where(Snapshot.device_id == device_id))
+    await db.execute(delete(Operation).where(Operation.device_id == device_id))
     await db.delete(device)
 
 
