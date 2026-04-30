@@ -86,8 +86,7 @@ class WazuhConnector:
     async def get_agents(self, limit: int = 100) -> list[dict[str, Any]]:
         data = await self._get("/agents", {
             "limit": limit,
-            "select": "id,name,ip,status,os,version,lastKeepAlive",
-            "sort": "-lastKeepAlive",
+            "sort": "-dateAdd",
         })
         return data.get("data", {}).get("affected_items", [])
 
