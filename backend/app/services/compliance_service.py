@@ -739,11 +739,11 @@ async def create_remediation_from_controls(
     plans = []
     for category, ctrl_list in grouped.items():
         lines = []
-        for ctrl in ctrl_list:
+        for ctrl in ctrl_list[:20]:
             ctrl_id = ctrl.get("control_id", "")
             title = ctrl.get("title", "")
-            remediation = ctrl.get("remediation", "").strip()
-            lines.append(f"- [{ctrl_id}] {title}\n  Remediação: {remediation}")
+            remediation = (ctrl.get("remediation", "") or "").strip()[:250]
+            lines.append(f"- [{ctrl_id}] {title}\n  Fix: {remediation}")
 
         controls_block = "\n".join(lines)
         request = (
