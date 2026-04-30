@@ -325,13 +325,23 @@ async def detect_source(
         return "ssh", None, None
 
     connector = await _get_wazuh_connector(db, tenant_id)
-    if connector and force_source != "ssh":
+    if connector:
         try:
             agent = await connector.find_agent_by_host(server.host)
             if agent:
                 return "wazuh", agent.get("id"), connector
-        except Exception:
-            pass
+            if force_source == "wazuh":
+                raise ValueError(
+                    f"Nenhum agente Wazuh encontrado para o host '{server.host}'. "
+                    "Verifique se o agente está instalado e ativo no Wazuh."
+                )
+        except Exception as exc:
+            if force_source == "wazuh":
+                raise
+            logger.warning("Wazuh indisponível, usando SSH: %s", exc)
+
+    elif force_source == "wazuh":
+        raise ValueError("Integração Wazuh não configurada para este tenant.")
 
     return "ssh", None, None
 
