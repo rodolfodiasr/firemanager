@@ -223,17 +223,16 @@ class GenericSSHConnector:
     def _comware_show_sysview_sync(self, commands: list[str]) -> SSHResult:
         """
         Run Comware display commands that require system-view (e.g. display current-configuration).
-        Opens a fresh connection WITHOUT _cmdline-mode on — standard display commands don't need it.
-        Enters system-view via raw send_command so Netmiko's config-mode machinery is never invoked.
+        Uses Netmiko's config_mode() so it handles hp_comware prompt detection internally.
         """
         try:
             parts: list[str] = []
             with ConnectHandler(**self._connect_params()) as conn:
-                conn.send_command("system-view", expect_string=r"\[", read_timeout=15)
+                conn.config_mode()  # sends "system-view", waits for [prompt] via Netmiko internals
                 for cmd in commands:
                     out = conn.send_command(cmd, read_timeout=30)
                     parts.append(out)
-                conn.send_command("quit", expect_string=r"[><]", read_timeout=10)
+                conn.exit_config_mode()  # sends "quit", returns to user-view <prompt>
             combined = self._clean("\n".join(parts))
             return SSHResult(success=True, output=combined, commands_executed=commands)
         except NetmikoAuthenticationException as exc:
