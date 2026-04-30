@@ -35,8 +35,18 @@ class WazuhConnector:
                 f"{self.url}/security/user/authenticate",
                 auth=(self.username, self.password),
             )
+            if resp.status_code == 401:
+                try:
+                    detail = resp.json().get("title", resp.text[:200])
+                except Exception:
+                    detail = resp.text[:200]
+                raise RuntimeError(f"Wazuh autenticação falhou (401): {detail}")
             resp.raise_for_status()
-            return resp.json()["data"]["token"]
+            body = resp.json()
+            token = body.get("data", {}).get("token") if isinstance(body.get("data"), dict) else body.get("token")
+            if not token:
+                raise RuntimeError(f"Wazuh: token não encontrado na resposta — {str(body)[:200]}")
+            return token
 
     async def _get_token(self) -> str:
         if not self._token:

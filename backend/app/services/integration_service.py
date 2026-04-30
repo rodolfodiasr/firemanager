@@ -176,23 +176,18 @@ async def test_shodan(config: dict) -> dict:
 
 
 async def test_wazuh(config: dict) -> dict:
-    url = config.get("url", "").rstrip("/")
-    username = config.get("username", "")
-    password = config.get("password", "")
-    verify_ssl = config.get("verify_ssl", False)
+    from app.connectors.wazuh_platform import WazuhConnector
+    connector = WazuhConnector(
+        url=config.get("url", ""),
+        username=config.get("username", ""),
+        password=config.get("password", ""),
+        version=config.get("version", "4"),
+        verify_ssl=config.get("verify_ssl", False),
+    )
     start = time.monotonic()
-    try:
-        async with httpx.AsyncClient(verify=verify_ssl, timeout=10.0) as client:
-            resp = await client.get(f"{url}/", auth=(username, password))
-            latency = (time.monotonic() - start) * 1000
-            ok = resp.status_code < 500
-            return {
-                "success": ok,
-                "message": f"HTTP {resp.status_code}" + ("" if ok else " — servidor inacessível"),
-                "latency_ms": latency,
-            }
-    except Exception as exc:
-        return {"success": False, "message": str(exc)}
+    ok, message = await connector.ping()
+    latency = (time.monotonic() - start) * 1000
+    return {"success": ok, "message": message, "latency_ms": latency}
 
 
 async def test_openvas(config: dict) -> dict:
