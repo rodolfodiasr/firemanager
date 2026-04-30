@@ -48,4 +48,5 @@ class ComplianceGenerateRequest(BaseModel):
 
 
 class ComplianceRemediateRequest(BaseModel):
-    recommendation_index: int | None = None  # None = todas as recomendações
+    recommendation_index: int | None = None  # usado quando mode="recommendations"
+    mode: str = "recommendations"  # "recommendations" | "controls"

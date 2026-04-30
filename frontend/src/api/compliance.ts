@@ -20,6 +20,14 @@ export const complianceApi = {
     apiClient
       .post<RemediationPlan[]>(`/compliance/${reportId}/remediate`, {
         recommendation_index: recommendationIndex ?? null,
+        mode: "recommendations",
+      })
+      .then((r) => r.data),
+
+  remediateControls: (reportId: string) =>
+    apiClient
+      .post<RemediationPlan[]>(`/compliance/${reportId}/remediate`, {
+        mode: "controls",
       })
       .then((r) => r.data),
 

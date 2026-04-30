@@ -279,6 +279,12 @@ function ReportDetail({ reportId }: { reportId: string }) {
   const [remediatedIdxs, setRemediatedIdxs] = useState<Set<number | "all">>(new Set());
   const [remediateError, setRemediateError] = useState<string>("");
 
+  // Controls-based remediation state
+  const [controlsRemediating, setControlsRemediating] = useState(false);
+  const [controlsRemediated, setControlsRemediated] = useState(false);
+  const [controlsPlansCount, setControlsPlansCount] = useState(0);
+  const [controlsError, setControlsError] = useState("");
+
   const remediateMutation = useMutation({
     mutationFn: ({ idx }: { idx: number | "all" }) =>
       complianceApi.remediate(reportId, idx === "all" ? undefined : idx),
@@ -291,8 +297,22 @@ function ReportDetail({ reportId }: { reportId: string }) {
       setRemediatingIdx(null);
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setRemediateError(detail ?? "Erro ao criar remediação");
-      // remove from done set if it was there
       setRemediatedIdxs((prev) => { const s = new Set(prev); s.delete(idx); return s; });
+    },
+  });
+
+  const remediateControlsMutation = useMutation({
+    mutationFn: () => complianceApi.remediateControls(reportId),
+    onMutate: () => { setControlsRemediating(true); setControlsError(""); },
+    onSuccess: (plans) => {
+      setControlsRemediating(false);
+      setControlsRemediated(true);
+      setControlsPlansCount(plans.length);
+    },
+    onError: (err: unknown) => {
+      setControlsRemediating(false);
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setControlsError(detail ?? "Erro ao criar remediações");
     },
   });
 
@@ -443,9 +463,54 @@ function ReportDetail({ reportId }: { reportId: string }) {
 
       {/* Controls table */}
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-          Controles ({report.total_checks})
-        </p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Controles ({report.total_checks})
+          </p>
+          {report.failed > 0 && (
+            <button
+              disabled={controlsRemediating || controlsRemediated}
+              onClick={() => {
+                if (confirm(
+                  `Isso vai criar planos de remediação para os ${report.failed} controles falhos, agrupados por categoria.\n\nPodem ser gerados até 8 planos. Continuar?`
+                )) {
+                  remediateControlsMutation.mutate();
+                }
+              }}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-orange-300 text-orange-700 hover:bg-orange-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {controlsRemediating ? (
+                <><Loader2 size={12} className="animate-spin" /> Gerando planos por categoria…</>
+              ) : controlsRemediated ? (
+                <><CheckCircle2 size={12} className="text-green-500" /> {controlsPlansCount} planos criados</>
+              ) : (
+                <><Wrench size={12} /> Remediar todos os falhos ({report.failed})</>
+              )}
+            </button>
+          )}
+        </div>
+
+        {controlsError && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-2">
+            {controlsError}
+          </p>
+        )}
+
+        {controlsRemediating && (
+          <div className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 mb-2 flex items-center gap-2">
+            <Loader2 size={12} className="animate-spin shrink-0" />
+            Categorizando controles e gerando planos de remediação via IA. Isso pode levar alguns minutos…
+          </div>
+        )}
+
+        {controlsRemediated && (
+          <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mb-2">
+            <strong>{controlsPlansCount} planos de remediação criados</strong> por categoria — acesse{" "}
+            <a href="/remediation" className="underline font-medium">Remediações</a>{" "}
+            para revisar, aprovar e executar cada um.
+          </div>
+        )}
+
         <ControlTable controls={report.controls} />
       </div>
     </div>

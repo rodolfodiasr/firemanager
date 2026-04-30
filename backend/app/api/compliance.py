@@ -73,12 +73,19 @@ async def remediate_from_report(
     if not report:
         raise HTTPException(status_code=404, detail="Relatório não encontrado")
     try:
-        plans = await compliance_service.create_remediation_from_report(
-            db=db,
-            tenant_id=ctx.tenant.id,
-            report=report,
-            recommendation_index=data.recommendation_index,
-        )
+        if data.mode == "controls":
+            plans = await compliance_service.create_remediation_from_controls(
+                db=db,
+                tenant_id=ctx.tenant.id,
+                report=report,
+            )
+        else:
+            plans = await compliance_service.create_remediation_from_report(
+                db=db,
+                tenant_id=ctx.tenant.id,
+                report=report,
+                recommendation_index=data.recommendation_index,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:

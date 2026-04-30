@@ -655,6 +655,117 @@ async def get_report(db: AsyncSession, tenant_id: UUID, report_id: UUID) -> Comp
     return result.scalar_one_or_none()
 
 
+_CONTROL_CATEGORIES: list[tuple[str, list[str]]] = [
+    ("Filesystem e partições", [
+        "partition", "/tmp", "/var/tmp", "/var/log", "/var/log/audit", "/home",
+        "/dev/shm", "nodev", "nosuid", "noexec", "mount",
+    ]),
+    ("Integridade do sistema (AIDE, AppArmor, GRUB)", [
+        "aide", "apparmor", "bootloader", "grub", "boot", "integrity",
+        "apport", "error reporting",
+    ]),
+    ("Auditd — instalação e configuração", [
+        "auditd", "audit log", "audit tool", "audit backlog", "audit config",
+        "audispd", "augenrules", "auditctl",
+    ]),
+    ("Auditd — regras de coleta", [
+        "audit rule", "collected", "date and time", "network environment",
+        "user/group", "session initiation", "login and logout", "mandatory access",
+        "administration scope", "sudoers", "another user",
+    ]),
+    ("SSH — configuração e hardening", [
+        "sshd", "ssh", "permitrootlogin", "maxauthtries", "logingracetime",
+        "clientalive", "macs", "banner", "forwarding", "maxstartups",
+    ]),
+    ("PAM e política de senhas", [
+        "pam", "password", "pwquality", "pwhistory", "faillock", "libpam",
+        "privilege escalation", "su command", "sudo log", "inactive",
+        "minimum password", "expiration", "dictionary",
+    ]),
+    ("Firewall (UFW / nftables / iptables)", [
+        "ufw", "nftables", "iptables", "ip6tables", "firewall", "loopback",
+        "default deny", "chain", "table",
+    ]),
+    ("Serviços, pacotes e permissões", [
+        "cron", "telnet", "ftp", "web server", "apache", "nginx",
+        "chrony", "time", "permission", "owner", "group owner",
+        "shadow", "gshadow", "journal", "systemd-journal",
+    ]),
+]
+
+
+def _categorize_controls(controls: list[dict]) -> dict[str, list[dict]]:
+    """Group failed controls into thematic categories for remediation."""
+    categorized: dict[str, list[dict]] = {name: [] for name, _ in _CONTROL_CATEGORIES}
+    other_key = "Outros controles"
+    categorized[other_key] = []
+
+    for ctrl in controls:
+        if ctrl.get("result") != "failed":
+            continue
+        text = (
+            ctrl.get("title", "") + " " +
+            ctrl.get("description", "") + " " +
+            ctrl.get("remediation", "")
+        ).lower()
+
+        matched = False
+        for cat_name, keywords in _CONTROL_CATEGORIES:
+            if any(kw in text for kw in keywords):
+                categorized[cat_name].append(ctrl)
+                matched = True
+                break
+        if not matched:
+            categorized[other_key].append(ctrl)
+
+    return {k: v for k, v in categorized.items() if v}
+
+
+async def create_remediation_from_controls(
+    db: AsyncSession,
+    tenant_id: UUID,
+    report: ComplianceReport,
+) -> list:
+    """Categorize all failed controls and create one RemediationPlan per category."""
+    from app.services.remediation_service import generate_plan
+
+    controls: list[dict] = report.controls or []
+    failed = [c for c in controls if c.get("result") == "failed"]
+    if not failed:
+        raise ValueError("Nenhum controle com falha encontrado neste relatório.")
+
+    grouped = _categorize_controls(failed)
+
+    plans = []
+    for category, ctrl_list in grouped.items():
+        lines = []
+        for ctrl in ctrl_list:
+            ctrl_id = ctrl.get("control_id", "")
+            title = ctrl.get("title", "")
+            remediation = ctrl.get("remediation", "").strip()
+            lines.append(f"- [{ctrl_id}] {title}\n  Remediação: {remediation}")
+
+        controls_block = "\n".join(lines)
+        request = (
+            f"[CIS Benchmark — {category}]\n\n"
+            f"Os seguintes controles falharam na auditoria CIS e precisam ser corrigidos:\n\n"
+            f"{controls_block}\n\n"
+            f"Gere um plano de remediação ordenado por dependência (instalar pacotes antes "
+            f"de configurar, configurar antes de habilitar serviços). Consolide comandos "
+            f"relacionados quando fizer sentido."
+        )
+
+        plan = await generate_plan(
+            db=db,
+            tenant_id=tenant_id,
+            server_id=report.server_id,
+            request=request,
+        )
+        plans.append(plan)
+
+    return plans
+
+
 async def create_remediation_from_report(
     db: AsyncSession,
     tenant_id: UUID,
