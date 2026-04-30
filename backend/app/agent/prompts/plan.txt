@@ -1019,12 +1019,13 @@ Comandos por vendor:
 
 HP Comware — porta específica:
   Se o usuário informar um número de porta (ex: "porta 1", "interface 2", "configuração da porta 1"), use:
-    ssh_show_commands: ["display interface GigabitEthernet 1/0/1"]
+    ssh_show_commands: ["display current-configuration interface GigabitEthernet 1/0/1"]
   Substituindo o último número pelo número da porta informada.
-  Se não informar porta, use "display interface" (lista status de todas as interfaces).
+  Se não informar porta específica, use "display interface" (mostra status de todas as interfaces).
   NUNCA use "display interface brief" — esse comando NÃO existe no HP 1910 / Comware 5 Lite.
-  NUNCA use "display current-configuration interface X" — o filtro por interface NÃO existe no Comware 5 Lite.
-  Para ver a config de uma porta específica, use "display interface GigabitEthernet X/X/X".
+  "display current-configuration interface GigabitEthernet X/X/X" mostra a config completa
+  (link-type, VLANs, description, STP) e é executado em system-view automaticamente pelo sistema.
+  Formato da interface: GigabitEthernet 1/0/X (com espaço entre o tipo e o número).
 
 Pode combinar VLANs + portas na mesma operação usando múltiplos comandos:
   dell_n:     ssh_show_commands: ["show vlan", "show interfaces status"]

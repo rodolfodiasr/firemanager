@@ -131,8 +131,8 @@ class GenericSSHConnector:
         conn.set_base_prompt()
 
     _COMWARE_SHOW_PREFIXES = ("display ", "ping ", "tracert ", "traceroute ")
-    # display current-configuration works from user-view on all tested Comware versions
-    _COMWARE_SYSVIEW_DISPLAY = ()
+    # display current-configuration requires system-view on Comware V5.20 Lite
+    _COMWARE_SYSVIEW_DISPLAY = ("display current-configuration",)
 
     def _is_comware_show(self, cmd: str) -> bool:
         stripped = cmd.strip().lower()
@@ -222,8 +222,9 @@ class GenericSSHConnector:
 
     def _comware_show_sysview_sync(self, commands: list[str]) -> SSHResult:
         """
-        Run Comware display commands that require system-view.
-        Must call _enter_cmdline_mode first — system-view is restricted without it.
+        Run Comware display commands that require system-view (e.g. display current-configuration).
+        Calls _enter_cmdline_mode first (no-op if cmdline_password is not set) then enters
+        system-view via config_mode() which sends 'system-view' and waits for '[' prompt.
         """
         try:
             parts: list[str] = []
