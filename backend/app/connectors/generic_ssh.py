@@ -141,6 +141,10 @@ class GenericSSHConnector:
         # Re-sync Netmiko's prompt detection after _cmdline-mode changes device state
         conn.set_base_prompt()
 
+        # Disable paging for this session (Comware 5.x syntax — "screen-length disable"
+        # used by Netmiko's session_preparation is Comware 7.x only and fails silently on V1910)
+        conn.send_command_timing("screen-length 0 temporary", last_read=1.0)
+
     _COMWARE_SHOW_PREFIXES = ("display ", "ping ", "tracert ", "traceroute ")
     # display current-configuration interface X works from user-view after _cmdline-mode on
     # No system-view needed — _comware_show_sysview_sync is not used for this command
