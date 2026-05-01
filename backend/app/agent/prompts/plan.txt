@@ -1222,6 +1222,16 @@ Comandos por vendor:
   hp_comware: ssh_show_commands: ["display interface"]
   ubiquiti:   ssh_show_commands: ["show interfaces"]
 
+Dell N-Series (dell_n) — porta específica:
+  Se o usuário informar um número de porta Gigabit (ex: "porta 1", "interface 5", "Gi1/0/3"), use:
+    ssh_show_commands: ["show interfaces Gi1/0/1", "show running-config interface Gi1/0/1"]
+  Substituindo o número pelo número da porta informada. Use SEMPRE o prefixo "Gi1/0/" para portas Gigabit.
+  Para portas 10G SFP+ (uplinks, ex: "Te1" ou "porta Te1/0/1"), use prefixo "Te1/0/":
+    ssh_show_commands: ["show interfaces Te1/0/1", "show running-config interface Te1/0/1"]
+  Se não informar porta específica, use: ssh_show_commands: ["show interfaces status"]
+  NUNCA use "display" em dell_n — esse é comando HP Comware e causa erro de sintaxe no DNOS6.
+  NUNCA use "show interface" (sem 's') — o DNOS6 exige "show interfaces" (com 's').
+
 HP Comware — porta específica:
   Se o usuário informar um número de porta (ex: "porta 1", "interface 2", "configuração da porta 1"), use:
     ssh_show_commands: ["display current-configuration interface GigabitEthernet 1/0/1"]
