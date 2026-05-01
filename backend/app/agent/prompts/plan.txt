@@ -742,10 +742,12 @@ ATENÇÃO — MODO "GENERAL" (exclusivo DNOS6):
 O modo "general" permite que uma porta seja simultaneamente untagged em uma VLAN e tagged em outras.
 É o padrão usado para portas com telefone IP (VLAN de dados untagged + VLAN VoIP tagged) ou APs.
 Comandos em modo general:
-  switchport general pvid X             → define a VLAN nativa (untagged)
-  switchport general allowed vlan add X → adiciona VLAN untagged
-  switchport general allowed vlan add X,Y tagged  → adiciona VLANs tagged
+  switchport general pvid X                        → define a VLAN nativa (untagged)
+  switchport general allowed vlan add X            → adiciona VLAN untagged
+  switchport general allowed vlan add X,Y tagged   → adiciona VLANs tagged
   switchport general allowed vlan remove 1         → remove VLAN 1 (boa prática)
+
+─── VLAN ───────────────────────────────────────────────────────────────────
 
 Criação de VLAN:
   ["vlan 100", "name \"GERENCIA\"", "exit"]
@@ -753,42 +755,110 @@ Criação de VLAN:
 Criação de múltiplas VLANs de uma vez:
   ["vlan 100,200,300", "exit"]
 
-Interface acesso simples (apenas untagged — use o número de VLAN que o usuário indicar):
-  ["interface Gi1/0/5", "description \"NOME-DO-DISPOSITIVO\"", "spanning-tree portfast",
-   "spanning-tree guard root", "switchport access vlan <VLAN_ID>", "exit"]
+Renomear VLAN existente:
+  ["vlan 100", "name \"NOVO-NOME\"", "exit"]
 
-Interface modo general — porta com dados untagged + VLANs adicionais tagged:
+Deletar VLAN:
+  ["no vlan 100"]
+
+─── INTERFACES DE ACESSO ────────────────────────────────────────────────────
+
+Interface acesso simples — workstation / impressora / câmera:
+  (use o número de VLAN que o usuário indicar)
+  ["interface Gi1/0/5",
+   "storm-control broadcast level 1",
+   "storm-control multicast level 1",
+   "description \"NOME-DO-DISPOSITIVO\"",
+   "spanning-tree portfast",
+   "spanning-tree guard root",
+   "switchport access vlan <VLAN_ID>",
+   "exit"]
+
+Mudar apenas a VLAN de acesso de uma porta já configurada:
+  ["interface Gi1/0/5", "switchport access vlan <VLAN_ID>", "exit"]
+
+Mudar apenas a descrição de uma porta:
+  ["interface Gi1/0/5", "description \"NOVA-DESCRICAO\"", "exit"]
+
+Porta de câmera / CFTV (acesso VLAN 200):
+  ["interface Gi1/0/15",
+   "description \"CAMERA-01\"",
+   "spanning-tree portfast",
+   "spanning-tree guard root",
+   "switchport access vlan 200",
+   "exit"]
+
+Porta de dispositivo / VLAN DISPOSITIVOS (acesso VLAN 600):
+  ["interface Gi1/0/30",
+   "description \"DISPOSITIVO-NOME\"",
+   "spanning-tree portfast",
+   "spanning-tree guard root",
+   "switchport access vlan 600",
+   "exit"]
+
+─── INTERFACES MODO GENERAL (VOIP + DADOS / AP) ──────────────────────────────
+
+Interface modo general — porta com dados untagged + VOIP tagged (ramal + computador):
   (use os números de VLAN exatos que o usuário especificar)
-  ["interface Gi1/0/2", "description \"NOME-DA-PORTA\"",
-   "spanning-tree portfast", "spanning-tree guard root",
+  ["interface Gi1/0/2",
+   "storm-control broadcast level 1",
+   "storm-control multicast level 1",
+   "description \"RAMAL-NOME\"",
+   "spanning-tree portfast",
+   "spanning-tree guard root",
    "switchport mode general",
    "switchport general pvid <VLAN_DADOS>",
    "switchport general allowed vlan add <VLAN_DADOS>",
-   "switchport general allowed vlan add <VLAN_A>,<VLAN_B> tagged",
+   "switchport general allowed vlan add <VLAN_VOIP>,<VLAN_MGMT> tagged",
    "switchport general allowed vlan remove 1",
    "exit"]
 
-Interface modo general — AP (VLAN de gerência nativa + VLANs de SSID tagged):
+Interface modo general — AP Wi-Fi (VLAN de gerência nativa + VLANs de SSID tagged):
   (use os números de VLAN exatos que o usuário especificar)
-  ["interface Gi1/0/10", "description \"AP-NOME\"",
-   "spanning-tree portfast", "spanning-tree guard root",
+  ["interface Gi1/0/10",
+   "description \"AP-NOME\"",
+   "spanning-tree portfast",
+   "spanning-tree guard root",
    "switchport mode general",
    "switchport general pvid <VLAN_MGMT>",
    "switchport general allowed vlan add <VLAN_MGMT>",
-   "switchport general allowed vlan add <VLAN_X>,<VLAN_Y> tagged",
+   "switchport general allowed vlan add <VLAN_CORP>,<VLAN_GUEST>,<VLAN_TABLET> tagged",
    "switchport general allowed vlan remove 1",
    "exit"]
 
-Interface trunk (uplink para outro switch ou roteador):
-  ["interface Te1/0/1", "description \"UPLINK-CORE\"",
+Adicionar uma VLAN tagged a uma porta general já existente (sem reconfigurar tudo):
+  ["interface Gi1/0/3", "switchport general allowed vlan add <VLAN_ID> tagged", "exit"]
+
+Remover uma VLAN de uma porta general já existente:
+  ["interface Gi1/0/3", "switchport general allowed vlan remove <VLAN_ID>", "exit"]
+
+─── INTERFACES TRUNK (UPLINKS) ───────────────────────────────────────────────
+
+Interface trunk — uplink 10G (SFP+) com TCN guard:
+  ["interface Te1/0/1",
+   "description \"UPLINK-CORE\"",
+   "spanning-tree tcnguard",
+   "spanning-tree cost 10000",
    "switchport mode trunk",
    "switchport trunk allowed vlan 2,3,8,11,15,100,200,600",
    "exit"]
 
-Porta de câmera / dispositivo (acesso VLAN 200):
-  ["interface Gi1/0/15", "description \"CAMERA-01\"",
-   "spanning-tree portfast", "spanning-tree guard root",
-   "switchport access vlan 200", "exit"]
+Interface trunk — uplink Gigabit (Gi) com guard root:
+  ["interface Gi1/0/48",
+   "description \"UPLINK-ARUBA\"",
+   "spanning-tree guard root",
+   "switchport mode trunk",
+   "switchport trunk allowed vlan 2,3,8,11,15,100,200,600",
+   "exit"]
+
+Adicionar uma VLAN a um trunk já existente (sem remover as outras):
+  ["interface Te1/0/1", "switchport trunk allowed vlan add <VLAN_ID>", "exit"]
+  ["interface Gi1/0/48", "switchport trunk allowed vlan add <VLAN_ID>", "exit"]
+
+Remover uma VLAN de um trunk já existente (sem afetar as outras):
+  ["interface Te1/0/1", "switchport trunk allowed vlan remove <VLAN_ID>", "exit"]
+
+─── CONTROLE DE PORTA ─────────────────────────────────────────────────────
 
 Desativar porta:
   ["interface Gi1/0/40", "shutdown", "exit"]
@@ -796,23 +866,58 @@ Desativar porta:
 Reativar porta:
   ["interface Gi1/0/40", "no shutdown", "exit"]
 
-Storm-control (aplica junto com outras configs da interface):
-  "storm-control broadcast level 1"
-  "storm-control multicast level 1"
-  (valores comuns: 1% para portas de acesso, 10% para uplinks)
+Configurar velocidade e duplex (ex: uplink fixo 1G full):
+  ["interface Gi1/0/48", "speed 1000", "duplex full", "exit"]
+
+Configurar velocidade auto (padrão para uplinks 10G):
+  ["interface Te1/0/2", "speed auto", "duplex auto both", "exit"]
+
+Storm-control por porta (aplica dentro do bloco de interface, antes do "exit"):
+  "storm-control broadcast level 1"    → limita broadcast a 1% (portas de acesso)
+  "storm-control multicast level 1"    → limita multicast a 1%
+  "storm-control broadcast rate 10"    → limita broadcast a 10 pps (uplinks)
+  "storm-control multicast rate 10"    → limita multicast a 10 pps
+
+─── PoE — POWER OVER ETHERNET (N1524P / N1548P) ────────────────────────────
+
+Ativar PoE em porta (modo auto — padrão, negocia com o dispositivo):
+  ["interface Gi1/0/5", "power inline auto", "exit"]
+
+Desativar PoE em porta (porta sem energia elétrica):
+  ["interface Gi1/0/5", "power inline never", "exit"]
+
+Limitar potência PoE em porta (ex: 15400 mW = 15.4 W, classe 3):
+  ["interface Gi1/0/5", "power inline auto max 15400", "exit"]
+
+─── ROTEAMENTO E IP ────────────────────────────────────────────────────────
 
 Interface L3 (VLAN SVI com IP):
   ["interface vlan 100", "ip address 10.100.1.190 255.255.248.0", "exit"]
 
-DHCP relay em VLAN (ip helper-address):
+Gateway padrão:
+  ["ip default-gateway 10.100.0.1"]
+
+Rota estática:
+  ["ip route 192.168.50.0 255.255.255.0 10.100.0.1"]
+
+Remover rota estática:
+  ["no ip route 192.168.50.0 255.255.255.0 10.100.0.1"]
+
+─── DHCP RELAY (ip helper-address) ───────────────────────────────────────────
+
+Adicionar DHCP relay em VLAN (domain = DNS relay, dhcp = relay DHCP):
   ["interface vlan 8",
    "ip helper-address 172.16.2.220 domain",
    "ip helper-address 172.16.2.221 domain",
    "ip helper-address 172.16.0.74 dhcp",
+   "ip helper-address 172.16.2.71 dhcp",
    "exit"]
 
-Rota padrão:
-  ["ip default-gateway 10.100.0.1"]
+Remover um ip helper-address específico de uma VLAN:
+  ["interface vlan 3", "no ip helper-address 172.16.0.74 dhcp", "exit"]
+  ["interface vlan 8", "no ip helper-address 172.16.2.221 domain", "exit"]
+
+─── SPANNING TREE ─────────────────────────────────────────────────────────
 
 STP — global (nível do switch, fora de qualquer bloco de interface):
   Ativar STP:                    ["spanning-tree"]
@@ -825,22 +930,109 @@ STP — global (nível do switch, fora de qualquer bloco de interface):
   Loop Protection global:        ["spanning-tree loopguard default"]
 
 STP — por porta (dentro do bloco de interface, antes do "exit"):
-  "spanning-tree portfast"            → ativa portfast (edge port)
-  "no spanning-tree portfast"         → desativa portfast
-  "spanning-tree guard root"          → ativa root guard
-  "no spanning-tree guard root"       → desativa root guard
-  "spanning-tree guard loop"          → ativa loop guard
+  "spanning-tree portfast"       → ativa portfast — USE em portas de acesso (Gi com dispositivos)
+  "no spanning-tree portfast"    → desativa portfast
+  "spanning-tree guard root"     → ativa root guard — USE em portas de acesso (impede loops)
+  "no spanning-tree guard root"  → desativa root guard
+  "spanning-tree guard loop"     → ativa loop guard por porta
+  "spanning-tree tcnguard"       → ativa TCN guard — USE em uplinks (Te e Gi trunk) para reduzir instabilidade
+  "spanning-tree cost 10000"     → define custo de porta para preferência de caminho STP
+
+─── SNMP ──────────────────────────────────────────────────────────────────
+
+Configurar localização e contato SNMP:
+  ["snmp-server location \"NOME-DO-LOCAL\"",
+   "snmp-server contact \"email@empresa.com\""]
+
+Configurar community SNMP somente leitura com restrição de IP:
+  ["snmp-server community \"Public_Atto\" ro ipaddress 172.16.2.70 ipmask 255.255.255.0"]
+
+Configurar host de destino para traps SNMP v2:
+  ["snmp-server host 172.16.2.70 traps version 2 \"Public_Atto\""]
+
+Desabilitar traps SNMP desnecessários (reduz ruído no NMS):
+  ["no snmp-server enable traps link",
+   "no snmp-server enable traps spanning-tree",
+   "no snmp-server enable traps port-security",
+   "no snmp-server enable traps poe",
+   "no snmp-server enable traps buffers",
+   "no snmp-server enable traps cpu threshold"]
+
+─── SNTP / NTP ────────────────────────────────────────────────────────────
+
+Configurar servidores NTP e fuso horário (UTC-4):
+  ["sntp server 172.16.2.220",
+   "sntp server 172.16.2.221",
+   "sntp server \"pool.ntp.org\" priority 3",
+   "sntp unicast client enable",
+   "clock timezone -4 minutes 0"]
+
+Remover servidor SNTP específico:
+  ["no sntp server 172.16.2.220"]
+
+─── SISTEMA ───────────────────────────────────────────────────────────────
+
+Alterar hostname do switch:
+  ["hostname \"SW-NOVO-NOME\""]
+
+Configurar servidor de logs (syslog):
+  ["logging 172.16.2.69"]
+
+Remover servidor de logs:
+  ["no logging 172.16.2.69"]
+
+Configurar banner de login (MOTD):
+  ["banner motd \"Acesso Restrito. Monitorado e sujeito a sanções.\""]
+
+Desabilitar acesso Telnet (segurança):
+  ["ip telnet server disable"]
+
+─── SHOW COMMANDS ÚTEIS PARA GET_INFO (dell_n) ───────────────────────────
+
+Quando o usuário pedir informações de leitura no dell_n, use get_info com ssh_show_commands:
+  Status de todas as portas:        ["show interfaces status"]
+  Contadores de erros:              ["show interfaces counters"]
+  Porta específica:                 ["show interfaces Gi1/0/5"]
+  Tabela de VLANs:                  ["show vlan"]
+  Tabela MAC:                       ["show mac address-table"]
+  Tabela ARP:                       ["show arp"]
+  Tabela de rotas:                  ["show ip route"]
+  Spanning-tree global:             ["show spanning-tree"]
+  Spanning-tree porta específica:   ["show spanning-tree interface Gi1/0/5"]
+  Vizinhos LLDP:                    ["show lldp neighbors"]
+  Status PoE de todas as portas:    ["show power inline"]
+  Status PoE porta específica:      ["show power inline Gi1/0/5"]
+  Uso de CPU:                       ["show cpu usage"]
+  Logs do sistema:                  ["show logging"]
+  Usuários conectados:              ["show users"]
+  Hardware / inventário:            ["show inventory"]
+  Status do stack:                  ["show stack"]
+  Configuração completa:            ["show running-config"]
+  Config de interface específica:   ["show running-config interface Gi1/0/5"]
+  Informações IP das VLANs:         ["show ip interface"]
+  Config SNMP:                      ["show snmp"]
+  Config NTP:                       ["show sntp status"]
+  Combinações comuns:               ["show interfaces status", "show vlan"]
+                                    ["show mac address-table", "show arp"]
 
 REGRAS IMPORTANTES PARA DNOS6:
 - Descrições SEMPRE entre aspas duplas: description "NOME DA PORTA"
 - VLAN names SEMPRE entre aspas duplas: name "GERENCIA"
+- Hostnames e banners SEMPRE entre aspas duplas: hostname "SW-NOME", banner motd "TEXTO"
 - NÃO use "switchport mode access" junto com "switchport general" — são mutuamente exclusivos
 - Ao usar modo general, SEMPRE remova a VLAN 1: "switchport general allowed vlan remove 1"
 - "spanning-tree bpdu-protection" é global (nível de switch, não por porta)
-- "spanning-tree portfast" e "spanning-tree guard root" são por porta
-- Para portas apenas com dispositivos (câmeras, impressoras, desktops): mode access é suficiente
-- Para portas com telefone IP E computador: use mode general com pvid da VLAN de dados e VoIP tagged
-- Para APs Unifi/Aruba: use mode general com pvid = VLAN de gerência e VLANs de SSID tagged
+- "spanning-tree portfast" e "spanning-tree guard root" são por porta — use em portas de acesso
+- "spanning-tree tcnguard" é por porta — use em uplinks (Te1/0/X e Gi trunk para outro switch)
+- "spanning-tree cost" é por porta — define preferência de caminho STP
+- "switchport trunk allowed vlan add X" adiciona uma VLAN ao trunk SEM remover as existentes
+- "switchport trunk allowed vlan remove X" remove apenas uma VLAN SEM afetar as outras
+- "switchport general allowed vlan add X tagged" adiciona VLAN tagged SEM reconfigurar a porta
+- Storm-control: use "level" (percentual) em portas de acesso e "rate" (pps) em uplinks
+- PoE (power inline): disponível apenas em modelos PoE: N1524P, N1548P, N2048P e similares
+- ip helper-address com "domain" = relay DNS; com "dhcp" = relay DHCP — ambos podem coexistir
+- Para NÃO usar DHCP em uma VLAN: "ip helper-address discard dhcp" (descarta requisições)
+- Para NÃO usar DNS em uma VLAN: "ip helper-address discard domain"
 
 ── HP / H3C COMWARE 5.x (V1910, V3600, V5800, A-Series) ───────────────────
 
@@ -978,6 +1170,19 @@ Exemplo para HP Comware:
 Exemplo para Cisco IOS:
   ssh_show_commands: ["show running-config"]
   ssh_show_commands: ["show interfaces status", "show ip route"]
+
+Exemplo para Dell N-Series (dell_n):
+  ssh_show_commands: ["show interfaces status"]
+  ssh_show_commands: ["show interfaces Gi1/0/5"]
+  ssh_show_commands: ["show mac address-table"]
+  ssh_show_commands: ["show arp"]
+  ssh_show_commands: ["show ip route"]
+  ssh_show_commands: ["show spanning-tree"]
+  ssh_show_commands: ["show lldp neighbors"]
+  ssh_show_commands: ["show power inline"]
+  ssh_show_commands: ["show logging"]
+  ssh_show_commands: ["show running-config interface Gi1/0/5"]
+  ssh_show_commands: ["show interfaces status", "show vlan"]
 
 ── LIST_VLANS — listar VLANs configuradas no switch ────────────────────────
 
