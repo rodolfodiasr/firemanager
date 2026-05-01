@@ -1,0 +1,15 @@
+── FORTINET FortiGate (REST API) ────────────────────────────────────────────
+
+Fortinet usa REST API para todas as operações. O conector FortiGate lida com a
+execução via specs (rule_spec, nat_spec, route_spec, group_spec).
+Defina execution_mode="api" e preencha o spec correspondente à intenção.
+ssh_commands e ssh_show_commands devem ser null.
+
+Zonas comuns: lan, wan, dmz (minúsculas no FortiGate).
+Interfaces comuns: port1 (WAN), port2 (LAN), port3 (DMZ).
+
+Ações de regra: accept, deny, ipsec (use "accept" ou "deny").
+Serviços: ALL, HTTP, HTTPS, SSH, RDP, DNS, SMTP, IMAP, POP3, ou nome de serviço customizado.
+
+Para create_rule: preencha rule_spec com src_zone, dst_zone, src_address, dst_address, service, action.
+Para list_rules/list_nat_policies/list_route_policies: specs=null, apenas raw_intent_data com filtros.

@@ -1,0 +1,111 @@
+── ARUBA OS-CX / AOS-Switch (HPE) ─────────────────────────────────────────
+
+Sintaxe similar ao Cisco IOS. NÃO inclua configure/end.
+
+VLAN:
+  ["vlan <VLAN_ID>", "name <NOME_VLAN>", "exit"]
+
+Interface acesso:
+  ["interface 1/1/1",
+   "no shutdown",
+   "vlan access <VLAN_ID>",
+   "spanning-tree port-type admin-edge",
+   "exit"]
+
+Interface trunk (uplink):
+  ["interface 1/1/2",
+   "no shutdown",
+   "vlan trunk allowed <VLAN_A>,<VLAN_B>",
+   "vlan trunk native <VLAN_NATIVA>",
+   "exit"]
+
+Interface com Voice VLAN (dados untagged + voz tagged):
+  ["interface 1/1/3",
+   "no shutdown",
+   "vlan access <VLAN_DADOS>",
+   "vlan voice <VLAN_VOZ>",
+   "spanning-tree port-type admin-edge",
+   "exit"]
+
+Desativar porta:
+  ["interface 1/1/5", "shutdown", "exit"]
+
+Reativar porta:
+  ["interface 1/1/5", "no shutdown", "exit"]
+
+Interface L3 VLAN (SVI):
+  ["interface vlan <VLAN_ID>",
+   "ip address 192.168.100.1/24",
+   "no shutdown",
+   "exit"]
+
+DHCP relay (dentro da interface VLAN):
+  ["interface vlan <VLAN_ID>",
+   "ip helper-address 10.0.0.1",
+   "no shutdown",
+   "exit"]
+
+LAG / Port-channel:
+  ["interface lag 1",
+   "no shutdown",
+   "lacp mode active",
+   "exit",
+   "interface 1/1/1",
+   "no shutdown",
+   "lag 1",
+   "exit",
+   "interface 1/1/2",
+   "no shutdown",
+   "lag 1",
+   "exit"]
+
+Rota estática:
+  ["ip route 10.10.10.0/24 192.168.1.254"]
+
+Rota padrão:
+  ["ip route 0.0.0.0/0 192.168.1.254"]
+
+ACL:
+  ["ip access-list FM-PERMIT-HTTPS",
+   "10 permit tcp 192.168.1.0/24 10.0.0.50/32 eq 443",
+   "exit",
+   "interface 1/1/1",
+   "ip access-group FM-PERMIT-HTTPS in",
+   "exit"]
+
+STP — global:
+  Modo RSTP:                   ["spanning-tree mode rpvst"]
+  BPDU Guard global:           ["spanning-tree bpduguard default"]
+  Desativar BPDU Guard global: ["no spanning-tree bpduguard default"]
+  Ativar STP:                  ["spanning-tree"]
+  Desativar STP:               ["no spanning-tree"]
+
+STP — por porta (dentro do bloco de interface):
+  Edge port (portfast):        "spanning-tree port-type admin-edge"
+  Desativar edge:              "no spanning-tree port-type admin-edge"
+  BPDU Guard por porta:        "spanning-tree bpduguard enable"
+  Desativar BPDU Guard:        "no spanning-tree bpduguard enable"
+  Root Guard por porta:        "spanning-tree root-guard"
+
+REGRAS IMPORTANTES PARA ARUBA:
+- Interface naming: 1/1/X (slot/módulo/porta)
+- BPDU Guard e edge port são configurados por interface (não globais por padrão)
+- voice vlan adiciona a VLAN de voz tagged mantendo a VLAN de dados untagged
+- LAG usa "interface lag N" + "lag N" dentro de cada membro
+
+── LIST_VLANS (aruba): ssh_show_commands: ["show vlans"]
+
+── LIST_PORTS (aruba):
+  Geral:            ssh_show_commands: ["show interfaces brief"]
+  Porta específica: ssh_show_commands: ["show interface 1/1/1", "show running-config interface 1/1/1"]
+  Combinado:        ssh_show_commands: ["show vlans", "show interfaces brief"]
+
+── GET_INFO exemplos (aruba):
+  ssh_show_commands: ["show running-config"]
+  ssh_show_commands: ["show ip interface brief"]
+  ssh_show_commands: ["show version"]
+  ssh_show_commands: ["show mac-address-table"]
+  ssh_show_commands: ["show arp"]
+  ssh_show_commands: ["show spanning-tree"]
+  ssh_show_commands: ["show lldp neighbors"]
+  ssh_show_commands: ["show ip route"]

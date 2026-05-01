@@ -1,0 +1,102 @@
+── JUNIPER JunOS ────────────────────────────────────────────────────────────
+
+ATENÇÃO: comandos são no formato "set ..." em modo configure.
+O sistema entra em configure automaticamente.
+SEMPRE inclua "commit" no final da lista de comandos.
+Para DESFAZER/DELETAR configuração use "delete" no lugar de "set".
+
+Regra de firewall:
+  ["set firewall family inet filter PERMIT-HTTPS term allow-https from source-address 192.168.1.0/24",
+   "set firewall family inet filter PERMIT-HTTPS term allow-https from destination-address 10.0.0.50/32",
+   "set firewall family inet filter PERMIT-HTTPS term allow-https from protocol tcp",
+   "set firewall family inet filter PERMIT-HTTPS term allow-https from destination-port 443",
+   "set firewall family inet filter PERMIT-HTTPS term allow-https then accept",
+   "commit"]
+
+Bloquear tráfego (drop):
+  ["set firewall family inet filter BLOCK-SOCIAL term block-social from protocol tcp",
+   "set firewall family inet filter BLOCK-SOCIAL term block-social then discard",
+   "set firewall family inet filter BLOCK-SOCIAL term allow-all then accept",
+   "commit"]
+
+Aplicar filtro em interface:
+  ["set interfaces ge-0/0/1 unit 0 family inet filter input PERMIT-HTTPS",
+   "commit"]
+
+VLAN (EX Series) — acesso simples:
+  ["set vlans <NOME_VLAN> vlan-id <VLAN_ID>",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching interface-mode access",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members <NOME_VLAN>",
+   "commit"]
+
+VLAN — criação apenas:
+  ["set vlans <NOME_VLAN> vlan-id <VLAN_ID>",
+   "commit"]
+
+Interface trunk (uplink com múltiplas VLANs tagged):
+  ["set interfaces ge-0/0/1 unit 0 family ethernet-switching interface-mode trunk",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members <NOME_VLAN_A>",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members <NOME_VLAN_B>",
+   "commit"]
+
+Interface acesso (porta de workstation/câmera):
+  ["set interfaces ge-0/0/1 unit 0 family ethernet-switching interface-mode access",
+   "set interfaces ge-0/0/1 unit 0 family ethernet-switching vlan members <NOME_VLAN>",
+   "commit"]
+
+Desativar porta:
+  ["set interfaces ge-0/0/1 disable", "commit"]
+
+Reativar porta:
+  ["delete interfaces ge-0/0/1 disable", "commit"]
+
+L3 VLAN — IRB (interface roteada para a VLAN):
+  ["set interfaces irb unit <VLAN_ID> family inet address 192.168.100.1/24",
+   "set vlans <NOME_VLAN> l3-interface irb.<VLAN_ID>",
+   "commit"]
+
+Interface com IP (L3 física):
+  ["set interfaces ge-0/0/0 unit 0 family inet address 192.168.1.1/24",
+   "commit"]
+
+Rota estática:
+  ["set routing-options static route 10.10.10.0/24 next-hop 192.168.1.254",
+   "commit"]
+
+Rota padrão:
+  ["set routing-options static route 0.0.0.0/0 next-hop 192.168.1.254",
+   "commit"]
+
+STP — global:
+  Ativar RSTP:              ["set protocols rstp", "commit"]
+  Desativar RSTP:           ["delete protocols rstp", "commit"]
+  Prioridade do switch:     ["set protocols rstp bridge-priority 4k", "commit"]
+
+STP — por porta:
+  Edge port (portfast):     ["set protocols rstp interface ge-0/0/1 edge", "commit"]
+  Desativar edge:           ["delete protocols rstp interface ge-0/0/1 edge", "commit"]
+  No-root-port (root guard): ["set protocols rstp interface ge-0/0/1 no-root-port", "commit"]
+
+REGRAS IMPORTANTES PARA JUNIPER:
+- SEMPRE inclua "commit" ao final de cada lista de comandos
+- Deletar configuração usa "delete": "delete interfaces ge-0/0/1 disable"
+- Nomes de VLAN são referenciados pelo NOME (string), não pelo ID numérico
+- VLANs de acesso: interface-mode access; trunks: interface-mode trunk
+- Interfaces IRB são usadas para roteamento L3 em EX Series
+- Interfaces naming: ge-0/0/X (1G), xe-0/0/X (10G), et-0/0/X (40/100G)
+
+── LIST_VLANS (juniper): ssh_show_commands: ["show vlans"]
+
+── LIST_PORTS (juniper):
+  Geral:            ssh_show_commands: ["show interfaces terse"]
+  Porta específica: ssh_show_commands: ["show interfaces ge-0/0/1", "show interfaces ge-0/0/1 detail"]
+  Combinado:        ssh_show_commands: ["show vlans", "show interfaces terse"]
+
+── GET_INFO exemplos (juniper):
+  ssh_show_commands: ["show configuration"]
+  ssh_show_commands: ["show route"]
+  ssh_show_commands: ["show arp"]
+  ssh_show_commands: ["show version"]
+  ssh_show_commands: ["show spanning-tree interface"]
+  ssh_show_commands: ["show lldp neighbors"]
+  ssh_show_commands: ["show chassis hardware"]

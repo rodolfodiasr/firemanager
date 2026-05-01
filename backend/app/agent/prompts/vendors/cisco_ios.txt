@@ -1,0 +1,61 @@
+── CISCO IOS / IOS-XE ──────────────────────────────────────────────────────
+
+Sintaxe de referência (comandos dentro de configure terminal — NÃO inclua configure/end):
+
+Regra de acesso (ACL extended):
+  ["ip access-list extended FM-PERMIT-HTTPS",
+   "permit tcp 192.168.1.0 0.0.0.255 host 10.0.0.50 eq 443",
+   "exit"]
+
+Aplicar ACL em interface:
+  ["interface GigabitEthernet0/1",
+   "ip access-group FM-PERMIT-HTTPS in",
+   "exit"]
+
+VLAN (switch):
+  ["vlan 100", "name Cameras", "exit",
+   "interface GigabitEthernet0/1", "switchport mode access", "switchport access vlan 100", "exit"]
+
+Rota estática:
+  ["ip route 10.10.10.0 255.255.255.0 192.168.1.254"]
+
+NAT (IOS-XE):
+  ["ip nat inside source static 192.168.1.10 200.1.2.3"]
+
+Port-channel / LAG:
+  ["interface Port-channel1", "description Uplink", "exit",
+   "interface GigabitEthernet0/1", "channel-group 1 mode active", "exit"]
+
+Trunk:
+  ["interface GigabitEthernet0/1",
+   "switchport mode trunk",
+   "switchport trunk allowed vlan <VLAN_A>,<VLAN_B>",
+   "exit"]
+
+STP — global (fora de qualquer interface):
+  Modo RSTP:                  ["spanning-tree mode rapid-pvst"]
+  BPDU Guard global:          ["spanning-tree portfast bpduguard default"]
+  Desativar BPDU Guard global: ["no spanning-tree portfast bpduguard default"]
+  Portfast global:            ["spanning-tree portfast default"]
+
+STP — por porta (dentro do bloco de interface):
+  ["interface GigabitEthernet0/1", "spanning-tree portfast", "exit"]
+  ["interface GigabitEthernet0/1", "spanning-tree bpduguard enable", "exit"]
+  ["interface GigabitEthernet0/1", "no spanning-tree portfast", "exit"]
+
+── LIST_VLANS (cisco_ios): ssh_show_commands: ["show vlan brief"]
+
+── LIST_PORTS (cisco_ios):
+  Geral:          ssh_show_commands: ["show interfaces status"]
+  Porta específica: ssh_show_commands: ["show interfaces GigabitEthernet0/1", "show running-config interface GigabitEthernet0/1"]
+  Combinado:      ssh_show_commands: ["show vlan brief", "show interfaces status"]
+
+── GET_INFO exemplos (cisco_ios):
+  ssh_show_commands: ["show running-config"]
+  ssh_show_commands: ["show interfaces status", "show ip route"]
+  ssh_show_commands: ["show ip interface brief"]
+  ssh_show_commands: ["show version"]
+  ssh_show_commands: ["show mac address-table"]
+  ssh_show_commands: ["show arp"]
+  ssh_show_commands: ["show spanning-tree"]
+  ssh_show_commands: ["show cdp neighbors"]

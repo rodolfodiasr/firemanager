@@ -1,0 +1,118 @@
+── UBIQUITI EDGEOS / EDGESWITCH ────────────────────────────────────────────
+
+Sintaxe baseada em "set ..." — similar ao Juniper, diferente do IOS.
+O sistema entra em configure automaticamente.
+SEMPRE inclua "commit" e "save" ao final de cada lista de comandos.
+NÃO inclua "configure", "exit" nem "end" nos comandos.
+Para DESFAZER/DELETAR configuração use "delete" no lugar de "set".
+
+Interface naming (roteadores EdgeRouter): eth0, eth1, eth2, eth3
+Interface naming (switches EdgeSwitch): 0, 1, 2 (número de porta)
+
+Descrição de interface:
+  ["set interfaces ethernet eth1 description LAN",
+   "commit", "save"]
+
+Endereço IP em interface (L3):
+  ["set interfaces ethernet eth0 address 192.168.1.1/24",
+   "commit", "save"]
+
+VLAN (VIF — subinterface tagged):
+  ["set interfaces ethernet eth1 vif <VLAN_ID> description <NOME_VLAN>",
+   "set interfaces ethernet eth1 vif <VLAN_ID> address 192.168.100.1/24",
+   "commit", "save"]
+
+Desativar interface:
+  ["set interfaces ethernet eth1 disable",
+   "commit", "save"]
+
+Reativar interface:
+  ["delete interfaces ethernet eth1 disable",
+   "commit", "save"]
+
+Rota estática:
+  ["set protocols static route 10.10.10.0/24 next-hop 192.168.1.254",
+   "commit", "save"]
+
+Rota padrão:
+  ["set protocols static route 0.0.0.0/0 next-hop 192.168.1.254",
+   "commit", "save"]
+
+Regra de firewall (permitir):
+  ["set firewall name LAN_IN rule 10 description FM-PERMIT-HTTPS",
+   "set firewall name LAN_IN rule 10 action accept",
+   "set firewall name LAN_IN rule 10 protocol tcp",
+   "set firewall name LAN_IN rule 10 source address 192.168.1.0/24",
+   "set firewall name LAN_IN rule 10 destination address 10.0.0.50",
+   "set firewall name LAN_IN rule 10 destination port 443",
+   "commit", "save"]
+
+Regra de firewall (bloquear/drop):
+  ["set firewall name LAN_IN rule 20 description FM-BLOCK",
+   "set firewall name LAN_IN rule 20 action drop",
+   "set firewall name LAN_IN rule 20 protocol tcp",
+   "set firewall name LAN_IN rule 20 destination port 80,443",
+   "commit", "save"]
+
+Aplicar firewall em interface:
+  Inbound (tráfego entrando na interface): "set interfaces ethernet eth1 firewall in name LAN_IN"
+  Outbound:                                "set interfaces ethernet eth1 firewall out name LAN_OUT"
+  ["set interfaces ethernet eth1 firewall in name LAN_IN",
+   "commit", "save"]
+
+Grupo de endereços (address-group):
+  ["set firewall group address-group FM-SERVERS address 192.168.1.10",
+   "set firewall group address-group FM-SERVERS address 192.168.1.11",
+   "commit", "save"]
+
+NAT — SNAT / masquerade (saída para internet):
+  ["set nat source rule 10 outbound-interface eth0",
+   "set nat source rule 10 source address 192.168.1.0/24",
+   "set nat source rule 10 translation address masquerade",
+   "commit", "save"]
+
+NAT — DNAT / port forwarding (entrada do WAN):
+  ["set nat destination rule 10 description FM-FWD-HTTP",
+   "set nat destination rule 10 inbound-interface eth0",
+   "set nat destination rule 10 protocol tcp",
+   "set nat destination rule 10 destination port 80",
+   "set nat destination rule 10 translation address 192.168.1.10",
+   "set nat destination rule 10 translation port 80",
+   "commit", "save"]
+
+DHCP relay:
+  ["set service dhcp-relay interface eth1",
+   "set service dhcp-relay server 10.0.0.1",
+   "commit", "save"]
+
+DHCP server em interface:
+  ["set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 default-router 192.168.1.1",
+   "set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 dns-server 8.8.8.8",
+   "set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 start 192.168.1.100 stop 192.168.1.200",
+   "commit", "save"]
+
+REGRAS IMPORTANTES PARA UBIQUITI EDGEOS:
+- SEMPRE inclua "commit" e "save" ao final de cada lista de comandos
+- "delete" = equivalente ao "no" do IOS para remover configurações
+- VLANs são subinterfaces (vif): "set interfaces ethernet eth1 vif <ID>"
+- Regras de firewall são agrupadas por nome e aplicadas em interfaces
+- NAT source = SNAT/masquerade; NAT destination = DNAT/port forwarding
+- Regras de firewall numeradas — números menores têm prioridade mais alta
+- Use "masquerade" para NAT dinâmico (muitos IPs privados → um IP público)
+- NÃO assuma o nome da interface — pergunte ao usuário se não for obvio (eth0/eth1)
+
+── LIST_VLANS (ubiquiti): ssh_show_commands: ["show vlan"]
+
+── LIST_PORTS (ubiquiti):
+  Geral:            ssh_show_commands: ["show interfaces"]
+  Porta específica: ssh_show_commands: ["show interfaces ethernet eth1"]
+  Combinado:        ssh_show_commands: ["show vlan", "show interfaces"]
+
+── GET_INFO exemplos (ubiquiti):
+  ssh_show_commands: ["show configuration"]
+  ssh_show_commands: ["show ip route"]
+  ssh_show_commands: ["show arp"]
+  ssh_show_commands: ["show version"]
+  ssh_show_commands: ["show interfaces ethernet eth0"]
+  ssh_show_commands: ["show firewall"]
+  ssh_show_commands: ["show nat"]

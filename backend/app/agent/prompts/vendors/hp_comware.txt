@@ -1,0 +1,142 @@
+── HP / H3C COMWARE 5.x (V1910, V3600, V5800, A-Series) ───────────────────
+
+CLI baseado em Comware — completamente diferente do IOS/DNOS6.
+O sistema entra em system-view automaticamente. NÃO inclua "system-view".
+ATENÇÃO CRÍTICA: use "quit" para sair de cada subbloco (vlan, interface, etc.).
+"exit" NÃO existe no Comware — causa erro! Sempre use "quit".
+O sistema salva com "save force" automaticamente — NÃO inclua save nos comandos.
+
+Interface naming: GigabitEthernet1/0/X (ou GigabitEthernet X/X/X em chassis)
+VLAN range: vlan X to Y (não vlan X-Y)
+Undo = equivalente ao "no" do IOS: "undo shutdown", "undo port trunk permit vlan 1"
+
+MODOS DE PORTA:
+- access: porta em uma VLAN, sem tag
+- trunk: uplinks (VLANs com tag, exceto nativa)
+- hybrid: porta com VLAN nativa untagged + outras tagged (similar ao "general" DNOS6)
+
+Criação de VLAN:
+  ["vlan 100", " description GERENCIA", "quit"]
+  (descrição não usa aspas; indentação com espaço não é obrigatória mas é convencional)
+
+Criação de múltiplas VLANs:
+  ["vlan 100", " description GERENCIA", "quit",
+   "vlan 200", " description CFTV", "quit"]
+
+Interface access (porta de workstation/câmera — use o número de VLAN que o usuário indicar):
+  ["interface GigabitEthernet1/0/5",
+   " description NOME-DO-DISPOSITIVO",
+   " port access vlan <VLAN_ID>",
+   " stp edged-port enable",
+   "quit"]
+
+Interface trunk (uplink — use os números de VLAN que o usuário especificar):
+  ["interface GigabitEthernet1/0/28",
+   " description UPLINK-NOME",
+   " port link-type trunk",
+   " undo port trunk permit vlan 1",
+   " port trunk permit vlan <VLAN_A> to <VLAN_B> <VLAN_C>",
+   " port trunk pvid vlan <VLAN_MGMT>",
+   "quit"]
+
+Interface hybrid — AP Wi-Fi (VLAN de gerência nativa + VLANs de SSID tagged):
+  (use os números de VLAN exatos que o usuário especificar)
+  ["interface GigabitEthernet1/0/3",
+   " description AP-NOME",
+   " port link-type hybrid",
+   " undo port hybrid vlan 1",
+   " port hybrid vlan <VLAN_X> to <VLAN_Y> tagged",
+   " port hybrid vlan <VLAN_MGMT> untagged",
+   " port hybrid pvid vlan <VLAN_MGMT>",
+   " stp edged-port enable",
+   "quit"]
+
+Interface hybrid — porta com dados + VLAN adicional tagged:
+  (use os números de VLAN exatos que o usuário especificar; não assuma propósito)
+  ["interface GigabitEthernet1/0/2",
+   " description NOME-DA-PORTA",
+   " port link-type hybrid",
+   " undo port hybrid vlan 1",
+   " port hybrid vlan <VLAN_TAG> tagged",
+   " port hybrid vlan <VLAN_DADOS> untagged",
+   " port hybrid pvid vlan <VLAN_DADOS>",
+   " stp edged-port enable",
+   "quit"]
+
+Desativar porta:
+  ["interface GigabitEthernet1/0/10", " shutdown", "quit"]
+
+Reativar porta:
+  ["interface GigabitEthernet1/0/10", " undo shutdown", "quit"]
+
+Storm control (dentro do bloco de interface):
+  " broadcast-suppression pps 1000"
+  " multicast-suppression pps 1000"
+
+Loopback detection (dentro do bloco de interface):
+  " loopback-detection enable"
+
+L3 Interface (SVI com IP):
+  ["interface Vlan-interface100",
+   " ip address 10.100.1.60 255.255.254.0",
+   "quit"]
+
+Rota padrão / estática:
+  ["ip route-static 0.0.0.0 0.0.0.0 10.100.0.1"]
+  ["ip route-static 10.10.10.0 255.255.255.0 192.168.1.254"]
+
+STP — global (nível do switch, fora de qualquer bloco — NÃO inclua "quit" após estes):
+  Ativar STP:               ["stp enable"]
+  Desativar STP:            ["undo stp enable"]
+  Modo RSTP:                ["stp mode rstp"]
+  Modo STP clássico:        ["stp mode stp"]
+  Modo MSTP:                ["stp mode mstp"]
+  BPDU Protection global:   ["stp bpdu-protection"]
+  Desativar BPDU Protection: ["undo stp bpdu-protection"]
+  Ativar + definir modo:    ["stp enable", "stp mode rstp", "stp bpdu-protection"]
+
+STP — por porta (dentro do bloco de interface, antes do "quit"):
+  " stp edged-port enable"   → ativa portfast (edge port)
+  " undo stp edged-port"     → desativa portfast
+  " stp disable"             → desativa STP nesta porta
+  " undo stp disable"        → reativa STP nesta porta
+
+REGRAS IMPORTANTES PARA HP COMWARE:
+- SEMPRE use "quit" para sair de cada bloco — NUNCA use "exit" (não existe!)
+- Descrições sem aspas: description WORKSTATION (não description "WORKSTATION")
+- VLAN range usa "to": vlan 2 to 3 15 (não vlan 2-3,15)
+- "undo" = equivalente ao "no" do IOS: "undo shutdown", "undo port trunk permit vlan 1"
+- Após "port link-type hybrid/trunk", sempre faça "undo port hybrid/trunk permit vlan 1"
+  para remover a VLAN 1 (boa prática de segurança)
+- "stp edged-port enable" = equivalente ao portfast (por interface, dentro do bloco)
+- NÃO inclua "system-view", "save", nem "return" — o sistema gerencia automaticamente
+- Para VLANs em trunk: sintaxe "vlan X to Y Z" (separar ranges com "to", individuais com espaço)
+  Exemplo: "port trunk permit vlan 2 to 3 8 11 15 100 200 600" (correto)
+
+── LIST_VLANS (hp_comware): ssh_show_commands: ["display vlan"]
+
+── LIST_PORTS (hp_comware):
+  Geral:  ssh_show_commands: ["display interface"]
+  PROIBIDO: "display interface brief" — NÃO existe no HP 1910 / Comware 5 Lite, causa erro.
+
+  Porta específica (ex: "porta 1", "interface 2", "configuração da porta 1"):
+    ssh_show_commands: ["display current-configuration interface GigabitEthernet 1/0/X"]
+    Substituir X pelo número da porta informada.
+    Formato da interface: GigabitEthernet 1/0/X (com espaço entre o tipo e o número).
+    Executa em user-view após _cmdline-mode on (automático).
+
+  Combinado VLANs + portas: ssh_show_commands: ["display vlan", "display interface"]
+
+── GET_INFO exemplos (hp_comware):
+  ssh_show_commands: ["display current-configuration"]
+  ssh_show_commands: ["display ip interface brief"]
+  ssh_show_commands: ["display vlan"]
+  ssh_show_commands: ["display interface"]
+  ssh_show_commands: ["display current-configuration interface GigabitEthernet 1/0/1"]
+  ssh_show_commands: ["ping 8.8.8.8"]
+  ssh_show_commands: ["display version"]
+  ssh_show_commands: ["display arp"]
+  ssh_show_commands: ["display ip routing-table"]
+  ssh_show_commands: ["display stp brief"]
+  ssh_show_commands: ["display lldp neighbor-information list"]
+  ssh_show_commands: ["display ip interface brief", "display vlan"]

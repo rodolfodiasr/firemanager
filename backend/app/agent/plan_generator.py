@@ -8,8 +8,19 @@ import anthropic
 from app.config import settings
 from app.policy_engine.schemas import ActionPlan
 
-_PLAN_PROMPT = (Path(__file__).parent / "prompts" / "plan.txt").read_text()
-_SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.txt").read_text()
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
+_PLAN_BASE = (_PROMPTS_DIR / "plan_base.txt").read_text(encoding="utf-8")
+_SYSTEM_PROMPT = (_PROMPTS_DIR / "system.txt").read_text(encoding="utf-8")
+_VENDORS_DIR = _PROMPTS_DIR / "vendors"
+
+_vendor_cache: dict[str, str] = {}
+
+
+def _vendor_prompt(vendor: str) -> str:
+    if vendor not in _vendor_cache:
+        path = _VENDORS_DIR / f"{vendor}.txt"
+        _vendor_cache[vendor] = path.read_text(encoding="utf-8") if path.exists() else ""
+    return _vendor_cache[vendor]
 
 
 async def generate_action_plan(
@@ -21,8 +32,11 @@ async def generate_action_plan(
 ) -> ActionPlan:
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
+    vendor_section = _vendor_prompt(vendor)
+    full_template = _PLAN_BASE + ("\n\n" + vendor_section if vendor_section else "")
+
     prompt = (
-        _PLAN_PROMPT
+        full_template
         .replace("{device_id}", str(device_id))
         .replace("{vendor}", vendor)
         .replace("{firmware_version}", firmware_version or "unknown")
@@ -46,6 +60,5 @@ async def generate_action_plan(
         content = content.rsplit("```", 1)[0]
 
     data = json.loads(content)
-    # Ensure device_id is a UUID object
     data["device_id"] = str(device_id)
     return ActionPlan.model_validate(data)

@@ -1,0 +1,42 @@
+── CISCO NX-OS (Nexus) ─────────────────────────────────────────────────────
+
+VLAN:
+  ["vlan 100", "name Cameras", "exit"]
+
+Interface VLAN (SVI):
+  ["interface Vlan100", "ip address 192.168.100.1/24", "no shutdown", "exit"]
+
+VPC / Port-channel:
+  ["interface port-channel1", "description Uplink", "exit",
+   "interface Ethernet1/1", "channel-group 1 mode active", "exit"]
+
+Rota estática:
+  ["ip route 10.10.10.0/24 192.168.1.254"]
+
+Feature (habilitar funcionalidade):
+  ["feature vpc", "feature lacp"]
+
+STP — global:
+  Modo RSTP:          ["spanning-tree mode rapid-pvst"]
+  BPDU Guard global:  ["spanning-tree bpduguard default"]
+
+STP — por porta:
+  ["interface Ethernet1/1", "spanning-tree port type edge", "exit"]
+  ["interface Ethernet1/1", "spanning-tree bpduguard enable", "exit"]
+
+── LIST_VLANS (cisco_nxos): ssh_show_commands: ["show vlan brief"]
+
+── LIST_PORTS (cisco_nxos):
+  Geral:            ssh_show_commands: ["show interface status"]
+  Porta específica: ssh_show_commands: ["show interface Ethernet1/1", "show running-config interface Ethernet1/1"]
+  Combinado:        ssh_show_commands: ["show vlan brief", "show interface status"]
+
+── GET_INFO exemplos (cisco_nxos):
+  ssh_show_commands: ["show running-config"]
+  ssh_show_commands: ["show ip interface brief"]
+  ssh_show_commands: ["show version"]
+  ssh_show_commands: ["show mac address-table"]
+  ssh_show_commands: ["show ip arp"]
+  ssh_show_commands: ["show spanning-tree"]
+  ssh_show_commands: ["show cdp neighbors"]
+  ssh_show_commands: ["show vpc"]

@@ -1,0 +1,223 @@
+Com base nos dados coletados, gere um ActionPlan estruturado em JSON.
+
+Dados coletados:
+{collected_data}
+
+Dispositivo alvo:
+- ID: {device_id}
+- Vendor: {vendor}
+- Versão: {firmware_version}
+
+Intenção identificada: {intent}
+
+Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, toggle_gateway_av, toggle_anti_spyware, toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl, configure_app_rules, add_security_exclusion, get_security_status, health_check, get_snapshot, list_vlans, list_ports, get_info
+
+Gere o ActionPlan no seguinte formato JSON (sem markdown):
+{
+  "intent": "<intent_type>",
+  "device_id": "<uuid>",
+  "steps": [
+    {
+      "sequence": 1,
+      "action": "<ação específica do vendor>",
+      "params": {}
+    }
+  ],
+  "rule_spec": {
+    "name": "<nome da regra>",
+    "src_address": "<endereço origem>",
+    "dst_address": "<endereço destino>",
+    "src_zone": "<zona de origem, ex: LAN, WAN, DMZ>",
+    "dst_zone": "<zona de destino, ex: LAN, WAN, DMZ>",
+    "service": "<serviço/porta>",
+    "action": "accept|deny",
+    "comment": "<comentário>",
+    "extra": {}
+  },
+  "nat_spec": {
+    "name": "<nome da política NAT>",
+    "inbound_interface": "<interface de entrada, ex: X1, X0>",
+    "outbound_interface": "<interface de saída, ex: X1, X0>",
+    "source": "<IP bruto ex: 192.168.1.0/24, ou 'Any'. NUNCA invente nomes de objetos>",
+    "translated_source": "<IP bruto ex: 10.0.0.1, ou 'Original'. NUNCA invente nomes de objetos>",
+    "destination": "<IP bruto ex: 200.1.2.3, ou 'Any'. NUNCA invente nomes de objetos>",
+    "translated_destination": "<IP bruto ex: 192.168.1.10, ou 'Original'. NUNCA invente nomes de objetos>",
+    "service": "<protocolo/porta ex: TCP/8080, ou 'Any'. NUNCA invente nomes de objetos>",
+    "translated_service": "<protocolo/porta ex: TCP/80, ou 'Original'. NUNCA invente nomes de objetos>",
+    "comment": "<comentário>",
+    "enable": true
+  },
+  "route_spec": {
+    "interface": "<interface de saída, ex: X1, X0. Use X1 para WAN, X0 para LAN>",
+    "destination": "<CIDR da rede destino, ex: 10.10.10.0/24, ou 'Any'>",
+    "source": "<IP ou CIDR de origem, ex: 192.168.1.0/24, ou 'Any'>",
+    "service": "<serviço ou 'Any'>",
+    "gateway": "<IP do próximo salto obrigatório, ex: 192.168.168.2. Use 'default' apenas se não houver gateway específico>",
+    "metric": 20,
+    "distance": 20,
+    "name": "<nome da rota>",
+    "route_type": "standard",
+    "comment": "<comentário>",
+    "disable_on_interface_down": false
+  },
+  "group_spec": null,
+  "security_service_spec": {
+    "service": "<gateway-antivirus|anti-spyware|intrusion-prevention|app-control|geo-ip|botnet|dpi-ssl-client|dpi-ssl-server>",
+    "enabled": true,
+    "category_ids": [],
+    "category_block": true,
+    "countries": [],
+    "country_action": "block"
+  },
+  "security_exclusion_spec": {
+    "services": ["<gateway-antivirus|anti-spyware|intrusion-prevention|app-control|geo-ip|botnet|dpi-ssl-client|dpi-ssl-server|dpi-ssl>"],
+    "ip_addresses": [],
+    "zone": "LAN",
+    "group": ""
+  },
+  "app_rules_spec": {
+    "policy_name": "<nome da política>",
+    "enabled": true,
+    "source_address": "any",
+    "destination_address": "any",
+    "match_object_name": "<nome do match object>",
+    "match_type": "<application-list|application-category-list>",
+    "match_ids": [],
+    "action_object": "Reset/Drop",
+    "zone": "LAN"
+  },
+  "content_filter_spec": {
+    "profile_name": "<nome do perfil CFS>",
+    "policy_name": "<nome da política CFS>",
+    "blocked_categories": ["<categoria1>", "<categoria2>"],
+    "allowed_categories": [],
+    "allowed_sites": ["<url1>", "<url2>"],
+    "blocked_sites": ["<url1>", "<url2>"],
+    "zones": ["LAN"],
+    "source_address": "any",
+    "action": "block",
+    "https_filtering": false,
+    "smart_filter": false,
+    "safe_search": false,
+    "threat_api": false,
+    "google_safe_search": false,
+    "youtube_restrict_mode": false,
+    "bing_safe_search": false,
+    "reputation_enabled": false,
+    "reputation_action": "default",
+    "comment": "<comentário>"
+  },
+  "execution_mode": "api",
+  "ssh_commands": null,
+  "ssh_show_commands": null,
+  "raw_intent_data": {}
+}
+
+Regras de preenchimento:
+- Para create_rule: preencha rule_spec com todos os campos, demais specs=null
+- Para edit_rule: coloque o nome ou ID da regra em raw_intent_data["rule_id"]; em rule_spec preencha APENAS os campos que o usuário quer alterar — deixe os demais campos como "Any" ou vazio para que o sistema preserve os valores atuais; demais specs=null
+- Para create_nat_policy: preencha nat_spec, demais specs=null
+- Para create_route_policy: preencha route_spec, demais specs=null
+- Para delete_nat_policy: coloque rule_id em raw_intent_data, specs=null
+- Para delete_route_policy: coloque rule_id em raw_intent_data, specs=null
+- Para delete_rule: coloque rule_id em raw_intent_data, specs=null
+- Para create_group: preencha group_spec, demais specs=null
+- Para list_rules: specs=null; em raw_intent_data coloque:
+  - src_zone/dst_zone se o usuário mencionar zona de origem/destino
+  - filter_any: true se o usuário pedir regras com objeto "any" ou "qualquer" em origem ou destino
+  - filter_action: "allow" ou "deny" se o usuário pedir por ação específica
+  - filter_enabled: true/false se o usuário pedir regras ativas/inativas
+  - filter_object: "<nome do objeto>" se o usuário pedir regras que contenham um objeto específico em origem, destino ou serviço
+- Para list_nat_policies: specs=null; em raw_intent_data coloque:
+  - filter_object: "<nome>" se o usuário pedir NATs que contenham um objeto específico em origem, destino ou serviço
+  - filter_inbound: "<interface>" se o usuário pedir por interface de entrada (ex: X1)
+  - filter_outbound: "<interface>" se o usuário pedir por interface de saída (ex: X0)
+  - filter_enabled: true/false se o usuário pedir NATs ativos/inativos
+- Para list_route_policies: specs=null; em raw_intent_data coloque:
+  - filter_object: "<nome>" se o usuário pedir rotas que contenham um objeto específico em origem, destino ou gateway
+  - filter_interface: "<interface>" se o usuário pedir rotas por interface (ex: X1, X0)
+  - filter_type: "<tipo>" se o usuário pedir por tipo de rota (ex: standard)
+
+Para intents de controle de serviços de segurança (toggle_gateway_av, toggle_anti_spyware,
+toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl,
+configure_content_filter, configure_app_rules, add_security_exclusion, get_security_status):
+consulte a seção específica do vendor abaixo para os comandos SSH corretos.
+
+═══════════════════════════════════════════════════════════════════════════════
+VENDORS CLI-ONLY (cisco_ios, cisco_nxos, juniper, aruba, dell, dell_n, hp_comware, ubiquiti)
+═══════════════════════════════════════════════════════════════════════════════
+
+REGRA GERAL: Quando o vendor for cisco_ios, cisco_nxos, juniper, aruba, dell, dell_n, hp_comware
+ou ubiquiti, SEMPRE defina execution_mode="ssh" e preencha ssh_commands com os comandos CLI do vendor.
+O sistema entra automaticamente em modo configure — NÃO inclua "configure terminal", "system-view"
+nem "end" nos comandos.
+EXCEÇÕES obrigatórias:
+  - Juniper: inclua "commit" explicitamente ao final de cada lista de comandos.
+  - HP Comware: inclua "quit" ao sair de cada bloco (interface, vlan, etc.); use "undo" em vez de "no".
+  - Ubiquiti EdgeOS: inclua "commit" e "save" ao final de cada lista de comandos; use "delete" em vez de "no".
+Demais specs (rule_spec, nat_spec, etc.) podem ser preenchidos para documentação, mas a
+execução real usa apenas ssh_commands.
+
+── GET_INFO — executar qualquer comando de leitura (show/display) arbitrário ──
+
+Use get_info quando o usuário pedir para executar um comando específico de leitura
+(display, show, ping, traceroute, etc.) que não se encaixa em list_vlans ou list_ports.
+Exemplos: "execute display current-configuration", "rode o comando show running-config",
+          "execute display ip interface brief", "faça um ping para 8.8.8.8".
+
+- Defina intent="get_info", execution_mode="ssh"
+- Coloque os comandos em ssh_show_commands (NÃO em ssh_commands)
+- ssh_commands deve ser null
+- O sistema executa em modo exec/user (sem entrar em configure/system-view)
+- Coloque EXATAMENTE o(s) comando(s) que o usuário pediu — não adicione outros
+- Consulte a seção do vendor para os comandos corretos (show vs display, sintaxe de interfaces)
+
+── LIST_VLANS — listar VLANs configuradas no switch ────────────────────────
+
+Para qualquer vendor CLI que o usuário pedir "listar VLANs", "quais VLANs existem",
+"mostrar VLANs", "ver VLANs", etc.:
+- Defina intent="list_vlans", execution_mode="ssh"
+- Coloque o comando em ssh_show_commands (NÃO em ssh_commands)
+- ssh_commands deve ser null
+- O sistema executa em modo exec/user (sem entrar em configure)
+- Consulte a seção do vendor abaixo para o comando exato
+
+── LIST_PORTS — listar portas e seus status ────────────────────────────────
+
+Para qualquer vendor CLI que o usuário pedir "listar portas", "status das interfaces",
+"ver portas", "quais portas estão ativas", "mostrar interfaces", etc.:
+- Defina intent="list_ports", execution_mode="ssh"
+- Coloque o comando em ssh_show_commands (NÃO em ssh_commands)
+- ssh_commands deve ser null
+- O sistema executa em modo exec/user (sem entrar em configure)
+- Consulte a seção do vendor abaixo para o comando exato e regras de porta específica
+
+Pode combinar VLANs + portas na mesma operação usando múltiplos comandos em ssh_show_commands.
+
+── REGRAS GERAIS PARA VENDORS CLI ─────────────────────────────────────────
+
+1. NÃO inclua "configure terminal", "configure", "system-view", "end", "write memory" ou
+   "copy running-config startup-config" nos ssh_commands — o sistema faz isso automaticamente.
+2. EXCEÇÃO Juniper: SEMPRE inclua "commit" explicitamente no final dos comandos.
+3. EXCEÇÃO HP Comware: SEMPRE inclua "quit" ao final de cada bloco (interface, vlan, etc.).
+4. EXCEÇÃO Ubiquiti EdgeOS: SEMPRE inclua "commit" e "save" ao final dos comandos.
+5. Para Cisco IOS, Aruba e DELL N-Series (dell_n): "enable" e save são feitos automaticamente.
+6. IMPORTANTE: ssh_commands vs ssh_show_commands são mutuamente exclusivos:
+   - ssh_commands → comandos de CONFIGURAÇÃO (entram em configure/system-view)
+   - ssh_show_commands → comandos de LEITURA (show/display, sem entrar em configure)
+   - NUNCA coloque show/display em ssh_commands nem comandos de config em ssh_show_commands
+7. HP Comware: use "display" em vez de "show" (ex: "display vlan", "display interface").
+   PROIBIDO para HP Comware: "display interface brief" — esse comando NÃO existe no HP 1910 / Comware 5 Lite e causa erro de sintaxe. Use SEMPRE "display interface" (sem "brief").
+8. Ubiquiti EdgeOS: use "show" em modo exec; comandos de config usam sintaxe "set ...".
+9. Gere nomes de objetos com prefixo "FM-" para facilitar identificação (ex: FM-VLAN-CAMERAS).
+10. NÃO assuma números de VLAN ou seus propósitos — use apenas os que o usuário informar.
+    Se o usuário não especificar a VLAN, pergunte antes de gerar o plano.
+11. DELL N-Series (dell_n) vs DELL OS10 (dell): são CLIs diferentes.
+    dell_n → usa modo "general" para portas com múltiplas VLANs, interfaces Gi1/0/X e Te1/0/X.
+    dell   → usa sintaxe NX-OS style, interfaces "ethernet 1/1/X".
+12. HP Comware (hp_comware): usa "system-view" / "quit" / "display" — não IOS nem DNOS6.
+    Modo hybrid = equivalente ao general (DNOS6) — mesma lógica, sintaxe diferente.
+13. Juniper (juniper): usa "set ..." / "delete ..." — nomes de VLAN por string, não por ID.
+    IRB = interface L3 mapeada para uma VLAN (set vlans <NOME> l3-interface irb.<ID>).
+14. Ubiquiti (ubiquiti): usa "set ..." / "delete ..." — VLANs como subinterfaces (vif).
+    Firewall definido por nome e aplicado por interface (in/out).

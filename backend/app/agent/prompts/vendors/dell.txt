@@ -1,0 +1,95 @@
+── DELL OS10 (PowerSwitch S/Z series) ──────────────────────────────────────
+
+Sintaxe similar ao Cisco NX-OS. NÃO inclua configure/end.
+
+VLAN:
+  ["interface vlan <VLAN_ID>",
+   "description <NOME_VLAN>",
+   "no shutdown",
+   "exit"]
+
+Interface acesso:
+  ["interface ethernet 1/1/1",
+   "no shutdown",
+   "switchport mode access",
+   "switchport access vlan <VLAN_ID>",
+   "spanning-tree port type edge",
+   "spanning-tree bpduguard enable",
+   "exit"]
+
+Interface trunk (uplink):
+  ["interface ethernet 1/1/2",
+   "no shutdown",
+   "switchport mode trunk",
+   "switchport trunk allowed-vlan <VLAN_A>,<VLAN_B>",
+   "exit"]
+
+Desativar porta:
+  ["interface ethernet 1/1/3", "shutdown", "exit"]
+
+Reativar porta:
+  ["interface ethernet 1/1/3", "no shutdown", "exit"]
+
+Interface L3 VLAN (SVI):
+  ["interface vlan <VLAN_ID>",
+   "ip address 192.168.100.1/24",
+   "no shutdown",
+   "exit"]
+
+DHCP relay:
+  ["interface vlan <VLAN_ID>",
+   "ip helper-address 10.0.0.1",
+   "no shutdown",
+   "exit"]
+
+Rota estática:
+  ["ip route 10.10.10.0/24 192.168.1.254"]
+
+Rota padrão:
+  ["ip route 0.0.0.0/0 192.168.1.254"]
+
+Port-channel / LAG:
+  ["interface port-channel 1",
+   "no shutdown",
+   "exit",
+   "interface ethernet 1/1/1",
+   "channel-group 1 mode active",
+   "exit",
+   "interface ethernet 1/1/2",
+   "channel-group 1 mode active",
+   "exit"]
+
+STP — global:
+  Modo RSTP:          ["spanning-tree mode rstp"]
+  Modo MSTP:          ["spanning-tree mode mstp"]
+  BPDU Guard global:  ["spanning-tree bpduguard default"]
+  Ativar STP:         ["spanning-tree enable"]
+  Desativar STP:      ["no spanning-tree enable"]
+
+STP — por porta (dentro do bloco de interface):
+  Edge port (portfast):   "spanning-tree port type edge"
+  BPDU Guard por porta:   "spanning-tree bpduguard enable"
+  Desativar BPDU Guard:   "no spanning-tree bpduguard enable"
+  Root Guard:             "spanning-tree guard root"
+
+REGRAS IMPORTANTES PARA DELL OS10:
+- Interface naming: ethernet 1/1/X (slot/sub-slot/porta) ou ethernet 1/1/X:Y (breakout)
+- SVI criada com "interface vlan N" (diferente do NX-OS que usa "interface Vlan N")
+- BPDU guard e edge port se aplicam por porta (mais granular que global)
+
+── LIST_VLANS (dell): ssh_show_commands: ["show vlan"]
+
+── LIST_PORTS (dell):
+  Geral:            ssh_show_commands: ["show interface status"]
+  Porta específica: ssh_show_commands: ["show interface ethernet 1/1/1", "show running-config interface ethernet 1/1/1"]
+  Combinado:        ssh_show_commands: ["show vlan", "show interface status"]
+
+── GET_INFO exemplos (dell):
+  ssh_show_commands: ["show running-config"]
+  ssh_show_commands: ["show ip interface brief"]
+  ssh_show_commands: ["show version"]
+  ssh_show_commands: ["show mac address-table"]
+  ssh_show_commands: ["show arp"]
+  ssh_show_commands: ["show spanning-tree"]
+  ssh_show_commands: ["show lldp neighbors"]
+  ssh_show_commands: ["show ip route"]
