@@ -23,6 +23,13 @@ class SSHResult:
     commands_executed: list[str] = field(default_factory=list)
 
 
+# dell_dnos6 was added in Netmiko 4.x — fall back to dell_powerconnect on older installs
+try:
+    from netmiko.ssh_dispatcher import CLASS_MAPPER as _NM_MAP
+    _DELL_N_TYPE = "dell_dnos6" if "dell_dnos6" in _NM_MAP else "dell_powerconnect"
+except Exception:
+    _DELL_N_TYPE = "dell_powerconnect"
+
 # Netmiko device_type per vendor value
 _DEVICE_TYPE: dict[str, str] = {
     "cisco_ios":  "cisco_ios",
@@ -30,7 +37,7 @@ _DEVICE_TYPE: dict[str, str] = {
     "juniper":    "juniper_junos",
     "aruba":      "aruba_osswitch",
     "dell":       "dell_os10",
-    "dell_n":     "dell_dnos6",   # N-Series (N1524P/N1548P/N2000/N3000) running DNOS6
+    "dell_n":     _DELL_N_TYPE,   # N-Series (N1524P/N1548P/N2000/N3000) running DNOS6
     "hp_comware": "hp_comware",   # HP V1910 / H3C Comware 5.x — system-view, quit
     "ubiquiti":   "ubiquiti_edge",
 }
