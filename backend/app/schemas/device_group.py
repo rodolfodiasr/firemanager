@@ -23,10 +23,15 @@ class DeviceGroupRead(BaseModel):
     description: str | None
     device_count: int
     category_counts: dict[str, int]
+    bookstack_chapter_id: int | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DeviceGroupBookstackLink(BaseModel):
+    bookstack_chapter_id: int | None = None
 
 
 class DeviceGroupDetail(DeviceGroupRead):

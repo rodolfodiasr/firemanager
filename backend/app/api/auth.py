@@ -172,6 +172,13 @@ async def require_tenant_admin(ctx: Annotated[TenantContext, Depends(get_tenant_
     return ctx
 
 
+async def require_reviewer(ctx: Annotated[TenantContext, Depends(get_tenant_context)]) -> TenantContext:
+    """Analyst or admin — can view and act on the review queue."""
+    if ctx.role == TenantRole.readonly:
+        raise HTTPException(status_code=403, detail="Requer papel de analista ou administrador")
+    return ctx
+
+
 async def resolve_tenant_access(token: str, tenant_id: UUID, db: AsyncSession) -> TenantContext:
     """Super admin OR tenant admin can access the given tenant's members."""
     payload = _decode_token(token)

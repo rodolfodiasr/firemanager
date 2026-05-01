@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import TenantContext, get_tenant_context
+from app.api.auth import TenantContext, get_tenant_context, require_tenant_admin
 from app.database import get_db
 from app.models.bulk_job import BulkJob, BulkJobStatus
 from app.models.device import Device
@@ -15,7 +15,7 @@ from app.models.operation import Operation, OperationStatus
 from app.models.user_tenant_role import TenantRole
 from app.schemas.bulk_job import BulkJobDetail, BulkJobRead, CategoryPlanSummary
 from app.schemas.device_group import (
-    DeviceGroupCreate, DeviceGroupDetail, DeviceGroupRead,
+    DeviceGroupBookstackLink, DeviceGroupCreate, DeviceGroupDetail, DeviceGroupRead,
     DeviceGroupUpdate, DeviceInGroup, GroupBulkJobCreate,
 )
 from app.schemas.operation import OperationRead
@@ -81,6 +81,7 @@ def _build_group_read(group: DeviceGroup, device_count: int, cat_counts: dict[st
         description=group.description,
         device_count=device_count,
         category_counts=cat_counts,
+        bookstack_chapter_id=group.bookstack_chapter_id,
         created_at=group.created_at,
         updated_at=group.updated_at,
     )
@@ -239,6 +240,26 @@ async def delete_group(
         raise HTTPException(status_code=403, detail="Sem permissão.")
     group = await _get_group(db, group_id, ctx.tenant.id)
     await db.delete(group)
+
+
+# ── BookStack link ────────────────────────────────────────────────────────────
+
+@router.patch("/{group_id}/bookstack", response_model=DeviceGroupRead)
+async def link_group_bookstack(
+    group_id: UUID,
+    data: DeviceGroupBookstackLink,
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> DeviceGroupRead:
+    """Set BookStack chapter ID for a device group (admin only)."""
+    group = await _get_group(db, group_id, ctx.tenant.id)
+    if data.bookstack_chapter_id is not None:
+        group.bookstack_chapter_id = data.bookstack_chapter_id
+    await db.flush()
+    await db.refresh(group)
+    cnt = await _member_count(db, group.id)
+    cat_counts = await _category_counts_for_groups(db, [group.id])
+    return _build_group_read(group, cnt, cat_counts.get(group.id, {}))
 
 
 # ── Apply — create BulkJob for this group ─────────────────────────────────────

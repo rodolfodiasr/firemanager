@@ -29,6 +29,7 @@ async def generate_action_plan(
     firmware_version: str | None,
     intent: str,
     collected_data: dict[str, Any],
+    bookstack_context: str = "",
 ) -> ActionPlan:
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
@@ -43,6 +44,16 @@ async def generate_action_plan(
         .replace("{intent}", intent)
         .replace("{collected_data}", json.dumps(collected_data, ensure_ascii=False, indent=2))
     )
+
+    if bookstack_context:
+        context_section = (
+            "## Documentação do dispositivo (BookStack)\n\n"
+            "Use as informações abaixo como contexto adicional para gerar o plano. "
+            "Priorize os dados coletados acima, mas considere a documentação para "
+            "inferir zonas, nomes de objetos e padrões do ambiente.\n\n"
+            f"{bookstack_context}\n\n---\n\n"
+        )
+        prompt = context_section + prompt
 
     message = await client.messages.create(
         model=settings.anthropic_model,

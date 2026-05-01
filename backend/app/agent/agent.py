@@ -29,8 +29,9 @@ _REQUIRED_FIELDS_BY_INTENT: dict[str, list[str]] = {
 class AgentSession:
     """Holds the state of an ongoing agent conversation for one operation."""
 
-    def __init__(self, device: Device) -> None:
+    def __init__(self, device: Device, bookstack_context: str = "") -> None:
         self.device = device
+        self.bookstack_context = bookstack_context
         self.conversation_history: list[dict[str, str]] = []
         self.intent: str | None = None
         self.collected_data: dict[str, Any] = {}
@@ -65,6 +66,7 @@ class AgentSession:
                 firmware_version=self.device.firmware_version,
                 intent=self.intent or "unknown",
                 collected_data=self.collected_data,
+                bookstack_context=self.bookstack_context,
             )
             self.ready_to_execute = True
             response = self._format_plan_summary()

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-sonnet-4-20250514"
     anthropic_max_tokens: int = 4000
 
+    # OpenAI (used only for pgvector embeddings)
+    openai_api_key: str = ""
+    openai_embedding_model: str = "text-embedding-3-small"
+
     # Server
     environment: str = "development"
     debug: bool = True

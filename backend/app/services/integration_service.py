@@ -242,12 +242,22 @@ async def test_zabbix(config: dict) -> dict:
     return {"success": ok, "message": message}
 
 
+async def test_bookstack(config: dict) -> dict:
+    from app.connectors.bookstack import connector_from_config
+    connector = connector_from_config(config)
+    start = time.monotonic()
+    ok, message = await connector.ping()
+    latency = (time.monotonic() - start) * 1000
+    return {"success": ok, "message": message, "latency_ms": latency}
+
+
 _TESTERS = {
-    IntegrationType.shodan:  test_shodan,
-    IntegrationType.wazuh:   test_wazuh,
-    IntegrationType.openvas: test_openvas,
-    IntegrationType.nmap:    test_nmap,
-    IntegrationType.zabbix:  test_zabbix,
+    IntegrationType.shodan:     test_shodan,
+    IntegrationType.wazuh:      test_wazuh,
+    IntegrationType.openvas:    test_openvas,
+    IntegrationType.nmap:       test_nmap,
+    IntegrationType.zabbix:     test_zabbix,
+    IntegrationType.bookstack:  test_bookstack,
 }
 
 

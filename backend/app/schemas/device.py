@@ -56,7 +56,23 @@ class DeviceRead(BaseModel):
     last_seen: datetime | None
     last_error: str | None
     notes: str | None
+    bookstack_page_id: int | None = None
+    bookstack_fm_page_id: int | None = None
+    bookstack_doc_page_id: int | None = None
+    bookstack_snapshot_page_id: int | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DeviceBookstackLink(BaseModel):
+    bookstack_page_id: int | None = None
+    bookstack_fm_page_id: int | None = None
+    bookstack_doc_page_id: int | None = None
+    bookstack_snapshot_page_id: int | None = None
+
+
+class DocDraftResult(BaseModel):
+    page_url: str
+    message: str

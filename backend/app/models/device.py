@@ -33,10 +33,11 @@ class VendorEnum(str, enum.Enum):
 
 
 class DeviceCategory(str, enum.Enum):
-    firewall  = "firewall"
-    router    = "router"
-    switch    = "switch"
-    l3_switch = "l3_switch"
+    firewall   = "firewall"
+    switch     = "switch"      # L2 access switches
+    routing    = "routing"     # L3 switches + routers (replaces router + l3_switch)
+    server     = "server"      # Linux/Windows servers via SSH
+    hypervisor = "hypervisor"  # VMware ESXi, Proxmox (future)
 
 
 class DeviceStatus(str, enum.Enum):
@@ -72,6 +73,14 @@ class Device(Base):
         Enum(DeviceCategory, native_enum=False), nullable=False, default=DeviceCategory.firewall
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # BookStack integration — human-maintained page for reading context
+    bookstack_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # BookStack integration — FM-owned changelog page
+    bookstack_fm_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # BookStack integration — FM-generated documentation draft page
+    bookstack_doc_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # BookStack integration — FM periodic snapshot page (current state, overwritten each run)
+    bookstack_snapshot_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

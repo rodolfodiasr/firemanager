@@ -13,6 +13,7 @@ from app.models.bulk_job import BulkJob, BulkJobStatus
 from app.models.device import Device
 from app.models.operation import Operation, OperationStatus
 from app.models.user_tenant_role import TenantRole
+from app.services.permission_service import resolve_device_role
 from app.schemas.bulk_job import BulkJobCreate, BulkJobDetail, BulkJobRead, CategoryPlanSummary
 from app.schemas.operation import OperationRead
 from app.schemas.variable import BulkJobPreviewRequest, BulkJobPreviewResponse, DevicePreview
@@ -163,10 +164,7 @@ async def create_bulk_job(
     ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> BulkJobDetail:
-    if ctx.role == TenantRole.readonly:
-        raise HTTPException(status_code=403, detail="Sem permissão para criar operações.")
-
-    # Validate and load all devices
+    # Validate, load and check permissions for all devices
     devices_map: dict[UUID, Device] = {}
     for device_id in data.device_ids:
         try:
@@ -174,6 +172,13 @@ async def create_bulk_job(
             devices_map[device_id] = dev
         except DeviceNotFoundError:
             raise HTTPException(status_code=404, detail=f"Dispositivo {device_id} não encontrado")
+
+        effective_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, dev.category)
+        if effective_role is None or effective_role == TenantRole.readonly:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Sem permissão para criar operações no dispositivo '{dev.name}' (categoria: {dev.category.value}).",
+            )
 
     # ── Phase 9: group by category ─────────────────────────────────────────────
     # Preserve the original ordering within each group
@@ -320,8 +325,6 @@ async def execute_bulk_job(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> BulkJobDetail:
-    if ctx.role == TenantRole.readonly:
-        raise HTTPException(status_code=403, detail="Sem permissão para executar operações.")
 
     job = await _get_bulk_job(db, bulk_job_id, ctx.tenant.id)
 
@@ -340,8 +343,19 @@ async def execute_bulk_job(
         if o.status in (OperationStatus.approved, OperationStatus.pending)
     ]
 
+    # Pre-load devices to check per-category permissions
+    exec_devices = await _fetch_devices_map(db, executable)
+
     errors: list[str] = []
     for op in executable:
+        dev = exec_devices.get(op.device_id)
+        if dev:
+            eff_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, dev.category)
+            if eff_role is None or eff_role == TenantRole.readonly:
+                errors.append(
+                    f"{dev.name}: sem permissão para executar em categoria '{dev.category.value}'"
+                )
+                continue
         try:
             await execute_operation(db, op.id)
         except Exception as exc:

@@ -105,14 +105,43 @@ async def submit_review(
     operation_id: UUID,
     approved: bool,
     comment: str,
+    reviewer_tenant_role: "TenantRole | None" = None,
+    tenant_id: "UUID | None" = None,
 ) -> Operation:
-    """N2 approves or denies an operation. Approval triggers execution."""
+    """N2/admin approves or denies an operation. Approval triggers execution.
+
+    Segregation of duties rules:
+    - No one may approve their own submission.
+    - Analysts may only approve operations submitted by readonly users.
+    - Admins may approve operations from any role.
+    """
+    from app.models.user_tenant_role import TenantRole, UserTenantRole
+
     result = await db.execute(select(Operation).where(Operation.id == operation_id))
     operation = result.scalar_one_or_none()
     if not operation:
         raise ValueError("Operação não encontrada")
     if operation.status != OperationStatus.pending_review:
         raise ValueError("Operação não está aguardando revisão")
+
+    if operation.user_id == reviewer.id:
+        raise ValueError("Não é permitido aprovar a própria operação (segregação de funções)")
+
+    if reviewer_tenant_role == TenantRole.analyst and tenant_id:
+        sub_result = await db.execute(
+            select(UserTenantRole).where(
+                and_(
+                    UserTenantRole.user_id == operation.user_id,
+                    UserTenantRole.tenant_id == tenant_id,
+                )
+            )
+        )
+        submitter_utr = sub_result.scalar_one_or_none()
+        if not submitter_utr or submitter_utr.role != TenantRole.readonly:
+            raise ValueError(
+                "Analistas só podem aprovar solicitações de usuários com perfil Leitura. "
+                "Operações de outros analistas ou administradores requerem aprovação de um administrador."
+            )
 
     operation.reviewer_id = reviewer.id
     operation.review_comment = comment.strip() or None
@@ -191,11 +220,28 @@ async def _enrich_operations(db: AsyncSession, ops: list[Operation]) -> list[Aud
     ]
 
 
-async def get_pending_operations(db: AsyncSession, tenant_id: UUID | None = None) -> list[AuditOperationRead]:
+async def get_pending_operations(
+    db: AsyncSession,
+    tenant_id: UUID | None = None,
+    reviewer_role: "TenantRole | None" = None,
+) -> list[AuditOperationRead]:
     from app.models.device import Device
+    from app.models.user_tenant_role import TenantRole, UserTenantRole
+
     query = select(Operation).where(Operation.status == OperationStatus.pending_review)
     if tenant_id:
         query = query.join(Device, Operation.device_id == Device.id).where(Device.tenant_id == tenant_id)
+
+    if reviewer_role == TenantRole.analyst:
+        # Analysts only see operations submitted by readonly users
+        readonly_users = select(UserTenantRole.user_id).where(
+            and_(
+                UserTenantRole.tenant_id == tenant_id,
+                UserTenantRole.role == TenantRole.readonly,
+            )
+        )
+        query = query.where(Operation.user_id.in_(readonly_users))
+
     result = await db.execute(query.order_by(Operation.created_at.desc()))
     return await _enrich_operations(db, list(result.scalars().all()))
 
@@ -232,11 +278,27 @@ async def get_history_operations(db: AsyncSession, tenant_id: UUID | None = None
     return await _enrich_operations(db, list(result.scalars().all()))
 
 
-async def get_pending_count(db: AsyncSession, tenant_id: UUID | None = None) -> int:
+async def get_pending_count(
+    db: AsyncSession,
+    tenant_id: UUID | None = None,
+    reviewer_role: "TenantRole | None" = None,
+) -> int:
     from app.models.device import Device
+    from app.models.user_tenant_role import TenantRole, UserTenantRole
+
     query = select(Operation).where(Operation.status == OperationStatus.pending_review)
     if tenant_id:
         query = query.join(Device, Operation.device_id == Device.id).where(Device.tenant_id == tenant_id)
+
+    if reviewer_role == TenantRole.analyst:
+        readonly_users = select(UserTenantRole.user_id).where(
+            and_(
+                UserTenantRole.tenant_id == tenant_id,
+                UserTenantRole.role == TenantRole.readonly,
+            )
+        )
+        query = query.where(Operation.user_id.in_(readonly_users))
+
     result = await db.execute(query)
     return len(result.scalars().all())
 

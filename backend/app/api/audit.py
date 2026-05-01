@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import TenantContext, get_tenant_context, require_tenant_admin
+from app.api.auth import TenantContext, get_tenant_context, require_reviewer, require_tenant_admin
 from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.device import Device
@@ -30,10 +30,12 @@ router = APIRouter()
 
 @router.get("/pending", response_model=list[AuditOperationRead])
 async def list_pending(
-    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    ctx: Annotated[TenantContext, Depends(require_reviewer)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> list[AuditOperationRead]:
-    return await audit_service.get_pending_operations(db, tenant_id=ctx.tenant.id)
+    return await audit_service.get_pending_operations(
+        db, tenant_id=ctx.tenant.id, reviewer_role=ctx.role,
+    )
 
 
 @router.get("/pending/count")
@@ -41,15 +43,17 @@ async def pending_count(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
-    if ctx.role != TenantRole.admin:
+    if ctx.role == TenantRole.readonly:
         return {"count": 0}
-    count = await audit_service.get_pending_count(db, tenant_id=ctx.tenant.id)
+    count = await audit_service.get_pending_count(
+        db, tenant_id=ctx.tenant.id, reviewer_role=ctx.role,
+    )
     return {"count": count}
 
 
 @router.get("/direct", response_model=list[AuditOperationRead])
 async def list_direct(
-    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    ctx: Annotated[TenantContext, Depends(require_reviewer)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> list[AuditOperationRead]:
     return await audit_service.get_direct_operations(db, tenant_id=ctx.tenant.id)
@@ -57,7 +61,7 @@ async def list_direct(
 
 @router.get("/history", response_model=list[AuditOperationRead])
 async def list_history(
-    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    ctx: Annotated[TenantContext, Depends(require_reviewer)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> list[AuditOperationRead]:
     return await audit_service.get_history_operations(db, tenant_id=ctx.tenant.id)
@@ -67,7 +71,7 @@ async def list_history(
 async def review_operation(
     operation_id: UUID,
     body: ReviewRequest,
-    ctx:  Annotated[TenantContext, Depends(require_tenant_admin)],
+    ctx:  Annotated[TenantContext, Depends(require_reviewer)],
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     try:
@@ -77,6 +81,8 @@ async def review_operation(
             operation_id=operation_id,
             approved=body.approved,
             comment=body.comment,
+            reviewer_tenant_role=ctx.role,
+            tenant_id=ctx.tenant.id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

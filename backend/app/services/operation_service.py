@@ -159,6 +159,7 @@ from app.models.snapshot import Snapshot
 from app.policy_engine.schemas import IntentType
 from app.policy_engine.translator import translate_to_connector_spec
 from app.policy_engine.validator import validate_action_plan
+from app.services.bookstack_service import append_changelog, fetch_bookstack_context
 from app.services.device_service import get_device
 from app.utils.integrity import compute_record_hash
 
@@ -193,7 +194,8 @@ async def start_or_continue_operation(
         db.add(operation)
         await db.flush()
         await db.refresh(operation)
-        session = AgentSession(device)
+        bookstack_context = await fetch_bookstack_context(db, device, query=user_message)
+        session = AgentSession(device, bookstack_context=bookstack_context)
         _sessions[operation.id] = session
     else:
         result = await db.execute(select(Operation).where(Operation.id == operation_id))
@@ -296,6 +298,8 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
             operation.error_message = str(exc)
         await db.flush()
         await db.refresh(operation)
+        if operation.status == OperationStatus.completed:
+            await append_changelog(db, device, operation)
         return operation
     # ── REST-API vendors (existing routing below) ─────────────────────────────
 
@@ -561,4 +565,8 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
 
     await db.flush()
     await db.refresh(operation)
+
+    if operation.status == OperationStatus.completed:
+        await append_changelog(db, device, operation)
+
     return operation

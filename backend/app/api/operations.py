@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.device import Device
 from app.models.operation import Operation, OperationStatus
 from app.models.user_tenant_role import TenantRole
+from app.services.permission_service import resolve_device_role
 from app.schemas.operation import ChatMessage, OperationCreate, OperationRead
 from app.services.device_service import DeviceNotFoundError, get_device
 from app.services.operation_service import (
@@ -110,7 +111,17 @@ async def execute_op(
 ) -> OperationRead:
     operation = await _get_tenant_operation(db, operation_id, ctx.tenant.id)
 
-    if ctx.role == TenantRole.analyst and operation.intent:
+    device_result = await db.execute(select(Device).where(Device.id == operation.device_id))
+    device = device_result.scalar_one()
+    effective_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, device.category)
+
+    if effective_role is None or effective_role == TenantRole.readonly:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Sem permissão para executar operações em dispositivos do tipo '{device.category.value}'.",
+        )
+
+    if effective_role == TenantRole.analyst and operation.intent:
         from app.services.audit_service import check_requires_approval
         if await check_requires_approval(db, ctx.user, operation.intent):
             raise HTTPException(
@@ -118,7 +129,7 @@ async def execute_op(
                 detail="Esta operação requer aprovação N2. Use 'Enviar para Revisão'.",
             )
 
-    mark_direct = ctx.role == TenantRole.analyst
+    mark_direct = effective_role == TenantRole.analyst
     try:
         operation = await execute_operation(db, operation_id, mark_direct=mark_direct)
     except OperationNotFoundError as exc:
@@ -189,15 +200,20 @@ async def create_direct_ssh_operation(
     ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> OperationRead:
-    if ctx.role == TenantRole.readonly:
-        raise HTTPException(status_code=403, detail="Sem permissão para criar operações.")
     if not data.ssh_commands:
         raise HTTPException(status_code=400, detail="Nenhum comando SSH fornecido.")
 
     try:
-        await get_device(db, data.device_id, tenant_id=ctx.tenant.id)
+        device = await get_device(db, data.device_id, tenant_id=ctx.tenant.id)
     except DeviceNotFoundError:
         raise HTTPException(status_code=404, detail="Dispositivo não encontrado.")
+
+    effective_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, device.category)
+    if effective_role is None or effective_role == TenantRole.readonly:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Sem permissão para operações SSH em dispositivos do tipo '{device.category.value}'.",
+        )
 
     action_plan: dict = {
         "intent": "direct_ssh",

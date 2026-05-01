@@ -11,11 +11,12 @@ from app.database import Base
 
 
 class IntegrationType(str, enum.Enum):
-    shodan  = "shodan"
-    wazuh   = "wazuh"
-    openvas = "openvas"
-    nmap    = "nmap"
-    zabbix  = "zabbix"
+    shodan     = "shodan"
+    wazuh      = "wazuh"
+    openvas    = "openvas"
+    nmap       = "nmap"
+    zabbix     = "zabbix"
+    bookstack  = "bookstack"
 
 
 class Integration(Base):

@@ -25,3 +25,5 @@ aiofiles==23.2.1
 structlog==24.2.0
 prometheus-fastapi-instrumentator==7.0.0
 pywinrm==0.4.3
+openai>=1.0.0
+pgvector>=0.3.0

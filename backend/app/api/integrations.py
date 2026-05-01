@@ -2,6 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -11,6 +12,7 @@ from app.api.auth import (
     get_tenant_context,
     oauth2_scheme,
     require_super_admin,
+    require_tenant_admin,
 )
 from app.database import get_db
 from app.models.integration import IntegrationType
@@ -23,6 +25,24 @@ from app.services.integration_service import (
     update_integration,
 )
 from app.utils.crypto import decrypt_credentials
+
+
+# ── BookStack browser response schemas ────────────────────────────────────────
+
+class BSBookItem(BaseModel):
+    id: int
+    name: str
+    slug: str
+
+class BSChapterItem(BaseModel):
+    id: int
+    name: str
+    slug: str
+
+class BSPageItem(BaseModel):
+    id: int
+    name: str
+    slug: str
 
 router = APIRouter()
 
@@ -173,3 +193,94 @@ async def run_test(
     config = decrypt_credentials(intg.encrypted_config)
     result_data = await test_integration(intg.type, config)
     return TestResult(**result_data)
+
+
+# ── BookStack browser helpers (for frontend dropdowns) ────────────────────────
+
+async def _get_bookstack_integration(db: AsyncSession, integration_id: UUID) -> dict:
+    from sqlalchemy import select
+    from app.models.integration import Integration
+    result = await db.execute(select(Integration).where(
+        Integration.id == integration_id,
+        Integration.type == IntegrationType.bookstack,
+        Integration.is_active.is_(True),
+    ))
+    intg = result.scalar_one_or_none()
+    if not intg:
+        raise HTTPException(status_code=404, detail="Integração BookStack não encontrada ou inativa")
+    return decrypt_credentials(intg.encrypted_config)
+
+
+@router.get("/{integration_id}/bookstack/books", response_model=list[BSBookItem])
+async def bookstack_list_books(
+    integration_id: UUID,
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> list[BSBookItem]:
+    """List all books available in this BookStack instance."""
+    from app.connectors.bookstack import connector_from_config
+    config = await _get_bookstack_integration(db, integration_id)
+    connector = connector_from_config(config)
+    books = await connector.list_books()
+    return [BSBookItem(id=b.id, name=b.name, slug=b.slug) for b in books]
+
+
+@router.get("/{integration_id}/bookstack/chapters/{book_id}", response_model=list[BSChapterItem])
+async def bookstack_list_chapters(
+    integration_id: UUID,
+    book_id: int,
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> list[BSChapterItem]:
+    """List chapters inside a specific book."""
+    from app.connectors.bookstack import connector_from_config
+    config = await _get_bookstack_integration(db, integration_id)
+    connector = connector_from_config(config)
+    chapters = await connector.list_chapters(book_id)
+    return [BSChapterItem(id=ch.id, name=ch.name, slug=ch.slug) for ch in chapters]
+
+
+@router.get("/{integration_id}/bookstack/pages/{chapter_id}", response_model=list[BSPageItem])
+async def bookstack_list_pages(
+    integration_id: UUID,
+    chapter_id: int,
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> list[BSPageItem]:
+    """List pages inside a specific chapter."""
+    from app.connectors.bookstack import connector_from_config
+    config = await _get_bookstack_integration(db, integration_id)
+    connector = connector_from_config(config)
+    pages = await connector.list_pages_in_chapter(chapter_id)
+    return [BSPageItem(id=p.id, name=p.name, slug=p.slug) for p in pages]
+
+
+# ── BookStack re-index (manual trigger) ──────────────────────────────────────
+
+@router.post("/{integration_id}/bookstack/reindex", status_code=202)
+async def bookstack_reindex(
+    integration_id: UUID,
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> dict[str, str]:
+    """Trigger an immediate BookStack re-indexing for this integration (admin only).
+
+    Dispatches the Celery task asynchronously and returns immediately.
+    Use GET /integrations to monitor; check Celery logs for progress.
+    """
+    from sqlalchemy import select
+    from app.models.integration import Integration
+    from app.workers.bookstack_index import run_bookstack_indexing
+
+    result = await db.execute(select(Integration).where(
+        Integration.id == integration_id,
+        Integration.type == IntegrationType.bookstack,
+    ))
+    intg = result.scalar_one_or_none()
+    if not intg:
+        raise HTTPException(status_code=404, detail="Integração BookStack não encontrada")
+    if intg.tenant_id not in (ctx.tenant.id, None):
+        raise HTTPException(status_code=403, detail="Sem acesso a esta integração")
+
+    run_bookstack_indexing.delay()
+    return {"message": "Reindexação iniciada em background. Acompanhe pelos logs do Celery."}
