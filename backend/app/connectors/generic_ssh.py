@@ -7,12 +7,49 @@ Supports: Cisco IOS/IOS-XE, Cisco NX-OS, Juniper JunOS, Aruba OS-CX,
 import asyncio
 import re
 import time
+import types
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
+import paramiko
 from netmiko import ConnectHandler, NetmikoAuthenticationException, NetmikoTimeoutException
 
 from app.models.device import Device
+
+
+class _PasswordOnlySSHClient(paramiko.SSHClient):
+    """Paramiko SSHClient that forces password auth, skipping keyboard-interactive.
+
+    Some switches (Dell N-Series) advertise keyboard-interactive as supported but
+    then reject it with BadAuthenticationType, which Netmiko surfaces as an auth
+    failure before password auth is ever tried. Overriding _auth avoids this.
+    """
+
+    def _auth(self, username, password, *args, **kwargs):  # noqa: ANN001
+        self._transport.auth_password(username, password, fallback=False)
+
+
+@contextmanager
+def _force_password_connect(params: dict):
+    """Netmiko ConnectHandler context manager that uses _PasswordOnlySSHClient."""
+    conn_params = {**params, "auto_connect": False}
+    conn = ConnectHandler(**conn_params)
+
+    def _pw_only_client(self):  # noqa: ANN001
+        client = _PasswordOnlySSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        return client
+
+    conn._build_ssh_client = types.MethodType(_pw_only_client, conn)
+    conn._open()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.disconnect()
+        except Exception:
+            pass
 
 
 @dataclass
@@ -100,6 +137,13 @@ class GenericSSHConnector:
             )
         return params
 
+    def _connect_handler(self):
+        """Return appropriate context manager: password-only for dell_n, standard otherwise."""
+        params = self._connect_params()
+        if self.vendor == "dell_n":
+            return _force_password_connect(params)
+        return ConnectHandler(**params)
+
     @staticmethod
     def _clean(text: str) -> str:
         return _ANSI_RE.sub("", text).replace("\r", "")
@@ -170,7 +214,7 @@ class GenericSSHConnector:
             return self._show_sync(commands)
 
         try:
-            with ConnectHandler(**self._connect_params()) as conn:
+            with self._connect_handler() as conn:
                 if self.vendor in _NEEDS_ENABLE:
                     conn.enable()
                 if self.vendor == "hp_comware":
@@ -299,7 +343,7 @@ class GenericSSHConnector:
     def _show_sync(self, commands: list[str]) -> SSHResult:
         try:
             parts: list[str] = []
-            with ConnectHandler(**self._connect_params()) as conn:
+            with self._connect_handler() as conn:
                 if self.vendor in _NEEDS_ENABLE:
                     conn.enable()
                 if self.vendor == "hp_comware":
@@ -322,7 +366,7 @@ class GenericSSHConnector:
     def _test_sync(self) -> SSHResult:
         cmd = "display version" if self.vendor == "hp_comware" else "show version"
         try:
-            with ConnectHandler(**self._connect_params()) as conn:
+            with self._connect_handler() as conn:
                 if self.vendor in _NEEDS_ENABLE:
                     conn.enable()
                 if self.vendor == "hp_comware":
