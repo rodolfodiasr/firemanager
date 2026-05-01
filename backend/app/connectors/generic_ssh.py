@@ -54,6 +54,7 @@ _ERROR_RE = re.compile(
 )
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_MORE_RE = re.compile(r"\s*----\s*More\s*----\s*", re.IGNORECASE)
 
 
 class GenericSSHConnector:
@@ -264,6 +265,30 @@ class GenericSSHConnector:
         except Exception as exc:
             return SSHResult(success=False, error=str(exc))
 
+    def _comware_send_display(self, conn, cmd: str, timeout: int = 90) -> str:
+        """Send a Comware display command and handle ---- More ---- paging manually.
+
+        V1910 Comware Lite does not support | no-more or screen-length disable.
+        We send space to dismiss each More prompt and stop on the base prompt.
+        """
+        conn.write_channel(cmd + "\n")
+        parts: list[str] = []
+        deadline = time.time() + timeout
+        prompt = conn.base_prompt  # e.g. "HP V1910 Switch"
+
+        while time.time() < deadline:
+            time.sleep(0.5)
+            chunk = conn.read_channel()
+            if chunk:
+                parts.append(chunk)
+                if "---- More ----" in chunk or "----More----" in chunk:
+                    conn.write_channel(" ")
+                elif f"<{prompt}>" in chunk or f"[{prompt}]" in chunk:
+                    break
+
+        raw = "".join(parts)
+        return _MORE_RE.sub("", raw)
+
     def _show_sync(self, commands: list[str]) -> SSHResult:
         try:
             parts: list[str] = []
@@ -273,11 +298,10 @@ class GenericSSHConnector:
                 if self.vendor == "hp_comware":
                     self._enter_cmdline_mode(conn)
                 for cmd in commands:
-                    effective_cmd = cmd
                     if self.vendor == "hp_comware" and cmd.strip().lower().startswith("display "):
-                        # Comware 5.x pager bypass: | no-more prevents ---- More ---- pauses
-                        effective_cmd = cmd.rstrip() + " | no-more"
-                    out = conn.send_command(effective_cmd, read_timeout=60)
+                        out = self._comware_send_display(conn, cmd)
+                    else:
+                        out = conn.send_command(cmd, read_timeout=60)
                     parts.append(out)
             combined = self._clean("\n".join(parts))
             return SSHResult(success=True, output=combined, commands_executed=commands)
