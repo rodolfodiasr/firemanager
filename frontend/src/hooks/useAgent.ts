@@ -263,13 +263,18 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
             };
           }
         } else {
-          summary = "Operação executada com sucesso!";
+          const rawResult = ap?.result;
+          if (typeof rawResult === "string" && rawResult.trim()) {
+            summary = rawResult;
+          } else {
+            summary = "Operação executada com sucesso!";
+          }
         }
 
         addMessage("assistant", summary || "Operação executada com sucesso!", tableData);
         toast.success("Operação concluída!");
       } else {
-        addMessage("assistant", `Erro na execução: ${operation.error_message}`);
+        addMessage("assistant", `Erro na execução: ${operation.error_message ?? "erro desconhecido"}`);
         toast.error("Falha na execução");
       }
       resetSession();
