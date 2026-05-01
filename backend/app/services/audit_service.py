@@ -42,7 +42,7 @@ _DEFAULT_REQUIRES_APPROVAL: dict[str, bool] = {
 
 _READ_ONLY_INTENTS = {
     "list_rules", "list_nat_policies", "list_route_policies",
-    "get_security_status", "health_check", "get_snapshot",
+    "get_security_status", "health_check",
 }
 
 
