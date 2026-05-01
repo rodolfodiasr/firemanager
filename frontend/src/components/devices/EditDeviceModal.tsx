@@ -3,6 +3,12 @@ import { useForm } from "react-hook-form";
 import { X } from "lucide-react";
 import type { Device, DeviceCreate } from "../../types/device";
 
+// Vendors that connect via SSH username/password only (no API token option)
+const SSH_VENDORS = new Set([
+  "cisco_ios", "cisco_nxos", "juniper", "aruba",
+  "dell", "dell_n", "ubiquiti", "hp_comware",
+]);
+
 interface EditDeviceModalProps {
   isOpen: boolean;
   device: Device | null;
@@ -47,7 +53,10 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
       notes: data.notes,
     };
     if (changeCredentials) {
-      payload.credentials = data.credentials;
+      payload.credentials = {
+        ...data.credentials,
+        auth_type: SSH_VENDORS.has(device.vendor) ? "ssh" : data.credentials.auth_type,
+      };
     }
     await onSubmit(device.id, payload);
     handleClose();
@@ -121,17 +130,8 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
 
           {changeCredentials && (
             <div className="border rounded-lg p-3 bg-gray-50 space-y-2">
-              {device.vendor !== "hp_comware" && (
-                <select
-                  {...register("credentials.auth_type")}
-                  className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
-                >
-                  <option value="token">API Token</option>
-                  <option value="user_pass">Usuário / Senha</option>
-                </select>
-              )}
-
-              {device.vendor === "hp_comware" ? (
+              {/* SSH vendors always use username + password — no auth_type toggle */}
+              {SSH_VENDORS.has(device.vendor) ? (
                 <>
                   <input
                     {...register("credentials.username")}
@@ -144,42 +144,55 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
                     placeholder="Senha SSH"
                     type="password"
                   />
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Senha cmdline-mode{" "}
-                      <span className="text-red-500 font-normal">(obrigatória para V1910)</span>
-                    </label>
-                    <input
-                      {...register("credentials.cmdline_password")}
-                      className="w-full border rounded-lg px-3 py-2 text-sm"
-                      placeholder="Ex: 512900"
-                      type="password"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      Usada no <code className="bg-gray-100 px-1 rounded">_cmdline-mode on</code> — necessária para todas as operações
-                    </p>
-                  </div>
+                  {device.vendor === "hp_comware" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Senha cmdline-mode{" "}
+                        <span className="text-red-500 font-normal">(obrigatória para V1910)</span>
+                      </label>
+                      <input
+                        {...register("credentials.cmdline_password")}
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                        placeholder="Ex: 512900"
+                        type="password"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Usada no <code className="bg-gray-100 px-1 rounded">_cmdline-mode on</code> — necessária para todas as operações
+                      </p>
+                    </div>
+                  )}
                 </>
-              ) : authType === "token" ? (
-                <input
-                  {...register("credentials.token")}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                  placeholder="API Token"
-                  type="password"
-                />
               ) : (
                 <>
-                  <input
-                    {...register("credentials.username")}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                    placeholder="Usuário"
-                  />
-                  <input
-                    {...register("credentials.password")}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                    placeholder="Senha"
-                    type="password"
-                  />
+                  <select
+                    {...register("credentials.auth_type")}
+                    className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
+                  >
+                    <option value="token">API Token</option>
+                    <option value="user_pass">Usuário / Senha</option>
+                  </select>
+                  {authType === "token" ? (
+                    <input
+                      {...register("credentials.token")}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      placeholder="API Token"
+                      type="password"
+                    />
+                  ) : (
+                    <>
+                      <input
+                        {...register("credentials.username")}
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                        placeholder="Usuário"
+                      />
+                      <input
+                        {...register("credentials.password")}
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                        placeholder="Senha"
+                        type="password"
+                      />
+                    </>
+                  )}
                 </>
               )}
             </div>
