@@ -104,24 +104,31 @@ class GenericSSHConnector:
     # ── sync helpers (run inside ThreadPoolExecutor) ─────────────────────────
 
     def _enter_cmdline_mode(self, conn) -> None:
-        """Send _cmdline-mode on + Y/N confirm + password for HP Comware V1910/V1920."""
+        """Send _cmdline-mode on + Y/N confirms + password for HP Comware V1910/V1920.
+
+        V1910 shows TWO [Y/N] prompts before the password:
+          1. "All commands can be displayed and executed. Continue? [Y/N]:"
+          2. "Before pressing ENTER you must choose 'YES' or 'NO'[Y/N]:"
+        Other firmware may show only one. We loop up to 2 times.
+        """
         cmdline_pwd = self.credentials.get("cmdline_password", "")
         if not cmdline_pwd:
             raise ValueError(
                 "HP Comware requer 'Senha cmdline-mode' nas credenciais do dispositivo. "
                 "Edite o dispositivo e preencha o campo 'Senha cmdline-mode' (ex: 512900)."
             )
-        # Wait for [Y/N] confirm or direct password prompt
         output = conn.send_command(
             "_cmdline-mode on",
             expect_string=r"[Pp]assword|\[Y/N\]|[>#]",
             read_timeout=10,
         )
-        # HP 1910 asks "Continue? [Y/N]" before the password prompt
-        if "Y/N" in output or "Continue" in output:
+        # Handle up to 2 Y/N confirmations before the password prompt
+        for _ in range(2):
+            if "[Y/N]" not in output and "yes" not in output.lower():
+                break
             output = conn.send_command(
                 "y",
-                expect_string=r"[Pp]assword|[>#]",
+                expect_string=r"[Pp]assword|\[Y/N\]|[>#]",
                 read_timeout=10,
             )
         if "assword" in output or "password" in output.lower():
