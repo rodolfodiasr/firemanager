@@ -141,6 +141,17 @@ const INTEGRATION_META: Record<IntegrationType, {
       { key: "verify_ssl", label: "Verificar SSL", type: "checkbox" },
     ],
   },
+  bookstack: {
+    label: "BookStack",
+    description: "Base de conhecimento — documentação de dispositivos, fluxos e políticas via RAG.",
+    color: "bg-sky-100 text-sky-700",
+    fields: [
+      { key: "base_url", label: "URL do BookStack", placeholder: "https://bookstack.suaempresa.com" },
+      { key: "token_id", label: "Token ID", placeholder: "ID do token de API" },
+      { key: "token_secret", label: "Token Secret", type: "password", placeholder: "Secret do token de API" },
+      { key: "book_id", label: "ID do Livro (book_id)", placeholder: "1" },
+    ],
+  },
 };
 
 interface IntegrationCardProps {
@@ -167,6 +178,7 @@ function IntegrationCard({ type, existing, tenantId, isSuperAdmin }: Integration
       meta.fields.forEach((f) => {
         if (f.type === "checkbox") config[f.key] = formData[f.key] === "true" || formData[f.key] === "on";
         else if (f.key === "port") config[f.key] = parseInt(formData[f.key]) || 9390;
+        else if (f.key === "book_id") config[f.key] = parseInt(formData[f.key]) || 1;
         else config[f.key] = formData[f.key];
       });
 
@@ -341,7 +353,7 @@ function IntegrationsSection() {
     );
   }
 
-  const types: IntegrationType[] = ["shodan", "wazuh", "zabbix", "openvas", "nmap"];
+  const types: IntegrationType[] = ["shodan", "wazuh", "zabbix", "openvas", "nmap", "bookstack"];
 
   return (
     <div>
