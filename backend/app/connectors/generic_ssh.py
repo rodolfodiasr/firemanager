@@ -348,11 +348,16 @@ class GenericSSHConnector:
                     conn.enable()
                 if self.vendor == "hp_comware":
                     self._enter_cmdline_mode(conn)
+                if self.vendor == "dell_n":
+                    # DNOS6 paging must be disabled again after enable — session_preparation
+                    # sends terminal length 0 in user-exec mode which some firmware ignores
+                    # in privileged mode; re-sending here prevents pattern-detect timeouts
+                    conn.send_command_timing("terminal length 0", last_read=1.0)
                 for cmd in commands:
                     if self.vendor == "hp_comware" and cmd.strip().lower().startswith("display "):
                         out = self._comware_send_display(conn, cmd)
                     else:
-                        out = conn.send_command(cmd, read_timeout=60)
+                        out = conn.send_command(cmd, read_timeout=90)
                     parts.append(out)
             combined = self._clean("\n".join(parts))
             return SSHResult(success=True, output=combined, commands_executed=commands)
@@ -371,7 +376,9 @@ class GenericSSHConnector:
                     conn.enable()
                 if self.vendor == "hp_comware":
                     self._enter_cmdline_mode(conn)
-                out = conn.send_command(cmd, read_timeout=20)
+                if self.vendor == "dell_n":
+                    conn.send_command_timing("terminal length 0", last_read=1.0)
+                out = conn.send_command(cmd, read_timeout=30)
             clean = self._clean(out)
             return SSHResult(success=True, output=clean[:400])
         except NetmikoAuthenticationException as exc:
