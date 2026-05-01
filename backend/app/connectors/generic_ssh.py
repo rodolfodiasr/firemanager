@@ -273,7 +273,11 @@ class GenericSSHConnector:
                 if self.vendor == "hp_comware":
                     self._enter_cmdline_mode(conn)
                 for cmd in commands:
-                    out = conn.send_command(cmd, read_timeout=30)
+                    effective_cmd = cmd
+                    if self.vendor == "hp_comware" and cmd.strip().lower().startswith("display "):
+                        # Comware 5.x pager bypass: | no-more prevents ---- More ---- pauses
+                        effective_cmd = cmd.rstrip() + " | no-more"
+                    out = conn.send_command(effective_cmd, read_timeout=60)
                     parts.append(out)
             combined = self._clean("\n".join(parts))
             return SSHResult(success=True, output=combined, commands_executed=commands)
