@@ -6,6 +6,7 @@ Supports: Cisco IOS/IOS-XE, Cisco NX-OS, Juniper JunOS, Aruba OS-CX,
 """
 import asyncio
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
@@ -106,10 +107,8 @@ class GenericSSHConnector:
     def _enter_cmdline_mode(self, conn) -> None:
         """Send _cmdline-mode on + Y/N confirms + password for HP Comware V1910/V1920.
 
-        V1910 shows TWO [Y/N] prompts before the password:
-          1. "All commands can be displayed and executed. Continue? [Y/N]:"
-          2. "Before pressing ENTER you must choose 'YES' or 'NO'[Y/N]:"
-        Other firmware may show only one. We loop up to 2 times.
+        Uses raw write_channel/read_channel with timing to avoid Netmiko send_command
+        pattern-matching failures. V1910 shows up to TWO [Y/N] prompts before password.
         """
         cmdline_pwd = self.credentials.get("cmdline_password", "")
         if not cmdline_pwd:
@@ -117,26 +116,28 @@ class GenericSSHConnector:
                 "HP Comware requer 'Senha cmdline-mode' nas credenciais do dispositivo. "
                 "Edite o dispositivo e preencha o campo 'Senha cmdline-mode' (ex: 512900)."
             )
-        output = conn.send_command(
-            "_cmdline-mode on",
-            expect_string=r"[Pp]assword|\[Y/N\]|[>#]",
-            read_timeout=10,
-        )
-        # Handle up to 2 Y/N confirmations before the password prompt
-        for _ in range(2):
-            if "[Y/N]" not in output and "yes" not in output.lower():
-                break
-            output = conn.send_command(
-                "y",
-                expect_string=r"[Pp]assword|\[Y/N\]|[>#]",
-                read_timeout=10,
-            )
+        conn.write_channel("_cmdline-mode on\n")
+        time.sleep(1.5)
+        output = conn.read_channel()
+
+        # First Y/N: "Continue? [Y/N]:"
+        if "[Y/N]" in output or "Y/N" in output:
+            conn.write_channel("y\n")
+            time.sleep(1.0)
+            output = conn.read_channel()
+
+        # Second Y/N: "Before pressing ENTER you must choose 'YES' or 'NO'[Y/N]:"
+        if "[Y/N]" in output or "Y/N" in output:
+            conn.write_channel("y\n")
+            time.sleep(1.0)
+            output = conn.read_channel()
+
+        # Password prompt
         if "assword" in output or "password" in output.lower():
-            conn.send_command(
-                cmdline_pwd,
-                expect_string=r"[>#]",
-                read_timeout=10,
-            )
+            conn.write_channel(cmdline_pwd + "\n")
+            time.sleep(1.5)
+            conn.read_channel()
+
         # Re-sync Netmiko's prompt detection after _cmdline-mode changes device state
         conn.set_base_prompt()
 
