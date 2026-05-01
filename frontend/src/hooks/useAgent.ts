@@ -263,9 +263,10 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
             };
           }
         } else {
-          const rawResult = ap?.result;
-          if (typeof rawResult === "string" && rawResult.trim()) {
-            summary = rawResult;
+          const result = ap?.result as Record<string, unknown> | undefined;
+          const sshOutput = result?.output as string | undefined;
+          if (sshOutput?.trim()) {
+            summary = sshOutput;
           } else {
             summary = "Operação executada com sucesso!";
           }
