@@ -57,7 +57,11 @@ async def _async_index() -> dict[str, int]:
             try:
                 from app.connectors.bookstack import connector_from_config
                 connector = connector_from_config(config)
-                pages = await connector.list_pages_in_book(int(book_id))
+                chapter_id = config.get("chapter_id")
+                if chapter_id:
+                    pages = await connector.list_pages_in_chapter(int(chapter_id))
+                else:
+                    pages = await connector.list_pages_in_book(int(book_id))
                 live_page_ids: set[int] = set()
 
                 for page in pages:
