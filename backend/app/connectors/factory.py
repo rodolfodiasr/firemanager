@@ -1,12 +1,22 @@
 from app.connectors.base import BaseConnector
 from app.connectors.endian import EndianConnector
 from app.connectors.fortinet import FortinetConnector
-from app.connectors.generic_ssh import GenericSSHConnector
 from app.connectors.mikrotik import MikroTikConnector
 from app.connectors.opnsense import OPNsenseConnector
 from app.connectors.pfsense import PfSenseConnector
 from app.connectors.sonicwall import SonicWallConnector
 from app.connectors.sonicwall_ssh import SonicWallSSHConnector
+from app.connectors.ssh import (
+    ArubaConnector,
+    BaseSSHConnector,
+    CiscoIOSConnector,
+    CiscoNXOSConnector,
+    DellNConnector,
+    DellOS10Connector,
+    HPComwareConnector,
+    JuniperConnector,
+    UbiquitiConnector,
+)
 from app.models.device import Device, VendorEnum
 from app.utils.crypto import decrypt_credentials
 
@@ -22,9 +32,21 @@ CLI_VENDORS = frozenset({
     VendorEnum.ubiquiti,
 })
 
+_SSH_CONNECTOR_MAP: dict[VendorEnum, type[BaseSSHConnector]] = {
+    VendorEnum.cisco_ios:  CiscoIOSConnector,
+    VendorEnum.cisco_nxos: CiscoNXOSConnector,
+    VendorEnum.juniper:    JuniperConnector,
+    VendorEnum.aruba:      ArubaConnector,
+    VendorEnum.dell:       DellOS10Connector,
+    VendorEnum.dell_n:     DellNConnector,
+    VendorEnum.hp_comware: HPComwareConnector,
+    VendorEnum.ubiquiti:   UbiquitiConnector,
+}
 
-def get_ssh_connector(device: Device):
+
+def get_ssh_connector(device: Device) -> BaseSSHConnector:
     creds = decrypt_credentials(device.encrypted_credentials)
+
     if device.vendor == VendorEnum.sonicwall:
         return SonicWallSSHConnector(
             host=device.host,
@@ -32,8 +54,11 @@ def get_ssh_connector(device: Device):
             password=creds.get("password", ""),
             ssh_port=int(creds.get("ssh_port", 22)),
         )
-    if device.vendor in CLI_VENDORS:
-        return GenericSSHConnector(device=device, credentials=creds)
+
+    connector_cls = _SSH_CONNECTOR_MAP.get(device.vendor)
+    if connector_cls:
+        return connector_cls(device=device, credentials=creds)
+
     raise NotImplementedError(f"SSH connector not implemented for vendor: {device.vendor}")
 
 

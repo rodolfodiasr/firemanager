@@ -1,8 +1,6 @@
 """
-Generic SSH/CLI connector using Netmiko.
-Supports: Cisco IOS/IOS-XE, Cisco NX-OS, Juniper JunOS, Aruba OS-CX,
-          DELL OS10/PowerConnect, DELL DNOS6 (N-Series),
-          HP/H3C Comware (V1910, V3600, V5800).
+DEPRECATED — replaced by app.connectors.ssh.* per-vendor connectors.
+Kept for reference only. factory.py no longer imports from this module.
 """
 import asyncio
 import re
