@@ -788,7 +788,13 @@ class SonicWallConnector(BaseConnector):
         for p in ("tcp", "udp", "icmp", "icmpv6"):
             if p in obj:
                 pdata = obj[p]
-                b, e = str(pdata.get("begin", "")), str(pdata.get("end", ""))
+                if isinstance(pdata, dict):
+                    b, e = str(pdata.get("begin", "")), str(pdata.get("end", ""))
+                elif isinstance(pdata, (int, str)):
+                    # SonicOS sometimes returns port as plain scalar
+                    b = e = str(pdata)
+                else:
+                    b = e = ""
                 port = b if b == e else f"{b}-{e}"
                 return p.upper(), port
         return "other", ""
