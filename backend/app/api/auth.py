@@ -138,6 +138,10 @@ async def get_tenant_context(
     if payload.get("support") and user.is_super_admin:
         return TenantContext(user=user, tenant=tenant, role=TenantRole.readonly)
 
+    # Assumed tenant: super admin selected a tenant context → full admin access
+    if user.is_super_admin:
+        return TenantContext(user=user, tenant=tenant, role=TenantRole.admin)
+
     result = await db.execute(
         select(UserTenantRole).where(
             UserTenantRole.user_id == user.id,
@@ -361,6 +365,27 @@ async def verify_mfa(
     current_user.mfa_enabled = True
     await db.flush()
     return {"mfa_enabled": True}
+
+
+@router.post("/assume-tenant", response_model=TokenResponse)
+async def assume_tenant(
+    body: dict,
+    admin: Annotated[User, Depends(require_super_admin)],
+    db:    Annotated[AsyncSession, Depends(get_db)],
+) -> TokenResponse:
+    """Super admin assumes a tenant context to act as tenant admin."""
+    tenant_id_str = body.get("tenant_id", "")
+    if not tenant_id_str:
+        raise HTTPException(status_code=400, detail="tenant_id obrigatório")
+    result = await db.execute(select(Tenant).where(Tenant.id == UUID(tenant_id_str)))
+    tenant = result.scalar_one_or_none()
+    if not tenant or not tenant.is_active:
+        raise HTTPException(status_code=404, detail="Tenant não encontrado")
+    access_token = _create_access_token(admin, tenant_id=tenant.id, role="admin")
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=_create_refresh_token(admin.id),
+    )
 
 
 @router.post("/me/password", status_code=204)

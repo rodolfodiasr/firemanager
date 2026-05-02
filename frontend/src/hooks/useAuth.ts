@@ -41,6 +41,19 @@ export function useAuth() {
     [store, navigate]
   );
 
+  const assumeTenant = useCallback(
+    async (tenantId: string) => {
+      await store.assumeTenant(tenantId);
+      navigate("/");
+    },
+    [store, navigate]
+  );
+
+  const exitAssumedTenant = useCallback(() => {
+    store.exitAssumedTenant();
+    navigate("/");
+  }, [store, navigate]);
+
   const signOut = useCallback(() => {
     store.logout();
     navigate("/login");
@@ -54,6 +67,8 @@ export function useAuth() {
     isAuthenticated: store.isAuthenticated,
     signIn,
     selectTenant,
+    assumeTenant,
+    exitAssumedTenant,
     signOut,
     fetchMe: store.fetchMe,
   };
