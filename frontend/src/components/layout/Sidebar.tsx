@@ -5,9 +5,7 @@ import {
   LayoutDashboard,
   Bot,
   Server,
-  ClipboardList,
   Shield,
-  FileText,
   Settings,
   Flame,
   Terminal,
@@ -69,10 +67,8 @@ const navSections: NavSection[] = [
   {
     title: "Plataforma",
     items: [
-      { to: "/operations", icon: ClipboardList, label: "Operações"     },
-      { to: "/audit",      icon: Shield,        label: "Auditoria"     },
-      { to: "/logs",       icon: FileText,      label: "Logs"          },
-      { to: "/settings",   icon: Settings,      label: "Configurações" },
+      { to: "/audit",    icon: Shield,   label: "Auditoria"     },
+      { to: "/settings", icon: Settings, label: "Configurações" },
     ],
   },
 ];

@@ -4,8 +4,6 @@ import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { Agent } from "./pages/Agent";
 import { Devices } from "./pages/Devices";
-import { Operations } from "./pages/Operations";
-import { Logs } from "./pages/Logs";
 import { Settings } from "./pages/Settings";
 import { Audit } from "./pages/Audit";
 import { DirectMode } from "./pages/DirectMode";
@@ -67,14 +65,7 @@ export function AppRouter() {
           </ProtectedLayout>
         }
       />
-      <Route
-        path="/operations"
-        element={
-          <ProtectedLayout>
-            <Operations />
-          </ProtectedLayout>
-        }
-      />
+      <Route path="/operations" element={<Navigate to="/audit" replace />} />
       <Route
         path="/audit"
         element={
@@ -83,14 +74,7 @@ export function AppRouter() {
           </ProtectedLayout>
         }
       />
-      <Route
-        path="/logs"
-        element={
-          <ProtectedLayout>
-            <Logs />
-          </ProtectedLayout>
-        }
-      />
+      <Route path="/logs" element={<Navigate to="/audit" replace />} />
       <Route
         path="/settings"
         element={

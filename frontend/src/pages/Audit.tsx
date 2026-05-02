@@ -1,18 +1,264 @@
 import { Fragment, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2, XCircle, ChevronDown, ChevronRight, BookOpen, X, Loader2, Pencil } from "lucide-react";
+import {
+  CheckCircle2,
+  XCircle,
+  ChevronDown,
+  ChevronRight,
+  BookOpen,
+  X,
+  Loader2,
+  Pencil,
+  Radio,
+} from "lucide-react";
 import toast from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { StatusBadge } from "../components/shared/StatusBadge";
+import { EmptyState } from "../components/shared/EmptyState";
 import { auditApi } from "../api/audit";
 import { operationsApi } from "../api/operations";
 import { AUDIT_INTENTS } from "../types/audit";
+import type { Operation } from "../types/operation";
 
-type Tab = "pending" | "direct" | "history";
+type Tab = "live" | "pending" | "direct" | "history" | "logs";
 
 const intentLabel = (key: string) => AUDIT_INTENTS.find((i) => i.key === key)?.label ?? key;
 const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleString("pt-BR") : "—");
+
+// ── Ao Vivo Tab (from Operations) ─────────────────────────────────────────────
+
+interface PlanField {
+  label: string;
+  value: string;
+}
+
+function getPlanFields(op: Operation): PlanField[] {
+  const ap = op.action_plan;
+  if (!ap) return [];
+  const fields: PlanField[] = [];
+
+  if (ap.rule_spec) {
+    const r = ap.rule_spec as Record<string, unknown>;
+    fields.push(
+      { label: "Regra", value: String(r.name ?? "") },
+      { label: "Origem", value: `${r.src_address} (${r.src_zone})` },
+      { label: "Destino", value: `${r.dst_address} (${r.dst_zone})` },
+      { label: "Serviço", value: String(r.service ?? "") },
+      { label: "Ação", value: String(r.action ?? "") },
+    );
+    if (r.comment) fields.push({ label: "Comentário", value: String(r.comment) });
+  }
+
+  if (ap.nat_spec) {
+    const n = ap.nat_spec as Record<string, unknown>;
+    fields.push(
+      { label: "NAT", value: String(n.name ?? "") },
+      { label: "Entrada → Saída", value: `${n.inbound_interface} → ${n.outbound_interface}` },
+      { label: "Origem", value: `${n.source} → ${n.translated_source}` },
+      { label: "Destino", value: `${n.destination} → ${n.translated_destination}` },
+      { label: "Serviço", value: `${n.service} → ${n.translated_service}` },
+    );
+  }
+
+  if (ap.route_spec) {
+    const rt = ap.route_spec as Record<string, unknown>;
+    fields.push(
+      { label: "Rota", value: String(rt.name || "(sem nome)") },
+      { label: "Interface", value: String(rt.interface ?? "") },
+      { label: "Destino", value: String(rt.destination ?? "") },
+      { label: "Gateway", value: String(rt.gateway ?? "") },
+      { label: "Métrica", value: String(rt.metric ?? "") },
+    );
+  }
+
+  if (ap.group_spec) {
+    const g = ap.group_spec as Record<string, unknown>;
+    const members = g.members as string[] | undefined;
+    fields.push(
+      { label: "Grupo", value: String(g.name ?? "") },
+      { label: "Membros", value: members?.join(", ") ?? "" },
+    );
+  }
+
+  if (ap.security_exclusion_spec) {
+    const exc = ap.security_exclusion_spec as Record<string, unknown>;
+    const ips = exc.ip_addresses as string[] | undefined;
+    const svcs = exc.services as string[] | undefined;
+    fields.push(
+      { label: "IPs", value: ips?.join(", ") ?? "" },
+      { label: "Serviços", value: svcs?.length ? svcs.join(", ") : "todos" },
+      { label: "Zona", value: String(exc.zone ?? "LAN") },
+    );
+  }
+
+  if (ap.security_service_spec) {
+    const svc = ap.security_service_spec as Record<string, unknown>;
+    fields.push(
+      { label: "Serviço", value: String(svc.service ?? "") },
+      { label: "Ação", value: svc.enabled ? "Ativar" : "Desativar" },
+    );
+  }
+
+  if (ap.content_filter_spec) {
+    const cf = ap.content_filter_spec as Record<string, unknown>;
+    const cats = cf.blocked_categories as string[] | undefined;
+    const zones = cf.zones as string[] | undefined;
+    fields.push(
+      { label: "Perfil CFS", value: String(cf.profile_name ?? "") },
+      { label: "Política CFS", value: String(cf.policy_name || "(automático)") },
+      { label: "Zonas", value: zones?.join(", ") ?? "" },
+      { label: "Categorias bloqueadas", value: cats?.join(", ") || "(padrão)" },
+    );
+  }
+
+  if (ap.app_rules_spec) {
+    const ar = ap.app_rules_spec as Record<string, unknown>;
+    fields.push(
+      { label: "Política App Rules", value: String(ar.policy_name ?? "") },
+      { label: "Ação", value: String(ar.action_object ?? "") },
+      { label: "Zona", value: String(ar.zone ?? "") },
+    );
+  }
+
+  return fields;
+}
+
+function getResultSummary(op: Operation): string | null {
+  const result = op.action_plan?.result;
+  if (!result || !Array.isArray(result)) return null;
+  const arr = result as Record<string, unknown>[];
+  if (arr.length === 0) return "Nenhum resultado encontrado.";
+  const intent = op.intent;
+  if (intent === "list_rules") return `${arr.length} regra(s) encontrada(s)`;
+  if (intent === "list_nat_policies") return `${arr.length} política(s) NAT encontrada(s)`;
+  if (intent === "list_route_policies") return `${arr.length} rota(s) encontrada(s)`;
+  if (intent === "get_security_status") return `${arr.length} serviço(s) verificado(s)`;
+  if (intent === "add_security_exclusion") {
+    const ok = arr.filter((r) => r.success).length;
+    const fail = arr.length - ok;
+    if (fail > 0) {
+      const failedSvcs = arr.filter((r) => !r.success).map((r) => String(r.service)).join(", ");
+      return `${ok} OK · ${fail} falha(s): ${failedSvcs}`;
+    }
+    return `${ok} serviço(s) configurado(s): ${arr.map((r) => String(r.service)).join(", ")}`;
+  }
+  return null;
+}
+
+function LiveExpandedRow({ op }: { op: Operation }) {
+  const planFields = getPlanFields(op);
+  const resultSummary = getResultSummary(op);
+
+  return (
+    <tr className="bg-gray-50 border-b border-gray-200">
+      <td colSpan={5} className="px-6 py-4">
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+              Solicitação completa
+            </p>
+            <p className="text-sm text-gray-800 leading-relaxed">{op.natural_language_input}</p>
+          </div>
+
+          {planFields.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                Plano de ação
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {planFields.map((f) => (
+                  <div key={f.label} className="bg-white border border-gray-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-gray-400 mb-0.5">{f.label}</p>
+                    <p className="text-sm font-medium text-gray-800 truncate" title={f.value}>
+                      {f.value || "—"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {resultSummary && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                Resultado
+              </p>
+              <p className="text-sm text-gray-700">{resultSummary}</p>
+            </div>
+          )}
+
+          {op.error_message && (
+            <div>
+              <p className="text-xs font-semibold text-red-400 uppercase tracking-wide mb-1">Erro</p>
+              <p className="text-sm text-red-600">{op.error_message}</p>
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function LiveTab() {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { data: operations = [], isLoading } = useQuery({
+    queryKey: ["operations"],
+    queryFn: operationsApi.list,
+    refetchInterval: 5000,
+  });
+
+  const toggle = (id: string) => setExpandedId((prev) => (prev === id ? null : id));
+
+  if (isLoading) return <div className="py-10 text-center text-gray-400">Carregando...</div>;
+  if (operations.length === 0)
+    return (
+      <EmptyState
+        title="Nenhuma operação ainda"
+        description="As operações executadas pelo agente aparecerão aqui."
+      />
+    );
+
+  return (
+    <table className="w-full text-sm">
+      <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+        <tr>
+          <th className="w-8 px-3 py-3" />
+          <th className="px-4 py-3 text-left">Solicitação</th>
+          <th className="px-4 py-3 text-left whitespace-nowrap">Intenção</th>
+          <th className="px-4 py-3 text-left">Status</th>
+          <th className="px-4 py-3 text-left whitespace-nowrap">Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        {operations.map((op) => (
+          <Fragment key={op.id}>
+            <tr
+              className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer"
+              onClick={() => toggle(op.id)}
+            >
+              <td className="px-3 py-3 text-gray-400">
+                {expandedId === op.id ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+              </td>
+              <td className="px-4 py-3 max-w-sm">
+                <p className="truncate text-gray-900">{op.natural_language_input}</p>
+              </td>
+              <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{op.intent ?? "—"}</td>
+              <td className="px-4 py-3">
+                <StatusBadge status={op.status} />
+              </td>
+              <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+                {new Date(op.created_at).toLocaleString("pt-BR")}
+              </td>
+            </tr>
+            {expandedId === op.id && <LiveExpandedRow op={op} />}
+          </Fragment>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 // ── Pending Tab ───────────────────────────────────────────────────────────────
 function PendingTab() {
@@ -42,18 +288,15 @@ function PendingTab() {
     },
   });
 
-  if (isLoading) {
-    return <div className="py-10 text-center text-gray-400">Carregando...</div>;
-  }
+  if (isLoading) return <div className="py-10 text-center text-gray-400">Carregando...</div>;
 
-  if (ops.length === 0) {
+  if (ops.length === 0)
     return (
       <div className="py-14 text-center text-gray-400">
         <CheckCircle2 size={40} className="mx-auto mb-3 text-green-300" />
         <p className="text-sm">Nenhuma operação aguardando revisão.</p>
       </div>
     );
-  }
 
   return (
     <div className="divide-y divide-gray-100">
@@ -180,7 +423,10 @@ function DirectTab() {
         <thead>
           <tr className="border-b border-gray-100">
             {["Solicitante", "Dispositivo", "Intenção", "Status", "Data"].map((h) => (
-              <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <th
+                key={h}
+                className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"
+              >
                 {h}
               </th>
             ))}
@@ -207,7 +453,7 @@ function DirectTab() {
   );
 }
 
-// ── Markdown renderer (no extra dependency) ────────────────────────────────
+// ── Markdown renderer ─────────────────────────────────────────────────────────
 function inlineRender(text: string): React.ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
   return parts.map((part, i) => {
@@ -321,14 +567,10 @@ function TutorialDrawer({ operationId, onClose }: { operationId: string; onClose
             </div>
           )}
           {isError && (
-            <p className="text-sm text-red-500 text-center py-10">
-              Erro ao gerar o tutorial. Tente novamente.
-            </p>
+            <p className="text-sm text-red-500 text-center py-10">Erro ao gerar o tutorial. Tente novamente.</p>
           )}
           {data?.tutorial && (
-            <div className="prose-sm max-w-none">
-              {renderMarkdown(data.tutorial)}
-            </div>
+            <div className="prose-sm max-w-none">{renderMarkdown(data.tutorial)}</div>
           )}
         </div>
       </div>
@@ -364,140 +606,174 @@ function HistoryTab() {
       {tutorialOpId && (
         <TutorialDrawer operationId={tutorialOpId} onClose={() => setTutorialOpId(null)} />
       )}
-    <div className="divide-y divide-gray-100">
-      {ops.map((op) => (
-        <Fragment key={op.id}>
-          <button
-            className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-start gap-3"
-            onClick={() => setExpandedId(expandedId === op.id ? null : op.id)}
-          >
-            <span className="mt-1 shrink-0 text-gray-400">
-              {expandedId === op.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            </span>
-            <div className="flex-1 grid grid-cols-5 gap-4 items-center min-w-0">
-              <div>
-                <p className="text-sm font-medium text-gray-900 truncate">{op.requester_name ?? "—"}</p>
-                <p className="text-xs text-gray-400 truncate">{op.requester_email}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-700 truncate">{op.device_name ?? "—"}</p>
-                <p className="text-xs text-gray-400">{op.device_vendor}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-700">{op.intent ? intentLabel(op.intent) : "—"}</p>
-                <p className="text-xs text-gray-400">{op.reviewer_name ? `Revisor: ${op.reviewer_name}` : ""}</p>
-              </div>
-              <div>
-                <StatusBadge status={op.status} />
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-gray-400">{fmtDate(op.reviewed_at ?? op.created_at)}</p>
-              </div>
-            </div>
-          </button>
-
-          {expandedId === op.id && (
-            <div className="px-6 pb-5 bg-gray-50 border-t border-gray-100">
-              <div className="pt-4 space-y-4 max-w-3xl">
+      <div className="divide-y divide-gray-100">
+        {ops.map((op) => (
+          <Fragment key={op.id}>
+            <button
+              className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-start gap-3"
+              onClick={() => setExpandedId(expandedId === op.id ? null : op.id)}
+            >
+              <span className="mt-1 shrink-0 text-gray-400">
+                {expandedId === op.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </span>
+              <div className="flex-1 grid grid-cols-5 gap-4 items-center min-w-0">
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                    Solicitação Original
-                  </p>
-                  <p className="text-sm text-gray-800 bg-white border border-gray-200 rounded-lg p-3">
-                    {op.natural_language_input}
-                  </p>
+                  <p className="text-sm font-medium text-gray-900 truncate">{op.requester_name ?? "—"}</p>
+                  <p className="text-xs text-gray-400 truncate">{op.requester_email}</p>
                 </div>
+                <div>
+                  <p className="text-sm text-gray-700 truncate">{op.device_name ?? "—"}</p>
+                  <p className="text-xs text-gray-400">{op.device_vendor}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-700">{op.intent ? intentLabel(op.intent) : "—"}</p>
+                  <p className="text-xs text-gray-400">{op.reviewer_name ? `Revisor: ${op.reviewer_name}` : ""}</p>
+                </div>
+                <div>
+                  <StatusBadge status={op.status} />
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-400">{fmtDate(op.reviewed_at ?? op.created_at)}</p>
+                </div>
+              </div>
+            </button>
 
-                {op.action_plan && (
+            {expandedId === op.id && (
+              <div className="px-6 pb-5 bg-gray-50 border-t border-gray-100">
+                <div className="pt-4 space-y-4 max-w-3xl">
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                      Plano de Ação
-                    </p>
-                    <pre className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">
-                      {JSON.stringify(
-                        Object.fromEntries(
-                          Object.entries(op.action_plan).filter(([k]) => k !== "result")
-                        ),
-                        null,
-                        2
-                      )}
-                    </pre>
-                  </div>
-                )}
-
-                {(() => {
-                  const result = op.action_plan?.result as Record<string, unknown> | undefined;
-                  const sshOutput = result?.output as string | undefined;
-                  const sshCmds = result?.commands as string[] | undefined;
-                  if (!sshOutput && !sshCmds) return null;
-                  return (
-                    <div>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                        Output SSH do Dispositivo
-                      </p>
-                      {sshCmds && sshCmds.length > 0 && (
-                        <p className="text-xs text-gray-500 mb-1">
-                          Comandos enviados: <code className="bg-gray-100 px-1 rounded">{sshCmds.join(" → ")}</code>
-                        </p>
-                      )}
-                      <pre className={`text-xs rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap border ${
-                        op.status === "failed"
-                          ? "bg-red-50 border-red-200 text-red-800"
-                          : "bg-gray-900 border-gray-700 text-green-300"
-                      }`}>
-                        {sshOutput ?? "(sem output)"}
-                      </pre>
-                    </div>
-                  );
-                })()}
-
-                {op.review_comment && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                      Parecer do Revisor
-                      {op.reviewer_name && (
-                        <span className="ml-2 font-normal normal-case text-gray-400">
-                          — {op.reviewer_name} em {fmtDate(op.reviewed_at)}
-                        </span>
-                      )}
+                      Solicitação Original
                     </p>
                     <p className="text-sm text-gray-800 bg-white border border-gray-200 rounded-lg p-3">
-                      {op.review_comment}
+                      {op.natural_language_input}
                     </p>
                   </div>
-                )}
 
-                <div className="pt-1 flex flex-wrap gap-2">
-                  {op.status === "completed" && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setTutorialOpId(op.id); }}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-600 border border-brand-300 rounded-lg hover:bg-brand-50 transition-colors"
-                    >
-                      <BookOpen size={15} />
-                      Ver como fazer manualmente
-                    </button>
+                  {op.action_plan && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                        Plano de Ação
+                      </p>
+                      <pre className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap">
+                        {JSON.stringify(
+                          Object.fromEntries(
+                            Object.entries(op.action_plan).filter(([k]) => k !== "result")
+                          ),
+                          null,
+                          2
+                        )}
+                      </pre>
+                    </div>
                   )}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); navigate(editRoute(op)); }}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <Pencil size={15} />
-                    Editar / Repetir
-                  </button>
+
+                  {(() => {
+                    const result = op.action_plan?.result as Record<string, unknown> | undefined;
+                    const sshOutput = result?.output as string | undefined;
+                    const sshCmds = result?.commands as string[] | undefined;
+                    if (!sshOutput && !sshCmds) return null;
+                    return (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                          Output SSH do Dispositivo
+                        </p>
+                        {sshCmds && sshCmds.length > 0 && (
+                          <p className="text-xs text-gray-500 mb-1">
+                            Comandos enviados:{" "}
+                            <code className="bg-gray-100 px-1 rounded">{sshCmds.join(" → ")}</code>
+                          </p>
+                        )}
+                        <pre className={`text-xs rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap border ${
+                          op.status === "failed"
+                            ? "bg-red-50 border-red-200 text-red-800"
+                            : "bg-gray-900 border-gray-700 text-green-300"
+                        }`}>
+                          {sshOutput ?? "(sem output)"}
+                        </pre>
+                      </div>
+                    );
+                  })()}
+
+                  {op.review_comment && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                        Parecer do Revisor
+                        {op.reviewer_name && (
+                          <span className="ml-2 font-normal normal-case text-gray-400">
+                            — {op.reviewer_name} em {fmtDate(op.reviewed_at)}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-800 bg-white border border-gray-200 rounded-lg p-3">
+                        {op.review_comment}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="pt-1 flex flex-wrap gap-2">
+                    {op.status === "completed" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setTutorialOpId(op.id); }}
+                        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-600 border border-brand-300 rounded-lg hover:bg-brand-50 transition-colors"
+                      >
+                        <BookOpen size={15} />
+                        Ver como fazer manualmente
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate(editRoute(op)); }}
+                      className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <Pencil size={15} />
+                      Editar / Repetir
+                    </button>
+                  </div>
                 </div>
               </div>
+            )}
+          </Fragment>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// ── Logs Tab ──────────────────────────────────────────────────────────────────
+function LogsTab() {
+  const { data: logs = [], isLoading } = useQuery({
+    queryKey: ["audit-logs"],
+    queryFn: () => auditApi.getLogs({ limit: 100 }),
+    refetchInterval: 10000,
+  });
+
+  if (isLoading) return <div className="py-10 text-center text-gray-400">Carregando...</div>;
+  if (logs.length === 0) return <EmptyState title="Nenhum log registrado ainda" />;
+
+  return (
+    <div className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto">
+      {logs.map((log) => (
+        <div key={log.id} className="px-6 py-3">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-900">{log.action}</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {new Date(log.created_at).toLocaleString("pt-BR")}
+                {log.ip_address && ` · ${log.ip_address}`}
+              </p>
             </div>
-          )}
-        </Fragment>
+            <span className="text-xs font-mono text-gray-300 ml-4" title="SHA-256 hash">
+              {log.record_hash.substring(0, 12)}...
+            </span>
+          </div>
+        </div>
       ))}
     </div>
-    </>
   );
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export function Audit() {
-  const [tab, setTab] = useState<Tab>("pending");
+  const [tab, setTab] = useState<Tab>("live");
 
   const { data: pendingCount = 0 } = useQuery({
     queryKey: ["audit-pending-count"],
@@ -505,10 +781,12 @@ export function Audit() {
     refetchInterval: 30000,
   });
 
-  const tabs: { id: Tab; label: string }[] = [
+  const tabs: { id: Tab; label: string; icon?: React.ReactNode }[] = [
+    { id: "live", label: "Ao Vivo", icon: <Radio size={13} className="text-green-500" /> },
     { id: "pending", label: pendingCount > 0 ? `Pendentes (${pendingCount})` : "Pendentes" },
     { id: "direct", label: "Realizadas" },
     { id: "history", label: "Histórico" },
+    { id: "logs", label: "Logs" },
   ];
 
   return (
@@ -519,20 +797,23 @@ export function Audit() {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px mr-1 ${
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px mr-1 ${
                 tab === t.id
                   ? "border-brand-600 text-brand-600"
                   : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
+              {t.icon}
               {t.label}
             </button>
           ))}
         </div>
 
+        {tab === "live"    && <LiveTab />}
         {tab === "pending" && <PendingTab />}
-        {tab === "direct" && <DirectTab />}
+        {tab === "direct"  && <DirectTab />}
         {tab === "history" && <HistoryTab />}
+        {tab === "logs"    && <LogsTab />}
       </div>
     </PageWrapper>
   );
