@@ -95,7 +95,7 @@ async def append_changelog(db: AsyncSession, device: Device, operation: Operatio
             new_page = await connector.create_page(
                 book_id=int(book_id),
                 name=page_name,
-                markdown=f"# {page_name}\n\n{entry}",
+                markdown=entry,
                 chapter_id=chapter_id,
             )
             device.bookstack_fm_page_id = new_page.id
@@ -279,7 +279,7 @@ async def publish_device_snapshot(db: AsyncSession, device: Device) -> None:
     live_data = await _collect_live_data(device)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     page_name = f"[FIREMANAGER SNAPSHOT] {device.name} — Estado Atual"
-    snapshot_md = f"# {page_name}\n\n{_build_snapshot_md(device, live_data, recent_ops, now)}"
+    snapshot_md = _build_snapshot_md(device, live_data, recent_ops, now)
 
     try:
         from app.connectors.bookstack import connector_from_config
