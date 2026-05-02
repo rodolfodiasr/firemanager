@@ -50,11 +50,11 @@ const navSections: NavSection[] = [
   {
     title: "Servidores & Análise",
     items: [
-      { to: "/servers",        icon: HardDrive,      label: "Servidores"    },
-      { to: "/server-direct",  icon: Terminal,       label: "Modo Técnico"  },
       { to: "/server-analysis",icon: Brain,          label: "Analista N3"   },
-      { to: "/remediation",    icon: ShieldCheck,    label: "Remediações"   },
+      { to: "/server-direct",  icon: Terminal,       label: "Modo Técnico"  },
       { to: "/compliance",     icon: ClipboardCheck, label: "Conformidade"  },
+      { to: "/remediation",    icon: ShieldCheck,    label: "Remediações"   },
+      { to: "/servers",        icon: HardDrive,      label: "Servidores"    },
     ],
   },
   {
