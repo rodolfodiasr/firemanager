@@ -18,7 +18,7 @@ async def _async_health_checks() -> dict[str, int]:
     import app.models  # ensure all models are registered in SQLAlchemy metadata
     from app.database import AsyncSessionLocal
     from app.models.device import Device, DeviceStatus
-    from app.connectors.factory import get_connector
+    from app.connectors.factory import CLI_VENDORS, get_connector, get_ssh_connector
     from sqlalchemy import select
 
     results = {"checked": 0, "online": 0, "offline": 0, "error": 0}
@@ -29,12 +29,16 @@ async def _async_health_checks() -> dict[str, int]:
 
         for device in devices:
             try:
-                connector = get_connector(device)
+                if device.vendor in CLI_VENDORS:
+                    connector = get_ssh_connector(device)
+                else:
+                    connector = get_connector(device)
                 check_result = await connector.test_connection()
                 if check_result.success:
                     device.status = DeviceStatus.online
-                    if check_result.firmware_version:
-                        device.firmware_version = check_result.firmware_version
+                    fw = getattr(check_result, "firmware_version", None)
+                    if fw:
+                        device.firmware_version = fw
                     results["online"] += 1
                 else:
                     device.status = DeviceStatus.offline

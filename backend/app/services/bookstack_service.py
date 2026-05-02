@@ -4,12 +4,15 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.device import Device
+from app.models.device import Device, VendorEnum
 from app.models.integration import IntegrationType
 from app.models.operation import Operation, OperationStatus
 from app.services.integration_service import resolve_integration
+
+log = structlog.get_logger()
 
 
 # ── Phase 1A: RAG context ─────────────────────────────────────────────────────
@@ -348,12 +351,22 @@ async def _collect_live_data(device: Device) -> dict:
     if device.vendor in CLI_VENDORS:
         return {"status": "online", "cli_vendor": True}
 
+    data: dict = {"status": "online"}
+
+    log.info("snapshot_collect_start", device=device.name, vendor=str(device.vendor))
+
+    # SSH before REST: SonicWall allows only one management session at a time.
+    # Running SSH show commands before opening the REST session avoids the conflict.
+    if device.vendor == VendorEnum.sonicwall:
+        log.info("snapshot_ssh_phase_start", device=device.name)
+        await _collect_ssh_resources(device, data)
+
     try:
         connector = get_connector(device)
         rules = await connector.list_rules()
         nats = await connector.list_nat_policies()
         routes = await connector.list_route_policies()
-        data: dict = {"status": "online", "rules": rules, "nats": nats, "routes": routes}
+        data.update({"rules": rules, "nats": nats, "routes": routes})
 
         if hasattr(connector, "collect_extended_snapshot"):
             extended = await connector.collect_extended_snapshot()
@@ -361,7 +374,46 @@ async def _collect_live_data(device: Device) -> dict:
 
         return data
     except Exception:
-        return {"status": "error"}
+        return data  # return SSH data even if REST fails
+
+
+async def _collect_ssh_resources(device: Device, data: dict) -> None:
+    """Collect SSH-only resources (security, content filter, app rules) for SonicWall."""
+    from app.connectors.factory import get_ssh_connector
+    from app.api.inspect import _parse_named_blocks, _SECURITY_COMMANDS
+    from app.services.operation_service import _parse_security_status
+
+    try:
+        ssh = get_ssh_connector(device)
+
+        sec_result = await ssh.execute_show_commands(_SECURITY_COMMANDS)
+        if sec_result.success:
+            data["security_services"] = _parse_security_status(_SECURITY_COMMANDS, sec_result.output)
+            log.info("sw_snapshot_ssh_security", device=device.name, count=len(data["security_services"]))
+        else:
+            log.warning("sw_snapshot_ssh_security_failed", device=device.name, error=getattr(sec_result, "error", "?"))
+
+        cf_result = await ssh.execute_show_commands_full(["show content-filter"])
+        if cf_result.success:
+            data["content_filter_ssh"] = _parse_named_blocks(
+                cf_result.output,
+                ["profile", "policy", "uri-list-object", "uri-list-group", "action", "reputation-object"],
+            )
+            log.info("sw_snapshot_ssh_content_filter", device=device.name, count=len(data["content_filter_ssh"]))
+        else:
+            log.warning("sw_snapshot_ssh_cf_failed", device=device.name, error=getattr(cf_result, "error", "?"))
+
+        ar_result = await ssh.execute_show_commands(["show app-rules"])
+        if ar_result.success:
+            data["app_rules_ssh"] = _parse_named_blocks(
+                ar_result.output, ["policy", "match-object", "action-object"]
+            )
+            log.info("sw_snapshot_ssh_app_rules", device=device.name, count=len(data["app_rules_ssh"]))
+        else:
+            log.warning("sw_snapshot_ssh_ar_failed", device=device.name, error=getattr(ar_result, "error", "?"))
+
+    except Exception as exc:
+        log.warning("sw_snapshot_ssh_exception", device=device.name, error=str(exc))
 
 
 def _build_snapshot_md(device: Device, live_data: dict, recent_ops: list, timestamp: str) -> str:
@@ -477,29 +529,62 @@ def _build_snapshot_md(device: Device, live_data: dict, recent_ops: list, timest
                 lines.append(f"| {grp['name']} | {members} |")
 
         # ── Content Filter ─────────────────────────────────────────────────────
-        cf_policies = live_data.get("content_filter", [])
-        if cf_policies:
-            lines += ["", f"### Regras de Content Filter ({len(cf_policies)})", ""]
+        cf_ssh = live_data.get("content_filter_ssh")
+        cf_rest = live_data.get("content_filter", [])
+        if cf_ssh is not None:
+            if cf_ssh:
+                lines += ["", f"### Content Filter ({len(cf_ssh)} itens)", ""]
+                lines += ["| Tipo | Nome | Detalhes |", "|---|---|---|"]
+                for item in cf_ssh:
+                    details = (item.get("details", "") or "").replace("\n", " ").strip()
+                    details_short = details[:120] + "…" if len(details) > 120 else details
+                    lines.append(f"| {item.get('type', '')} | {item['name']} | {details_short} |")
+            else:
+                lines += ["", "### Content Filter", "", "_Nenhuma política configurada._"]
+        elif cf_rest:
+            lines += ["", f"### Regras de Content Filter ({len(cf_rest)})", ""]
             lines += ["| Nome | Status | Categorias bloqueadas |", "|---|---|---|"]
-            for p in cf_policies:
+            for p in cf_rest:
                 status = "✅ Ativo" if p["enabled"] else "❌ Inativo"
                 cats = ", ".join(p["blocked_categories"]) if p["blocked_categories"] else "—"
                 lines.append(f"| {p['name']} | {status} | {cats} |")
 
         # ── App Rules ─────────────────────────────────────────────────────────
-        app_rules = live_data.get("app_rules", [])
-        if app_rules:
-            lines += ["", f"### App Rules ({len(app_rules)})", ""]
+        ar_ssh = live_data.get("app_rules_ssh")
+        ar_rest = live_data.get("app_rules", [])
+        if ar_ssh is not None:
+            if ar_ssh:
+                lines += ["", f"### App Rules ({len(ar_ssh)} itens)", ""]
+                lines += ["| Tipo | Nome | Detalhes |", "|---|---|---|"]
+                for item in ar_ssh:
+                    details = (item.get("details", "") or "").replace("\n", " ").strip()
+                    details_short = details[:120] + "…" if len(details) > 120 else details
+                    lines.append(f"| {item.get('type', '')} | {item['name']} | {details_short} |")
+            else:
+                lines += ["", "### App Rules", "", "_Nenhuma regra configurada._"]
+        elif ar_rest:
+            lines += ["", f"### App Rules ({len(ar_rest)})", ""]
             lines += ["| Nome | Aplicação | Ação | Status |", "|---|---|---|---|"]
-            for ar in app_rules:
+            for ar in ar_rest:
                 status_icon = "✅" if ar["enabled"] else "❌"
                 lines.append(
                     f"| {ar['name']} | {ar['application']} | {ar['action']} | {status_icon} |"
                 )
 
         # ── Security settings ──────────────────────────────────────────────────
-        sec = live_data.get("security_settings", {})
-        if sec:
+        sec_ssh = live_data.get("security_services")
+        sec_rest = live_data.get("security_settings", {})
+        if sec_ssh is not None:
+            if sec_ssh:
+                lines += ["", f"### Serviços de segurança ({len(sec_ssh)})", ""]
+                lines += ["| Serviço | Status |", "|---|---|"]
+                for svc in sec_ssh:
+                    enabled = svc.get("enabled")
+                    icon = "✅ Ativo" if enabled is True else ("❌ Inativo" if enabled is False else "— Desconhecido")
+                    lines.append(f"| {svc['service']} | {icon} |")
+            else:
+                lines += ["", "### Serviços de segurança", "", "_Nenhum serviço de segurança detectado._"]
+        elif sec_rest:
             lines += ["", "### Configurações de segurança", ""]
             lines += [
                 "| Serviço | Status | Inspeção Entrada | Inspeção Saída |",
@@ -510,8 +595,8 @@ def _build_snapshot_md(device: Device, live_data: dict, recent_ops: list, timest
                 ("anti_spyware", "Anti-Spyware"),
                 ("ips", "Intrusion Prevention (IPS)"),
             ]:
-                if key in sec:
-                    s = sec[key]
+                if key in sec_rest:
+                    s = sec_rest[key]
                     enabled = "✅ Ativo" if s.get("enabled") else "❌ Inativo"
                     inbound = "✅" if s.get("inbound") else "—"
                     outbound = "✅" if s.get("outbound") else "—"
