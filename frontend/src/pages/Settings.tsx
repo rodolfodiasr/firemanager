@@ -151,6 +151,11 @@ const INTEGRATION_META: Record<IntegrationType, {
       { key: "token_secret", label: "Token Secret", type: "password", placeholder: "Secret do token de API" },
       { key: "book_id", label: "ID do Livro (book_id)", placeholder: "1" },
       { key: "chapter_id", label: "ID do Chapter (opcional)", placeholder: "Deixe vazio para indexar o livro inteiro" },
+      { key: "snapshot_enabled", label: "Snapshot automático", type: "checkbox" },
+      {
+        key: "snapshot_hour", label: "Horário do snapshot (UTC)", type: "select", defaultValue: "2",
+        options: Array.from({ length: 24 }, (_, i) => ({ value: String(i), label: `${String(i).padStart(2, "0")}:00 UTC` })),
+      },
     ],
   },
 };
@@ -181,6 +186,7 @@ function IntegrationCard({ type, existing, tenantId, isSuperAdmin }: Integration
         else if (f.key === "port") config[f.key] = parseInt(formData[f.key]) || 9390;
         else if (f.key === "book_id") config[f.key] = parseInt(formData[f.key]) || 1;
         else if (f.key === "chapter_id") { const v = parseInt(formData[f.key]); if (v) config[f.key] = v; }
+        else if (f.key === "snapshot_hour") config[f.key] = parseInt(formData[f.key]) || 2;
         else config[f.key] = formData[f.key];
       });
 

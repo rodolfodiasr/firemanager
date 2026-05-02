@@ -29,7 +29,7 @@ celery_app.conf.update(
         },
         "bookstack-daily-snapshot": {
             "task": "app.workers.bookstack_snapshot.run_bookstack_snapshots",
-            "schedule": crontab(hour=2, minute=0),        # daily at 02:00 UTC
+            "schedule": crontab(minute=0),                # every hour — config per integration
         },
         "bookstack-reindex": {
             "task": "app.workers.bookstack_index.run_bookstack_indexing",

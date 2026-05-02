@@ -1,6 +1,8 @@
-import { Shield, Route, Network, Layers, RefreshCw, Trash2, Pencil } from "lucide-react";
+import { Shield, Route, Network, Layers, RefreshCw, Trash2, Pencil, Camera } from "lucide-react";
+import { useState } from "react";
 import type { Device, DeviceCategory } from "../../types/device";
 import { HealthBadge } from "./HealthBadge";
+import { devicesApi } from "../../api/devices";
 
 interface DeviceCardProps {
   device: Device;
@@ -58,6 +60,13 @@ export function DeviceCard({
   const category = device.category ?? "firewall";
   const style    = CATEGORY_STYLE[category];
   const Icon     = CATEGORY_ICON[category];
+  const [snapshotting, setSnapshotting] = useState(false);
+
+  const handleSnapshot = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSnapshotting(true);
+    try { await devicesApi.bookstackSnapshot(device.id); } finally { setSnapshotting(false); }
+  };
 
   return (
     <div
@@ -104,6 +113,15 @@ export function DeviceCard({
         >
           <Pencil size={12} />
           Editar
+        </button>
+        <button
+          onClick={handleSnapshot}
+          disabled={snapshotting}
+          title="Tirar snapshot BookStack agora"
+          className="flex items-center gap-1 text-xs text-gray-600 hover:text-sky-600 transition-colors disabled:opacity-40"
+        >
+          <Camera size={12} />
+          {snapshotting ? "..." : "Snapshot"}
         </button>
         <button
           onClick={() => onDelete(device.id)}

@@ -35,4 +35,7 @@ export const devicesApi = {
         checks: Recommendation[];
       }>(`/devices/${id}/recommendations`)
       .then((r) => r.data),
+
+  bookstackSnapshot: (id: string) =>
+    apiClient.post(`/devices/${id}/bookstack/snapshot`).then((r) => r.data),
 };
