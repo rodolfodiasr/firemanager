@@ -151,16 +151,31 @@ function PermissionMatrixDrawer({ tenantId, userId, userName, onClose }: Permiss
           <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Carregando...</div>
         ) : (
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+
+            {/* Cascading explanation */}
+            <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-xs text-blue-800 leading-relaxed">
+              As permissões são resolvidas em cascata: <span className="font-semibold">override de módulo/categoria &gt; perfil global do tenant</span>.
+              Se nenhum override estiver definido, o usuário herda o perfil global.
+            </div>
+
+            {/* Global role pill */}
             {profile && (
-              <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500">
-                Perfil global: <span className="font-semibold text-gray-700">{ROLE_LABELS[profile.tenant_role] ?? profile.tenant_role}</span>
-                <span className="ml-2 text-gray-400">— overrides abaixo substituem este valor por módulo</span>
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span>Perfil base:</span>
+                <span className="font-semibold text-gray-800 bg-gray-100 px-2 py-0.5 rounded-full">
+                  {ROLE_LABELS[profile.tenant_role] ?? profile.tenant_role}
+                </span>
+                <span className="text-gray-400">— aplicado onde não há override</span>
               </div>
             )}
 
             {/* Device Categories */}
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Categorias de Dispositivo</p>
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-0.5">Categorias de Dispositivo</p>
+              <p className="text-xs text-gray-400 mb-3">
+                Controla quais ações o usuário pode executar por tipo de equipamento.
+                Deixe em "— herdar" para usar o perfil base.
+              </p>
               <table className="w-full text-sm">
                 <tbody className="divide-y divide-gray-100">
                   {DEVICE_CATS.map(({ key, label }) => {
@@ -190,7 +205,11 @@ function PermissionMatrixDrawer({ tenantId, userId, userName, onClose }: Permiss
 
             {/* Functional Modules */}
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Módulos Funcionais</p>
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-0.5">Módulos Funcionais</p>
+              <p className="text-xs text-gray-400 mb-3">
+                Controla o acesso por área de trabalho, independente do tipo de dispositivo.
+                Ex.: restringir Compliance para Leitor mesmo que o usuário seja N2 em Firewalls.
+              </p>
               <table className="w-full text-sm">
                 <tbody className="divide-y divide-gray-100">
                   {FUNC_MODULES.map(({ key, label }) => {
@@ -217,6 +236,26 @@ function PermissionMatrixDrawer({ tenantId, userId, userName, onClose }: Permiss
                 </tbody>
               </table>
             </div>
+
+            {/* Role legend */}
+            <div className="border-t border-gray-100 pt-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">O que cada perfil pode fazer</p>
+              <div className="space-y-2">
+                {[
+                  { role: "Admin",       color: "bg-brand-100 text-brand-700",  desc: "Executa diretamente, sem aprovação. Pode aprovar operações de outros." },
+                  { role: "Analista N2", color: "bg-blue-100 text-blue-700",    desc: "Executa operações de baixo risco diretamente. Operações críticas vão para a fila de revisão conforme a política de auditoria." },
+                  { role: "Analista N1", color: "bg-cyan-100 text-cyan-700",    desc: "Todas as operações vão para a fila de revisão N2 antes de executar. Nunca executa diretamente." },
+                  { role: "Leitor",      color: "bg-gray-100 text-gray-600",    desc: "Apenas visualização. Sem permissão de execução, remediação ou geração de planos." },
+                  { role: "— (herdar)", color: "bg-gray-50 text-gray-500 border border-gray-200", desc: "Usa o perfil base do tenant definido acima." },
+                ].map(({ role, color, desc }) => (
+                  <div key={role} className="flex items-start gap-2">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${color}`}>{role}</span>
+                    <p className="text-xs text-gray-500 leading-relaxed">{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </div>
         )}
       </div>

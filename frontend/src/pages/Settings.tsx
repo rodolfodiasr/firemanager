@@ -415,6 +415,13 @@ function PolicyTab() {
 
   return (
     <div>
+      {/* Intro */}
+      <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-xs text-blue-800 leading-relaxed mb-5">
+        Define quais tipos de operação requerem aprovação de um <span className="font-semibold">Analista N2</span> antes de executar.
+        Admins sempre executam diretamente. Analistas N1 sempre entram na fila, independente desta política.
+        Overrides individuais têm prioridade sobre o perfil.
+      </div>
+
       <div className="flex gap-1 mb-5 bg-gray-100 rounded-lg p-1 w-fit">
         {(["roles", "users"] as const).map((v) => (
           <button
@@ -432,7 +439,7 @@ function PolicyTab() {
       {view === "roles" && (
         <>
           <p className="text-xs text-gray-500 mb-4">
-            Checkboxes marcados = intenção requer aprovação N2. Admin sempre executa diretamente.
+            Checkboxes marcados = a intenção exige aprovação antes de executar para aquele perfil.
             Linhas sem "override" seguem o padrão do sistema.
           </p>
           <div className="overflow-x-auto">
