@@ -805,12 +805,20 @@ class SonicWallConnector(BaseConnector):
             "app_rules": [],
             "security_settings": {},
         }
+
+        def _log_call(section: str, status: int, body_preview: str = "") -> None:
+            if status == 200:
+                logger.debug("sw_snapshot %s: HTTP 200", section)
+            else:
+                logger.warning("sw_snapshot %s: HTTP %s — %s", section, status, body_preview[:300])
+
         try:
             async with self._session() as client:
 
                 # ── Address Objects ───────────────────────────────────────────
                 try:
                     r = await client.get("/api/sonicos/address-objects/ipv4")
+                    _log_call("address_objects", r.status_code, r.text)
                     if r.status_code == 200:
                         for entry in r.json().get("address_objects", []):
                             obj = entry.get("ipv4", entry) if isinstance(entry, dict) else {}
@@ -823,12 +831,14 @@ class SonicWallConnector(BaseConnector):
                                 "value": value,
                                 "zone": obj.get("zone", ""),
                             })
-                except Exception:
-                    pass
+                        logger.info("sw_snapshot address_objects: %d custom", len(result["address_objects"]))
+                except Exception as exc:
+                    logger.warning("sw_snapshot address_objects exception: %s", exc)
 
                 # ── Address Groups ────────────────────────────────────────────
                 try:
                     r = await client.get("/api/sonicos/address-groups/ipv4")
+                    _log_call("address_groups", r.status_code, r.text)
                     if r.status_code == 200:
                         ag = r.json().get("address_groups", [])
                         raw_ag = ag.get("ipv4", []) if isinstance(ag, dict) else ag
@@ -843,12 +853,14 @@ class SonicWallConnector(BaseConnector):
                                 "name": obj.get("name", ""),
                                 "members": members,
                             })
-                except Exception:
-                    pass
+                        logger.info("sw_snapshot address_groups: %d custom", len(result["address_groups"]))
+                except Exception as exc:
+                    logger.warning("sw_snapshot address_groups exception: %s", exc)
 
                 # ── Service Objects ───────────────────────────────────────────
                 try:
                     r = await client.get("/api/sonicos/service-objects")
+                    _log_call("service_objects", r.status_code, r.text)
                     if r.status_code == 200:
                         for obj in r.json().get("service_objects", []):
                             if not isinstance(obj, dict) or not self._is_custom_svc(obj):
@@ -859,12 +871,14 @@ class SonicWallConnector(BaseConnector):
                                 "proto": proto,
                                 "port": port,
                             })
-                except Exception:
-                    pass
+                        logger.info("sw_snapshot service_objects: %d custom", len(result["service_objects"]))
+                except Exception as exc:
+                    logger.warning("sw_snapshot service_objects exception: %s", exc)
 
                 # ── Service Groups ────────────────────────────────────────────
                 try:
                     r = await client.get("/api/sonicos/service-groups")
+                    _log_call("service_groups", r.status_code, r.text)
                     if r.status_code == 200:
                         for obj in r.json().get("service_groups", []):
                             if not isinstance(obj, dict) or not self._is_custom_svc_group(obj):
@@ -876,16 +890,20 @@ class SonicWallConnector(BaseConnector):
                                 "name": obj.get("name", ""),
                                 "members": members,
                             })
-                except Exception:
-                    pass
+                        logger.info("sw_snapshot service_groups: %d custom", len(result["service_groups"]))
+                except Exception as exc:
+                    logger.warning("sw_snapshot service_groups exception: %s", exc)
 
                 # ── Content Filter Policies ───────────────────────────────────
                 try:
                     r = await client.get("/api/sonicos/content-filter/policies")
+                    _log_call("content_filter[v1]", r.status_code, r.text)
                     if r.status_code != 200:
                         r = await client.get("/api/sonicos/content-filter/uri-list-policies")
+                        _log_call("content_filter[v2]", r.status_code, r.text)
                     if r.status_code == 200:
                         data = r.json()
+                        logger.debug("sw_snapshot content_filter raw keys: %s", list(data.keys()))
                         raw_cf = (
                             data.get("policies")
                             or data.get("content_filter_policies")
@@ -914,14 +932,17 @@ class SonicWallConnector(BaseConnector):
                                 "enabled": enabled,
                                 "blocked_categories": cats,
                             })
-                except Exception:
-                    pass
+                        logger.info("sw_snapshot content_filter: %d policies", len(result["content_filter"]))
+                except Exception as exc:
+                    logger.warning("sw_snapshot content_filter exception: %s", exc)
 
                 # ── App Rules ─────────────────────────────────────────────────
                 try:
                     r = await client.get("/api/sonicos/app-rules/policies")
+                    _log_call("app_rules", r.status_code, r.text)
                     if r.status_code == 200:
                         data = r.json()
+                        logger.debug("sw_snapshot app_rules raw keys: %s", list(data.keys()))
                         raw_ar = (
                             data.get("policies")
                             or data.get("app_rules_policies")
@@ -951,8 +972,9 @@ class SonicWallConnector(BaseConnector):
                                 "action": action_name,
                                 "enabled": enabled,
                             })
-                except Exception:
-                    pass
+                        logger.info("sw_snapshot app_rules: %d rules", len(result["app_rules"]))
+                except Exception as exc:
+                    logger.warning("sw_snapshot app_rules exception: %s", exc)
 
                 # ── Security Services ─────────────────────────────────────────
                 for endpoint, key, field_names in [
@@ -965,8 +987,10 @@ class SonicWallConnector(BaseConnector):
                 ]:
                     try:
                         r = await client.get(endpoint)
+                        _log_call(f"security[{key}]", r.status_code, r.text)
                         if r.status_code == 200:
                             data = r.json()
+                            logger.debug("sw_snapshot security[%s] raw keys: %s", key, list(data.keys()))
                             inner: dict = {}
                             for f in field_names:
                                 if f in data:
@@ -976,17 +1000,26 @@ class SonicWallConnector(BaseConnector):
                                 inner = data
                             result["security_settings"][key] = {
                                 "enabled": inner.get("enable", inner.get("enabled", False)),
-                                "inbound": inner.get(
+                                "inbound": bool(inner.get(
                                     "inbound_inspection", inner.get("inbound", False)
-                                ),
-                                "outbound": inner.get(
+                                )),
+                                "outbound": bool(inner.get(
                                     "outbound_inspection", inner.get("outbound", False)
-                                ),
+                                )),
                             }
-                    except Exception:
+                    except Exception as exc:
+                        logger.warning("sw_snapshot security[%s] exception: %s", key, exc)
                         result["security_settings"][key] = {"enabled": False}
 
-        except Exception:
-            pass
+                logger.info(
+                    "sw_snapshot complete: addr_obj=%d addr_grp=%d svc_obj=%d svc_grp=%d cf=%d app=%d sec=%d",
+                    len(result["address_objects"]), len(result["address_groups"]),
+                    len(result["service_objects"]), len(result["service_groups"]),
+                    len(result["content_filter"]), len(result["app_rules"]),
+                    len(result["security_settings"]),
+                )
+
+        except Exception as exc:
+            logger.error("sw_snapshot session error: %s", exc)
         return result
 
