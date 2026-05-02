@@ -353,7 +353,13 @@ async def _collect_live_data(device: Device) -> dict:
         rules = await connector.list_rules()
         nats = await connector.list_nat_policies()
         routes = await connector.list_route_policies()
-        return {"status": "online", "rules": rules, "nats": nats, "routes": routes}
+        data: dict = {"status": "online", "rules": rules, "nats": nats, "routes": routes}
+
+        if hasattr(connector, "collect_extended_snapshot"):
+            extended = await connector.collect_extended_snapshot()
+            data.update(extended)
+
+        return data
     except Exception:
         return {"status": "error"}
 
@@ -435,6 +441,81 @@ def _build_snapshot_md(device: Device, live_data: dict, recent_ops: list, timest
                 )
         else:
             lines.append("_Nenhuma rota estática configurada._")
+
+        # ── Address objects ────────────────────────────────────────────────────
+        addr_objs = live_data.get("address_objects", [])
+        if addr_objs:
+            lines += ["", f"### Objetos de endereço customizados ({len(addr_objs)})", ""]
+            lines += ["| Nome | Tipo | Valor | Zona |", "|---|---|---|---|"]
+            for obj in addr_objs:
+                lines.append(
+                    f"| {obj['name']} | {obj['type']} | `{obj['value']}` | {obj['zone']} |"
+                )
+
+        addr_groups = live_data.get("address_groups", [])
+        if addr_groups:
+            lines += ["", f"### Grupos de endereço customizados ({len(addr_groups)})", ""]
+            lines += ["| Nome | Membros |", "|---|---|"]
+            for grp in addr_groups:
+                members = ", ".join(grp["members"]) if grp["members"] else "—"
+                lines.append(f"| {grp['name']} | {members} |")
+
+        # ── Service objects ────────────────────────────────────────────────────
+        svc_objs = live_data.get("service_objects", [])
+        if svc_objs:
+            lines += ["", f"### Objetos de serviço customizados ({len(svc_objs)})", ""]
+            lines += ["| Nome | Protocolo | Porta(s) |", "|---|---|---|"]
+            for obj in svc_objs:
+                lines.append(f"| {obj['name']} | {obj['proto']} | {obj['port']} |")
+
+        svc_groups = live_data.get("service_groups", [])
+        if svc_groups:
+            lines += ["", f"### Grupos de serviço customizados ({len(svc_groups)})", ""]
+            lines += ["| Nome | Membros |", "|---|---|"]
+            for grp in svc_groups:
+                members = ", ".join(grp["members"]) if grp["members"] else "—"
+                lines.append(f"| {grp['name']} | {members} |")
+
+        # ── Content Filter ─────────────────────────────────────────────────────
+        cf_policies = live_data.get("content_filter", [])
+        if cf_policies:
+            lines += ["", f"### Regras de Content Filter ({len(cf_policies)})", ""]
+            lines += ["| Nome | Status | Categorias bloqueadas |", "|---|---|---|"]
+            for p in cf_policies:
+                status = "✅ Ativo" if p["enabled"] else "❌ Inativo"
+                cats = ", ".join(p["blocked_categories"]) if p["blocked_categories"] else "—"
+                lines.append(f"| {p['name']} | {status} | {cats} |")
+
+        # ── App Rules ─────────────────────────────────────────────────────────
+        app_rules = live_data.get("app_rules", [])
+        if app_rules:
+            lines += ["", f"### App Rules ({len(app_rules)})", ""]
+            lines += ["| Nome | Aplicação | Ação | Status |", "|---|---|---|---|"]
+            for ar in app_rules:
+                status_icon = "✅" if ar["enabled"] else "❌"
+                lines.append(
+                    f"| {ar['name']} | {ar['application']} | {ar['action']} | {status_icon} |"
+                )
+
+        # ── Security settings ──────────────────────────────────────────────────
+        sec = live_data.get("security_settings", {})
+        if sec:
+            lines += ["", "### Configurações de segurança", ""]
+            lines += [
+                "| Serviço | Status | Inspeção Entrada | Inspeção Saída |",
+                "|---|---|---|---|",
+            ]
+            for key, label in [
+                ("gateway_av", "Gateway Antivírus"),
+                ("anti_spyware", "Anti-Spyware"),
+                ("ips", "Intrusion Prevention (IPS)"),
+            ]:
+                if key in sec:
+                    s = sec[key]
+                    enabled = "✅ Ativo" if s.get("enabled") else "❌ Inativo"
+                    inbound = "✅" if s.get("inbound") else "—"
+                    outbound = "✅" if s.get("outbound") else "—"
+                    lines.append(f"| {label} | {enabled} | {inbound} | {outbound} |")
 
     else:
         lines.append(

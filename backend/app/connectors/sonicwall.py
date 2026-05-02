@@ -713,3 +713,280 @@ class SonicWallConnector(BaseConnector):
                 return ExecutionResult(success=True, rule_id=rule_id)
             return ExecutionResult(success=False, error=resp.text)
 
+    # ------------------------------------------------------------------
+    # Snapshot helpers — read-only extended data in a single session
+    # ------------------------------------------------------------------
+
+    _BUILTIN_ADDR_PREFIXES = (
+        "X0 ", "X1 ", "X2 ", "X3 ", "X4 ", "X5 ", "X6 ", "X7 ", "X8 ", "X9 ",
+        "LAN ", "WAN ", "DMZ ", "MGMT ", "VPN ", "WLAN ", "OPT ", "All ", "Default ",
+        "MULTICAST ", "Firewalled ", "Non-Firewalled ",
+    )
+    _BUILTIN_ADDR_NAMES: frozenset = frozenset({
+        "Any", "Any (Non-Firewalled)", "RFC1918 Networks",
+        "SonicWall Management", "IPv4 Multicast Range",
+    })
+    _BUILTIN_SVC_NAMES: frozenset = frozenset({
+        "Any", "HTTP", "HTTPS", "HTTP CONNECT", "FTP", "FTP Data",
+        "SMTP", "POP3", "IMAP4", "IMAP", "DNS", "DHCP Server", "DHCP Client",
+        "ICMP Any", "PING", "Echo", "Telnet", "SSH", "SNMP", "NTP",
+        "TCP (ANY)", "UDP (ANY)", "NetBIOS", "LDAP", "LDAPS", "Syslog",
+        "BGP", "OSPF", "RIP", "RADIUS", "TACACS+", "SIP", "SIP-TLS",
+        "H.323", "L2TP", "PPTP", "GRE", "ESP", "AH", "IKE", "TFTP",
+        "RTSP", "MGCP", "SCTP", "IGMP", "MS SQL", "MySQL", "Oracle",
+        "PostgreSQL", "RDP", "VNC", "RTMP", "NetMeeting", "Gopher",
+        "Finger", "Whois", "HTTPS Management",
+    })
+    _BUILTIN_SVC_GROUP_NAMES: frozenset = frozenset({
+        "Any", "Common Peer-to-Peer Applications", "FTP Services",
+        "Mail Services", "Remote Access Services", "Web Services",
+        "NetBIOS Services", "SQL Services", "Voice Services",
+        "Social Networking Sites", "Custom Port Scan Filter Services",
+    })
+
+    @classmethod
+    def _is_custom_addr(cls, obj: dict) -> bool:
+        if obj.get("read_only"):
+            return False
+        name = obj.get("name", "")
+        if not name or name in cls._BUILTIN_ADDR_NAMES:
+            return False
+        return not any(name.startswith(p) for p in cls._BUILTIN_ADDR_PREFIXES)
+
+    @classmethod
+    def _is_custom_svc(cls, obj: dict) -> bool:
+        if obj.get("read_only"):
+            return False
+        name = obj.get("name", "")
+        return bool(name) and name not in cls._BUILTIN_SVC_NAMES
+
+    @classmethod
+    def _is_custom_svc_group(cls, obj: dict) -> bool:
+        if obj.get("read_only"):
+            return False
+        name = obj.get("name", "")
+        return bool(name) and name not in cls._BUILTIN_SVC_GROUP_NAMES
+
+    @staticmethod
+    def _addr_obj_value(obj: dict) -> tuple[str, str]:
+        if "host" in obj:
+            return "host", obj["host"].get("ip", "")
+        if "network" in obj:
+            n = obj["network"]
+            return "network", f"{n.get('subnet', '')}/{n.get('mask', '')}"
+        if "range" in obj:
+            r = obj["range"]
+            return "range", f"{r.get('begin', '')} – {r.get('end', '')}"
+        if "fqdn" in obj:
+            return "fqdn", obj["fqdn"].get("domain", "")
+        if "mac" in obj:
+            return "mac", obj["mac"].get("address", "")
+        return "other", ""
+
+    @staticmethod
+    def _svc_obj_value(obj: dict) -> tuple[str, str]:
+        for p in ("tcp", "udp", "icmp", "icmpv6"):
+            if p in obj:
+                pdata = obj[p]
+                b, e = str(pdata.get("begin", "")), str(pdata.get("end", ""))
+                port = b if b == e else f"{b}-{e}"
+                return p.upper(), port
+        return "other", ""
+
+    async def collect_extended_snapshot(self) -> dict:
+        """Collect address objects, services, content filter, app rules, and security
+        settings in a single authenticated session for use in BookStack snapshots."""
+        result: dict[str, Any] = {
+            "address_objects": [],
+            "address_groups": [],
+            "service_objects": [],
+            "service_groups": [],
+            "content_filter": [],
+            "app_rules": [],
+            "security_settings": {},
+        }
+        try:
+            async with self._session() as client:
+
+                # ── Address Objects ───────────────────────────────────────────
+                try:
+                    r = await client.get("/api/sonicos/address-objects/ipv4")
+                    if r.status_code == 200:
+                        for entry in r.json().get("address_objects", []):
+                            obj = entry.get("ipv4", entry) if isinstance(entry, dict) else {}
+                            if not self._is_custom_addr(obj):
+                                continue
+                            kind, value = self._addr_obj_value(obj)
+                            result["address_objects"].append({
+                                "name": obj.get("name", ""),
+                                "type": kind,
+                                "value": value,
+                                "zone": obj.get("zone", ""),
+                            })
+                except Exception:
+                    pass
+
+                # ── Address Groups ────────────────────────────────────────────
+                try:
+                    r = await client.get("/api/sonicos/address-groups/ipv4")
+                    if r.status_code == 200:
+                        ag = r.json().get("address_groups", [])
+                        raw_ag = ag.get("ipv4", []) if isinstance(ag, dict) else ag
+                        for entry in raw_ag:
+                            obj = entry.get("ipv4", entry) if isinstance(entry, dict) else {}
+                            if not self._is_custom_addr(obj):
+                                continue
+                            members = [
+                                m.get("name", str(m)) for m in obj.get("address_objects", [])
+                            ]
+                            result["address_groups"].append({
+                                "name": obj.get("name", ""),
+                                "members": members,
+                            })
+                except Exception:
+                    pass
+
+                # ── Service Objects ───────────────────────────────────────────
+                try:
+                    r = await client.get("/api/sonicos/service-objects")
+                    if r.status_code == 200:
+                        for obj in r.json().get("service_objects", []):
+                            if not isinstance(obj, dict) or not self._is_custom_svc(obj):
+                                continue
+                            proto, port = self._svc_obj_value(obj)
+                            result["service_objects"].append({
+                                "name": obj.get("name", ""),
+                                "proto": proto,
+                                "port": port,
+                            })
+                except Exception:
+                    pass
+
+                # ── Service Groups ────────────────────────────────────────────
+                try:
+                    r = await client.get("/api/sonicos/service-groups")
+                    if r.status_code == 200:
+                        for obj in r.json().get("service_groups", []):
+                            if not isinstance(obj, dict) or not self._is_custom_svc_group(obj):
+                                continue
+                            members = [
+                                m.get("name", str(m)) for m in obj.get("service_objects", [])
+                            ]
+                            result["service_groups"].append({
+                                "name": obj.get("name", ""),
+                                "members": members,
+                            })
+                except Exception:
+                    pass
+
+                # ── Content Filter Policies ───────────────────────────────────
+                try:
+                    r = await client.get("/api/sonicos/content-filter/policies")
+                    if r.status_code != 200:
+                        r = await client.get("/api/sonicos/content-filter/uri-list-policies")
+                    if r.status_code == 200:
+                        data = r.json()
+                        raw_cf = (
+                            data.get("policies")
+                            or data.get("content_filter_policies")
+                            or data.get("uri_list_policies")
+                            or []
+                        )
+                        for p in raw_cf:
+                            if not isinstance(p, dict):
+                                continue
+                            inner = p.get("content_filter", p.get("uri_list", p))
+                            name = inner.get("name", "")
+                            if not name:
+                                continue
+                            enabled = inner.get("enable", inner.get("enabled", True))
+                            cats_raw = (
+                                inner.get("blocked_categories")
+                                or inner.get("categories")
+                                or []
+                            )
+                            cats = [
+                                (c.get("name", str(c)) if isinstance(c, dict) else str(c))
+                                for c in cats_raw[:15]
+                            ]
+                            result["content_filter"].append({
+                                "name": name,
+                                "enabled": enabled,
+                                "blocked_categories": cats,
+                            })
+                except Exception:
+                    pass
+
+                # ── App Rules ─────────────────────────────────────────────────
+                try:
+                    r = await client.get("/api/sonicos/app-rules/policies")
+                    if r.status_code == 200:
+                        data = r.json()
+                        raw_ar = (
+                            data.get("policies")
+                            or data.get("app_rules_policies")
+                            or []
+                        )
+                        for p in raw_ar:
+                            if not isinstance(p, dict):
+                                continue
+                            inner = p.get("app_rules", p)
+                            name = inner.get("name", "")
+                            if not name:
+                                continue
+                            enabled = inner.get("enable", inner.get("enabled", True))
+                            action = inner.get("action", {})
+                            action_name = (
+                                action.get("name", action.get("action", str(action)))
+                                if isinstance(action, dict) else str(action)
+                            )
+                            app = inner.get("application", {})
+                            app_name = (
+                                app.get("name", app.get("application", str(app)))
+                                if isinstance(app, dict) else str(app)
+                            )
+                            result["app_rules"].append({
+                                "name": name,
+                                "application": app_name,
+                                "action": action_name,
+                                "enabled": enabled,
+                            })
+                except Exception:
+                    pass
+
+                # ── Security Services ─────────────────────────────────────────
+                for endpoint, key, field_names in [
+                    ("/api/sonicos/security-services/gateway-av", "gateway_av",
+                     ("gateway_antivirus", "gateway_av")),
+                    ("/api/sonicos/security-services/anti-spyware", "anti_spyware",
+                     ("anti_spyware",)),
+                    ("/api/sonicos/security-services/intrusion-prevention", "ips",
+                     ("intrusion_prevention", "ips")),
+                ]:
+                    try:
+                        r = await client.get(endpoint)
+                        if r.status_code == 200:
+                            data = r.json()
+                            inner: dict = {}
+                            for f in field_names:
+                                if f in data:
+                                    inner = data[f]
+                                    break
+                            if not inner:
+                                inner = data
+                            result["security_settings"][key] = {
+                                "enabled": inner.get("enable", inner.get("enabled", False)),
+                                "inbound": inner.get(
+                                    "inbound_inspection", inner.get("inbound", False)
+                                ),
+                                "outbound": inner.get(
+                                    "outbound_inspection", inner.get("outbound", False)
+                                ),
+                            }
+                    except Exception:
+                        result["security_settings"][key] = {"enabled": False}
+
+        except Exception:
+            pass
+        return result
+
