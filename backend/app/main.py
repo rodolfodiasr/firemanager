@@ -15,14 +15,14 @@ log = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    log.info("FireManager starting", environment=settings.environment)
+    log.info("Eternity SecOps starting", environment=settings.environment)
     yield
-    log.info("FireManager shutting down")
+    log.info("Eternity SecOps shutting down")
 
 
 app = FastAPI(
-    title="FireManager API",
-    description="Plataforma Multivendor de Gestão de Firewalls com IA",
+    title="Eternity SecOps API",
+    description="Plataforma Multivendor de Segurança e Gestão de Infraestrutura com IA",
     version="0.1.0",
     lifespan=lifespan,
     docs_url="/docs",

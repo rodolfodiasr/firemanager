@@ -7,7 +7,7 @@ import {
   Server,
   Shield,
   Settings,
-  Flame,
+  ShieldAlert,
   Terminal,
   Radar,
   Building2,
@@ -102,8 +102,8 @@ export function Sidebar() {
     <aside className="w-64 bg-gray-900 text-white flex flex-col h-screen fixed left-0 top-0">
       {/* Logo */}
       <div className="flex items-center gap-2 px-6 py-5 border-b border-gray-700">
-        <Flame className="text-brand-500" size={24} />
-        <span className="text-xl font-bold">FireManager</span>
+        <ShieldAlert className="text-brand-500" size={24} />
+        <span className="text-xl font-bold">Eternity SecOps</span>
       </div>
 
       {/* Nav */}
@@ -148,7 +148,7 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="px-6 py-4 border-t border-gray-700 text-xs text-gray-500">
-        FireManager v0.1.0
+        Eternity SecOps v0.1.0
       </div>
     </aside>
   );
