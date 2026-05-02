@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import TenantContext, get_tenant_context
+from app.api.auth import TenantContext, get_tenant_context, require_module_reviewer, require_reviewer
+
+_require_compliance = require_module_reviewer("compliance")
 from app.database import get_db
 from app.schemas.compliance import (
     ComplianceGenerateRequest,
@@ -23,7 +25,7 @@ router = APIRouter()
 @router.post("", response_model=ComplianceReportRead, status_code=201)
 async def generate_report(
     data: ComplianceGenerateRequest,
-    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    ctx:  Annotated[TenantContext, Depends(_require_compliance)],
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> ComplianceReportRead:
     try:
@@ -66,7 +68,7 @@ async def get_report(
 async def remediate_from_report(
     report_id: UUID,
     data: ComplianceRemediateRequest,
-    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    ctx:  Annotated[TenantContext, Depends(_require_compliance)],
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> list[RemediationPlanRead]:
     report = await compliance_service.get_report(db, ctx.tenant.id, report_id)
@@ -96,7 +98,7 @@ async def remediate_from_report(
 @router.delete("/{report_id}", status_code=204)
 async def delete_report(
     report_id: UUID,
-    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    ctx: Annotated[TenantContext, Depends(_require_compliance)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     report = await compliance_service.get_report(db, ctx.tenant.id, report_id)

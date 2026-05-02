@@ -13,23 +13,29 @@ import {
   ToggleLeft,
   ToggleRight,
   Users,
+  ShieldCheck,
 } from "lucide-react";
 import { tenantsApi } from "../api/tenants";
 import { inviteApi } from "../api/invite";
+import { permissionsApi, type DeviceCategory, type FunctionalModule, type UserPermissionProfile } from "../api/permissions";
 import { useAuth } from "../hooks/useAuth";
 import { TopBar } from "../components/layout/TopBar";
 import type { TenantMember, TenantRead, TenantRole } from "../types/tenant";
 
-const ROLES: TenantRole[] = ["admin", "analyst", "readonly"];
+const ROLES: TenantRole[] = ["admin", "analyst_n2", "analyst_n1", "readonly"];
 const ROLE_LABELS: Record<TenantRole, string> = {
-  admin: "Admin",
-  analyst: "Analista",
-  readonly: "Somente leitura",
+  admin:       "Admin",
+  analyst_n2:  "Analista N2",
+  analyst_n1:  "Analista N1",
+  readonly:    "Leitor",
+  analyst:     "Analista (legado)",
 };
 const ROLE_COLORS: Record<TenantRole, string> = {
-  admin: "bg-brand-100 text-brand-700",
-  analyst: "bg-blue-100 text-blue-700",
-  readonly: "bg-gray-100 text-gray-600",
+  admin:       "bg-brand-100 text-brand-700",
+  analyst_n2:  "bg-blue-100 text-blue-700",
+  analyst_n1:  "bg-cyan-100 text-cyan-700",
+  readonly:    "bg-gray-100 text-gray-600",
+  analyst:     "bg-blue-100 text-blue-600",
 };
 
 function RoleBadge({ role }: { role: TenantRole }) {
@@ -37,6 +43,184 @@ function RoleBadge({ role }: { role: TenantRole }) {
     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLORS[role]}`}>
       {ROLE_LABELS[role]}
     </span>
+  );
+}
+
+// ── Permission Matrix ─────────────────────────────────────────────────────────
+
+const DEVICE_CATS: { key: DeviceCategory; label: string }[] = [
+  { key: "firewall", label: "Firewall" },
+  { key: "switch",   label: "Switch / Roteador" },
+  { key: "server",   label: "Servidor" },
+  { key: "hypervisor", label: "Hypervisor" },
+];
+
+const FUNC_MODULES: { key: FunctionalModule; label: string }[] = [
+  { key: "compliance",      label: "Compliance" },
+  { key: "remediation",     label: "Remediação" },
+  { key: "server_analysis", label: "Análise de Servidores" },
+  { key: "bulk_jobs",       label: "Jobs em Lote" },
+];
+
+const PERM_ROLES: { value: TenantRole | ""; label: string }[] = [
+  { value: "", label: "— (herdar)" },
+  { value: "admin", label: "Admin" },
+  { value: "analyst_n2", label: "Analista N2" },
+  { value: "analyst_n1", label: "Analista N1" },
+  { value: "readonly", label: "Leitor" },
+];
+
+interface PermissionMatrixDrawerProps {
+  tenantId: string;
+  userId: string;
+  userName: string;
+  onClose: () => void;
+}
+
+function PermissionMatrixDrawer({ tenantId, userId, userName, onClose }: PermissionMatrixDrawerProps) {
+  const qc = useQueryClient();
+
+  const { data: profile, isLoading } = useQuery({
+    queryKey: ["perm-profile", tenantId, userId],
+    queryFn: () => permissionsApi.getUserModuleProfile(userId),
+  });
+
+  const upsertCat = useMutation({
+    mutationFn: ({ cat, role }: { cat: DeviceCategory; role: TenantRole }) =>
+      permissionsApi.upsertCategoryRole(userId, cat, role),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["perm-profile", tenantId, userId] }),
+  });
+
+  const deleteCat = useMutation({
+    mutationFn: (cat: DeviceCategory) => permissionsApi.deleteCategoryRole(userId, cat),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["perm-profile", tenantId, userId] }),
+  });
+
+  const upsertMod = useMutation({
+    mutationFn: ({ mod, role }: { mod: FunctionalModule; role: TenantRole }) =>
+      permissionsApi.upsertModuleRole(userId, mod, role),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["perm-profile", tenantId, userId] }),
+  });
+
+  const deleteMod = useMutation({
+    mutationFn: (mod: FunctionalModule) => permissionsApi.deleteModuleRole(userId, mod),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["perm-profile", tenantId, userId] }),
+  });
+
+  const getCatOverride = (cat: DeviceCategory): TenantRole | "" => {
+    const found = profile?.category_roles.find((cr) => cr.category === cat);
+    return found ? found.role : "";
+  };
+
+  const getModOverride = (mod: FunctionalModule): TenantRole | "" => {
+    const found = profile?.module_roles.find((mr) => mr.module === mod);
+    return found ? found.role : "";
+  };
+
+  const handleCatChange = (cat: DeviceCategory, val: TenantRole | "") => {
+    if (val === "") {
+      deleteCat.mutate(cat);
+    } else {
+      upsertCat.mutate({ cat, role: val });
+    }
+  };
+
+  const handleModChange = (mod: FunctionalModule, val: TenantRole | "") => {
+    if (val === "") {
+      deleteMod.mutate(mod);
+    } else {
+      upsertMod.mutate({ mod, role: val });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-white shadow-2xl flex flex-col h-full overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={18} className="text-brand-600" />
+            <h2 className="text-base font-semibold text-gray-900">Permissões — {userName}</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={20} />
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Carregando...</div>
+        ) : (
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+            {profile && (
+              <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500">
+                Perfil global: <span className="font-semibold text-gray-700">{ROLE_LABELS[profile.tenant_role] ?? profile.tenant_role}</span>
+                <span className="ml-2 text-gray-400">— overrides abaixo substituem este valor por módulo</span>
+              </div>
+            )}
+
+            {/* Device Categories */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Categorias de Dispositivo</p>
+              <table className="w-full text-sm">
+                <tbody className="divide-y divide-gray-100">
+                  {DEVICE_CATS.map(({ key, label }) => {
+                    const override = getCatOverride(key);
+                    return (
+                      <tr key={key} className="hover:bg-gray-50">
+                        <td className="py-2.5 pr-4 text-gray-700">{label}</td>
+                        <td className="py-2.5">
+                          <select
+                            value={override}
+                            onChange={(e) => handleCatChange(key, e.target.value as TenantRole | "")}
+                            className={`border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 ${
+                              override ? "border-brand-300 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-500"
+                            }`}
+                          >
+                            {PERM_ROLES.map((r) => (
+                              <option key={r.value} value={r.value}>{r.label}</option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Functional Modules */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Módulos Funcionais</p>
+              <table className="w-full text-sm">
+                <tbody className="divide-y divide-gray-100">
+                  {FUNC_MODULES.map(({ key, label }) => {
+                    const override = getModOverride(key);
+                    return (
+                      <tr key={key} className="hover:bg-gray-50">
+                        <td className="py-2.5 pr-4 text-gray-700">{label}</td>
+                        <td className="py-2.5">
+                          <select
+                            value={override}
+                            onChange={(e) => handleModChange(key, e.target.value as TenantRole | "")}
+                            className={`border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 ${
+                              override ? "border-brand-300 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-500"
+                            }`}
+                          >
+                            {PERM_ROLES.map((r) => (
+                              <option key={r.value} value={r.value}>{r.label}</option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -54,11 +238,13 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps
   const [inviteMode, setInviteMode] = useState<"direct" | "email">("direct");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
-  const [inviteRole, setInviteRole] = useState<TenantRole>("analyst");
+  const [inviteRole, setInviteRole] = useState<TenantRole>("analyst_n2");
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [editRole, setEditRole] = useState<TenantRole>("analyst");
+  const [editRole, setEditRole] = useState<TenantRole>("analyst_n2");
+  const [permUserId, setPermUserId] = useState<string | null>(null);
+  const [permUserName, setPermUserName] = useState("");
 
   const { data: members = [], isLoading } = useQuery({
     queryKey: ["members", tenantId],
@@ -81,7 +267,7 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps
         setShowInvite(false);
         setInviteEmail("");
         setInviteName("");
-        setInviteRole("analyst");
+        setInviteRole("analyst_n2");
       }
     },
   });
@@ -102,6 +288,14 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps
 
   return (
     <div className="flex flex-col h-full">
+      {permUserId && (
+        <PermissionMatrixDrawer
+          tenantId={tenantId}
+          userId={permUserId}
+          userName={permUserName}
+          onClose={() => setPermUserId(null)}
+        />
+      )}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Users size={16} className="text-brand-500" />
@@ -135,7 +329,7 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps
           <p className="font-semibold mb-1">Convite enviado!</p>
           <p>Um e-mail foi enviado para <strong>{inviteEmail}</strong> com o link de acesso.</p>
           <button
-            onClick={() => { setEmailSent(false); setShowInvite(false); setInviteEmail(""); setInviteRole("analyst"); }}
+            onClick={() => { setEmailSent(false); setShowInvite(false); setInviteEmail(""); setInviteRole("analyst_n2"); }}
             className="mt-2 text-green-600 underline"
           >
             Fechar
@@ -245,6 +439,13 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: MembersPanelProps
                 ) : (
                   <>
                     <RoleBadge role={m.role} />
+                    <button
+                      onClick={() => { setPermUserId(m.user_id); setPermUserName(m.name); }}
+                      className="text-gray-400 hover:text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Matriz de permissões"
+                    >
+                      <ShieldCheck size={13} />
+                    </button>
                     <button
                       onClick={() => { setEditingUserId(m.user_id); setEditRole(m.role); }}
                       className="text-gray-400 hover:text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity"

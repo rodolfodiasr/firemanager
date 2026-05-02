@@ -183,14 +183,24 @@ async def invite_member_by_email(
         await db.flush()
         await db.refresh(user)
 
-    existing = await db.execute(
+    existing_r = await db.execute(
         select(UserTenantRole).where(
             UserTenantRole.user_id == user.id,
             UserTenantRole.tenant_id == tenant_id,
         )
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Usuário já é membro deste tenant")
+    utr = existing_r.scalar_one_or_none()
+    if utr:
+        # User already a member — return existing record (no password shown)
+        member = TenantMemberRead(
+            user_id=utr.user_id,
+            tenant_id=utr.tenant_id,
+            role=utr.role,
+            email=user.email,
+            name=user.name,
+            is_active=user.is_active,
+        )
+        return MemberInviteResponse(member=member, temp_password=None)
 
     utr = UserTenantRole(user_id=user.id, tenant_id=tenant_id, role=data.role)
     db.add(utr)

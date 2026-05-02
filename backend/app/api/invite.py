@@ -24,7 +24,7 @@ INVITE_TTL = timedelta(hours=48)
 class InviteCreate(BaseModel):
     email: EmailStr
     tenant_id: UUID
-    role: TenantRole = TenantRole.analyst
+    role: TenantRole = TenantRole.analyst_n2
     frontend_url: str = "http://localhost:5173"
 
 
@@ -38,8 +38,8 @@ class InviteInfo(BaseModel):
 
 
 class AcceptInvite(BaseModel):
-    name: str
-    password: str
+    name: str | None = None
+    password: str | None = None
 
 
 class AcceptResponse(BaseModel):
@@ -128,6 +128,8 @@ async def accept_invite(
     if not user:
         if not data.name:
             raise HTTPException(status_code=422, detail="Nome obrigatório para novos usuários")
+        if not data.password:
+            raise HTTPException(status_code=422, detail="Senha obrigatória para novos usuários")
         user = User(
             email=invite.email,
             name=data.name,
@@ -136,10 +138,7 @@ async def accept_invite(
         )
         db.add(user)
         await db.flush()
-    else:
-        # Existing user — update password if provided
-        if data.password:
-            user.hashed_password = _hash_password(data.password)
+    # Existing user — no changes to their password or profile
 
     # Add to tenant (idempotent)
     utr_r = await db.execute(

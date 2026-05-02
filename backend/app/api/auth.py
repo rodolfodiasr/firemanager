@@ -177,10 +177,40 @@ async def require_tenant_admin(ctx: Annotated[TenantContext, Depends(get_tenant_
 
 
 async def require_reviewer(ctx: Annotated[TenantContext, Depends(get_tenant_context)]) -> TenantContext:
-    """Analyst or admin — can view and act on the review queue."""
-    if ctx.role == TenantRole.readonly:
+    """Analyst N1/N2 or admin — can view and act on write operations."""
+    if ctx.role in (TenantRole.readonly,):
         raise HTTPException(status_code=403, detail="Requer papel de analista ou administrador")
     return ctx
+
+
+def require_module_reviewer(module_name: str):
+    """Factory that returns a dependency enforcing analyst+ access on a specific functional module.
+
+    Resolution: module-specific override > tenant-wide role.
+    If the resolved role is readonly (or user has no tenant membership), raises 403.
+    """
+    async def _dep(
+        token: Annotated[str, Depends(oauth2_scheme)],
+        db:    Annotated[AsyncSession, Depends(get_db)],
+    ) -> TenantContext:
+        ctx = await get_tenant_context(token, db)
+        from app.models.user_functional_module_role import FunctionalModule
+        from app.services.permission_service import resolve_module_role
+
+        try:
+            mod = FunctionalModule(module_name)
+        except ValueError:
+            raise HTTPException(status_code=500, detail=f"Módulo desconhecido: {module_name}")
+
+        effective = await resolve_module_role(db, ctx.user.id, ctx.tenant.id, mod)
+        if effective is None or effective == TenantRole.readonly:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Sem permissão de analista para o módulo '{module_name}'.",
+            )
+        return ctx
+
+    return _dep
 
 
 async def resolve_tenant_access(token: str, tenant_id: UUID, db: AsyncSession) -> TenantContext:

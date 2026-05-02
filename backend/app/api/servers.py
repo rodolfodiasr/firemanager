@@ -7,7 +7,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import TenantContext, get_tenant_context
+from app.api.auth import TenantContext, get_tenant_context, require_module_reviewer, require_reviewer
+
+_require_server_analysis = require_module_reviewer("server_analysis")
 from app.database import get_db
 from app.models.analysis_session import AnalysisSession
 from app.models.server import Server
@@ -49,7 +51,7 @@ async def list_servers(
 @router.post("", response_model=ServerRead, status_code=201)
 async def create_server(
     data: ServerCreate,
-    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    ctx:  Annotated[TenantContext, Depends(_require_server_analysis)],
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> ServerRead:
     server = Server(
@@ -72,7 +74,7 @@ async def create_server(
 async def update_server(
     server_id: UUID,
     data: ServerUpdate,
-    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    ctx:  Annotated[TenantContext, Depends(_require_server_analysis)],
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> ServerRead:
     result = await db.execute(
@@ -99,7 +101,7 @@ async def update_server(
 @router.delete("/{server_id}", status_code=204)
 async def delete_server(
     server_id: UUID,
-    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    ctx: Annotated[TenantContext, Depends(_require_server_analysis)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     result = await db.execute(
@@ -158,7 +160,7 @@ async def test_server(
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_servers(
     data: AnalyzeRequest,
-    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    ctx:  Annotated[TenantContext, Depends(_require_server_analysis)],
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> AnalyzeResponse:
     answer, sources = await analyze(

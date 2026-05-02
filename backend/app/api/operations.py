@@ -29,8 +29,11 @@ async def _chat_response(
     ready = operation.status.value == "approved"
     requires_approval = False
     if ready and operation.intent:
-        from app.services.audit_service import check_requires_approval
-        requires_approval = await check_requires_approval(db, ctx.user, operation.intent)
+        if ctx.role == TenantRole.analyst_n1:
+            requires_approval = True
+        else:
+            from app.services.audit_service import check_requires_approval
+            requires_approval = await check_requires_approval(db, ctx.user, operation.intent)
     return {
         "operation_id": str(operation.id),
         "status": operation.status.value,
@@ -121,7 +124,15 @@ async def execute_op(
             detail=f"Sem permissão para executar operações em dispositivos do tipo '{device.category.value}'.",
         )
 
-    if effective_role == TenantRole.analyst and operation.intent:
+    # analyst_n1 — ALL write operations always route to N2 review queue
+    if effective_role == TenantRole.analyst_n1 and operation.intent:
+        raise HTTPException(
+            status_code=403,
+            detail="Analistas N1 não executam diretamente. Use 'Enviar para Revisão'.",
+        )
+
+    # analyst_n2 (and legacy analyst) — route to review only when policy requires it
+    if effective_role in (TenantRole.analyst_n2, TenantRole.analyst) and operation.intent:
         from app.services.audit_service import check_requires_approval
         if await check_requires_approval(db, ctx.user, operation.intent):
             raise HTTPException(
@@ -129,7 +140,7 @@ async def execute_op(
                 detail="Esta operação requer aprovação N2. Use 'Enviar para Revisão'.",
             )
 
-    mark_direct = effective_role == TenantRole.analyst
+    mark_direct = effective_role in (TenantRole.analyst_n2, TenantRole.analyst)
     try:
         operation = await execute_operation(db, operation_id, mark_direct=mark_direct)
     except OperationNotFoundError as exc:

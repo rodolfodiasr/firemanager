@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.device import DeviceCategory
 from app.models.user_device_category_role import UserDeviceCategoryRole
+from app.models.user_functional_module_role import FunctionalModule, UserFunctionalModuleRole
 from app.models.user_tenant_role import TenantRole, UserTenantRole
+
+# Routing and switch share the same permission scope — look up switch for both
+CATEGORY_ALIAS: dict[DeviceCategory, DeviceCategory] = {
+    DeviceCategory.routing: DeviceCategory.switch,
+}
 
 
 async def resolve_device_role(
@@ -25,6 +31,7 @@ async def resolve_device_role(
     Category roles override the tenant-wide role; absence of a category role
     falls back to the tenant-wide role.
     """
+    device_category = CATEGORY_ALIAS.get(device_category, device_category)
     result = await db.execute(
         select(UserDeviceCategoryRole).where(
             UserDeviceCategoryRole.user_id == user_id,
@@ -122,5 +129,118 @@ async def get_all_tenant_category_roles(
         select(UserDeviceCategoryRole).where(
             UserDeviceCategoryRole.tenant_id == tenant_id,
         ).order_by(UserDeviceCategoryRole.user_id, UserDeviceCategoryRole.category)
+    )
+    return list(result.scalars().all())
+
+
+# ── Functional module role resolution ─────────────────────────────────────────
+
+async def resolve_module_role(
+    db: AsyncSession,
+    user_id: UUID,
+    tenant_id: UUID,
+    module: FunctionalModule,
+) -> TenantRole | None:
+    """Return the effective TenantRole for a user on a functional module.
+
+    Resolution: module-specific override > tenant-wide role > None (deny).
+    """
+    result = await db.execute(
+        select(UserFunctionalModuleRole).where(
+            UserFunctionalModuleRole.user_id == user_id,
+            UserFunctionalModuleRole.tenant_id == tenant_id,
+            UserFunctionalModuleRole.module == module,
+        )
+    )
+    mod_role = result.scalar_one_or_none()
+    if mod_role is not None:
+        return mod_role.role
+
+    result2 = await db.execute(
+        select(UserTenantRole).where(
+            UserTenantRole.user_id == user_id,
+            UserTenantRole.tenant_id == tenant_id,
+        )
+    )
+    utr = result2.scalar_one_or_none()
+    return utr.role if utr else None
+
+
+async def upsert_module_role(
+    db: AsyncSession,
+    tenant_id: UUID,
+    user_id: UUID,
+    module: FunctionalModule,
+    role: TenantRole,
+    granted_by: UUID,
+) -> UserFunctionalModuleRole:
+    result = await db.execute(
+        select(UserFunctionalModuleRole).where(
+            UserFunctionalModuleRole.user_id == user_id,
+            UserFunctionalModuleRole.tenant_id == tenant_id,
+            UserFunctionalModuleRole.module == module,
+        )
+    )
+    entry = result.scalar_one_or_none()
+    if entry:
+        entry.role = role
+        entry.granted_by = granted_by
+    else:
+        entry = UserFunctionalModuleRole(
+            user_id=user_id,
+            tenant_id=tenant_id,
+            module=module,
+            role=role,
+            granted_by=granted_by,
+        )
+        db.add(entry)
+    await db.flush()
+    await db.refresh(entry)
+    return entry
+
+
+async def delete_module_role(
+    db: AsyncSession,
+    tenant_id: UUID,
+    user_id: UUID,
+    module: FunctionalModule,
+) -> bool:
+    result = await db.execute(
+        select(UserFunctionalModuleRole).where(
+            UserFunctionalModuleRole.user_id == user_id,
+            UserFunctionalModuleRole.tenant_id == tenant_id,
+            UserFunctionalModuleRole.module == module,
+        )
+    )
+    entry = result.scalar_one_or_none()
+    if not entry:
+        return False
+    await db.delete(entry)
+    await db.flush()
+    return True
+
+
+async def get_user_module_roles(
+    db: AsyncSession,
+    tenant_id: UUID,
+    user_id: UUID,
+) -> list[UserFunctionalModuleRole]:
+    result = await db.execute(
+        select(UserFunctionalModuleRole).where(
+            UserFunctionalModuleRole.tenant_id == tenant_id,
+            UserFunctionalModuleRole.user_id == user_id,
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def get_all_tenant_module_roles(
+    db: AsyncSession,
+    tenant_id: UUID,
+) -> list[UserFunctionalModuleRole]:
+    result = await db.execute(
+        select(UserFunctionalModuleRole).where(
+            UserFunctionalModuleRole.tenant_id == tenant_id,
+        ).order_by(UserFunctionalModuleRole.user_id, UserFunctionalModuleRole.module)
     )
     return list(result.scalars().all())
