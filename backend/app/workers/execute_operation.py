@@ -14,6 +14,7 @@ def execute(self: object, operation_id: str) -> dict[str, str]:
 
 
 async def _async_execute(operation_id: UUID) -> dict[str, str]:
+    import app.models  # ensure all FK targets are registered
     from app.database import AsyncSessionLocal
     from app.services.operation_service import execute_operation
 

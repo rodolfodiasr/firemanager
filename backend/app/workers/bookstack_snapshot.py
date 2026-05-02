@@ -17,6 +17,7 @@ def run_bookstack_snapshots(self: object) -> dict[str, int]:
 
 async def _async_run_snapshots() -> dict[str, int]:
     from sqlalchemy import select
+    import app.models  # ensure all FK targets are registered
     from app.database import AsyncSessionLocal
     from app.models.device import Device
     from app.models.integration import Integration, IntegrationType

@@ -14,6 +14,7 @@ def generate(self: object, operation_id: str) -> dict[str, int]:
 
 
 async def _async_generate(operation_id: UUID) -> dict[str, int]:
+    import app.models  # ensure all FK targets are registered
     from app.database import AsyncSessionLocal
     from app.services.document_service import generate_documents_for_operation
 

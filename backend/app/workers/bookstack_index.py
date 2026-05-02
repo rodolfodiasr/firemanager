@@ -23,6 +23,7 @@ def run_bookstack_indexing(self: object) -> dict[str, int]:
 async def _async_index() -> dict[str, int]:
     from sqlalchemy import delete, select
     from app.config import settings
+    import app.models  # ensure all FK targets are registered
     from app.database import AsyncSessionLocal
     from app.models.bookstack_embedding import BookstackEmbedding
     from app.models.integration import Integration, IntegrationType

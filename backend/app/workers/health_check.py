@@ -15,6 +15,7 @@ def run_health_checks(self: object) -> dict[str, int]:
 
 
 async def _async_health_checks() -> dict[str, int]:
+    import app.models  # ensure all models are registered in SQLAlchemy metadata
     from app.database import AsyncSessionLocal
     from app.models.device import Device, DeviceStatus
     from app.connectors.factory import get_connector
