@@ -19,7 +19,7 @@ interface AuthState {
   login:              (token: string, refreshToken: string) => Promise<void>;
   setPendingTenants:  (preToken: string, tenants: TenantInfo[]) => void;
   selectTenant:       (tenantId: string) => Promise<void>;
-  assumeTenant:       (tenantId: string) => Promise<void>;
+  assumeTenant:       (tenantId: string, tenantName: string) => Promise<void>;
   exitAssumedTenant:  () => void;
   logout:             () => void;
   fetchMe:            () => Promise<void>;
@@ -87,7 +87,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await get().login(resp.data.access_token, resp.data.refresh_token);
   },
 
-  assumeTenant: async (tenantId: string) => {
+  assumeTenant: async (tenantId: string, tenantName: string) => {
     const savedToken = localStorage.getItem("access_token") ?? "";
     const resp = await apiClient.post<{ access_token: string; refresh_token: string }>(
       "/auth/assume-tenant",
@@ -96,10 +96,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem("access_token", resp.data.access_token);
     localStorage.setItem("refresh_token", resp.data.refresh_token);
     const me = await apiClient.get<User>("/auth/me").then((r) => r.data);
-    const myTenants = await apiClient.get<TenantInfo[]>("/auth/me/tenants").then((r) => r.data).catch(() => []);
-    const payload = JSON.parse(atob(resp.data.access_token.split(".")[1]));
-    const tid = payload.tenant_id as string;
-    const activeTenant = myTenants.find((t) => t.id === tid) ?? null;
+    const activeTenant: TenantInfo = { id: tenantId, name: tenantName, slug: "" };
     set({ user: me, tenant: activeTenant, tenantRole: "admin", isAuthenticated: true, _savedToken: savedToken });
   },
 

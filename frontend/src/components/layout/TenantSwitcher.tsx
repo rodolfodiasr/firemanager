@@ -31,9 +31,9 @@ export function TenantSwitcher() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const handleSelect = (id: string) => {
+  const handleSelect = (id: string, name: string) => {
     if (isSuperAdmin) {
-      assumeTenant(id);
+      assumeTenant(id, name);
     } else {
       selectTenant(id);
     }
@@ -67,7 +67,7 @@ export function TenantSwitcher() {
             {allTenants.map((t) => (
               <button
                 key={t.id}
-                onClick={() => handleSelect(t.id)}
+                onClick={() => handleSelect(t.id, t.name)}
                 className="w-full px-4 py-2.5 text-sm text-left hover:bg-gray-50 transition-colors text-gray-700"
               >
                 {t.name}
@@ -96,7 +96,7 @@ export function TenantSwitcher() {
           {allTenants.map((t) => (
             <button
               key={t.id}
-              onClick={() => handleSelect(t.id)}
+              onClick={() => handleSelect(t.id, t.name)}
               className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-left hover:bg-gray-50 transition-colors"
             >
               <span className={t.id === tenant!.id ? "font-semibold text-brand-600" : "text-gray-700"}>

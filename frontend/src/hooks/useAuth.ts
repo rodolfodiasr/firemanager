@@ -42,8 +42,8 @@ export function useAuth() {
   );
 
   const assumeTenant = useCallback(
-    async (tenantId: string) => {
-      await store.assumeTenant(tenantId);
+    async (tenantId: string, tenantName: string) => {
+      await store.assumeTenant(tenantId, tenantName);
       navigate("/");
     },
     [store, navigate]
