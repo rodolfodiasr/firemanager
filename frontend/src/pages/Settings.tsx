@@ -181,13 +181,13 @@ function IntegrationCard({ type, existing, tenantId, isSuperAdmin }: Integration
   useEffect(() => {
     if (!open) return;
     const preview = existing?.config_preview ?? {};
-    const values: Record<string, string | boolean> = {};
+    const values: Record<string, string> = {};
     meta.fields.forEach((f) => {
       const v = preview[f.key];
       if (v === undefined || v === "__masked__") {
-        values[f.key] = f.type === "checkbox" ? false : (f.defaultValue ?? "");
+        values[f.key] = f.defaultValue ?? "";
       } else if (f.type === "checkbox") {
-        values[f.key] = Boolean(v);
+        values[f.key] = v ? "true" : "false";
       } else {
         values[f.key] = String(v);
       }
