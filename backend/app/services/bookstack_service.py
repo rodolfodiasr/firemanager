@@ -73,19 +73,28 @@ async def append_changelog(db: AsyncSession, device: Device, operation: Operatio
         return
 
     try:
+        import httpx
         from app.connectors.bookstack import connector_from_config
         connector = connector_from_config(config)
         entry = _build_changelog_entry(device, operation)
 
         if device.bookstack_fm_page_id:
-            existing = await connector.get_page(device.bookstack_fm_page_id)
-            existing_md = existing.markdown or _strip_html(existing.html)
-            await connector.update_page(
-                page_id=device.bookstack_fm_page_id,
-                name=existing.name,
-                markdown=existing_md.rstrip() + "\n\n" + entry,
-            )
-        else:
+            try:
+                existing = await connector.get_page(device.bookstack_fm_page_id)
+                existing_md = existing.markdown or _strip_html(existing.html)
+                await connector.update_page(
+                    page_id=device.bookstack_fm_page_id,
+                    name=existing.name,
+                    markdown=existing_md.rstrip() + "\n\n" + entry,
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:
+                    device.bookstack_fm_page_id = None
+                    await db.flush()
+                else:
+                    raise
+
+        if not device.bookstack_fm_page_id:
             book_id = config.get("book_id")
             if not book_id:
                 return
@@ -294,16 +303,26 @@ async def publish_device_snapshot(db: AsyncSession, device: Device) -> None:
 
     try:
         from app.connectors.bookstack import connector_from_config
+        import httpx
         connector = connector_from_config(config)
 
         if device.bookstack_snapshot_page_id:
-            existing = await connector.get_page(device.bookstack_snapshot_page_id)
-            await connector.update_page(
-                page_id=device.bookstack_snapshot_page_id,
-                name=existing.name,
-                markdown=snapshot_md,
-            )
-        else:
+            try:
+                existing = await connector.get_page(device.bookstack_snapshot_page_id)
+                await connector.update_page(
+                    page_id=device.bookstack_snapshot_page_id,
+                    name=existing.name,
+                    markdown=snapshot_md,
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:
+                    # Page was deleted externally — clear stale ID and recreate
+                    device.bookstack_snapshot_page_id = None
+                    await db.flush()
+                else:
+                    raise
+
+        if not device.bookstack_snapshot_page_id:
             chapter_id = await _resolve_chapter_id(db, device, config)
             new_page = await connector.create_page(
                 book_id=int(book_id),
