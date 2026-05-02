@@ -6,10 +6,10 @@ import { Agent } from "./pages/Agent";
 import { Devices } from "./pages/Devices";
 import { Settings } from "./pages/Settings";
 import { Audit } from "./pages/Audit";
+import { Organisation } from "./pages/Organisation";
 import { DirectMode } from "./pages/DirectMode";
 import { Templates } from "./pages/Templates";
 import { Inspector } from "./pages/Inspector";
-import { Tenants } from "./pages/Tenants";
 import { MSSPDashboard } from "./pages/MSSPDashboard";
 import { AcceptInvite } from "./pages/AcceptInvite";
 import { BulkJobs } from "./pages/BulkJobs";
@@ -107,11 +107,12 @@ export function AppRouter() {
           </ProtectedLayout>
         }
       />
+      <Route path="/tenants" element={<Navigate to="/organization" replace />} />
       <Route
-        path="/tenants"
+        path="/organization"
         element={
           <ProtectedLayout>
-            <Tenants />
+            <Organisation />
           </ProtectedLayout>
         }
       />

@@ -138,9 +138,9 @@ export function Sidebar() {
         {(showTenants || user?.is_super_admin) && (
           <div className="space-y-0.5 mt-0.5">
             {showTenants && (
-              <NavLink to="/tenants" className={navLinkClass}>
+              <NavLink to="/organization" className={navLinkClass}>
                 <Building2 size={18} />
-                <span className="flex-1">Tenants</span>
+                <span className="flex-1">Organização</span>
               </NavLink>
             )}
             {user?.is_super_admin && (
