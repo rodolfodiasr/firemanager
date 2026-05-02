@@ -356,7 +356,7 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
           >
             {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
           </select>
-          {inviteMut.error && (
+          {inviteMut.isError && (
             <p className="text-xs text-red-600">
               {(inviteMut.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao convidar"}
             </p>
@@ -509,7 +509,7 @@ function TenantsTab() {
             onChange={(e) => setCreateSlug(e.target.value)}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
-          {createMut.error && (
+          {createMut.isError && (
             <p className="text-xs text-red-600">
               {(createMut.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao criar"}
             </p>
@@ -1053,7 +1053,7 @@ function IntegrationCard({ type, existing, tenantId, isSuperAdmin }: {
               </div>
             )
           )}
-          {saveMut.error && (
+          {saveMut.isError && (
             <p className="text-xs text-red-600">
               {(saveMut.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao salvar"}
             </p>
