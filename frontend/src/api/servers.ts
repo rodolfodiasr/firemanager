@@ -2,6 +2,7 @@ import type {
   Server, ServerCreate, ServerUpdate,
   AnalyzeRequest, AnalyzeResponse, AnalysisSession,
 } from "../types/server";
+import type { ServerOperation } from "../types/server_operation";
 import apiClient from "./client";
 
 export const serversApi = {
@@ -31,4 +32,10 @@ export const serversApi = {
 
   exportSessionPdfUrl: (id: string) =>
     `${apiClient.defaults.baseURL}/servers/sessions/${id}/export-pdf`,
+
+  exec: (id: string, body: { description: string; commands: string[] }) =>
+    apiClient.post<ServerOperation>(`/servers/${id}/exec`, body).then((r) => r.data),
+
+  submitForReview: (id: string, body: { description: string; commands: string[] }) =>
+    apiClient.post<ServerOperation>(`/servers/${id}/exec/review`, body).then((r) => r.data),
 };

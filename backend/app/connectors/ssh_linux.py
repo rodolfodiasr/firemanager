@@ -97,6 +97,23 @@ class SshLinuxConnector:
             self.timeout,
         )
 
+    async def run_commands(self, commands: list[str]) -> tuple[str, bool]:
+        """Run arbitrary commands sequentially. Returns (formatted_output, success)."""
+        cmd_dict = {f"__cmd_{i}__": cmd for i, cmd in enumerate(commands)}
+        try:
+            results = await asyncio.to_thread(
+                _run_commands_sync,
+                self.host, self.port, self.username, self.password,
+                self.private_key, cmd_dict, self.timeout,
+            )
+            lines: list[str] = []
+            for i, cmd in enumerate(commands):
+                lines.append(f"$ {cmd}")
+                lines.append(results.get(f"__cmd_{i}__", "(sem saída)"))
+            return "\n".join(lines), True
+        except Exception as exc:
+            return f"Erro de conexão SSH: {exc}", False
+
     async def ping(self) -> tuple[bool, str]:
         try:
             result = await asyncio.to_thread(

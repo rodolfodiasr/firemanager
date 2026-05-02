@@ -27,7 +27,9 @@ import { EmptyState } from "../components/shared/EmptyState";
 import { auditApi } from "../api/audit";
 import { operationsApi } from "../api/operations";
 import { bulkJobsApi } from "../api/bulk_jobs";
+import { serverOpsApi } from "../api/server_operations";
 import { AUDIT_INTENTS } from "../types/audit";
+import type { ServerOperation } from "../types/server_operation";
 import type { Operation } from "../types/operation";
 import type { BulkJob, BulkJobDetail, BulkJobStatus, CategoryPlanSummary } from "../types/bulk_job";
 
@@ -270,6 +272,124 @@ function LiveTab() {
   );
 }
 
+// ── Server Pending section ────────────────────────────────────────────────────
+function ServerPendingSection() {
+  const qc = useQueryClient();
+  const { data: srvOps = [], isLoading } = useQuery({
+    queryKey: ["server-ops-pending"],
+    queryFn: serverOpsApi.getPending,
+    refetchInterval: 30000,
+  });
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [comment, setComment] = useState("");
+
+  const reviewMut = useMutation({
+    mutationFn: ({ id, approved, comment }: { id: string; approved: boolean; comment: string }) =>
+      serverOpsApi.review(id, { approved, comment }),
+    onSuccess: (_data, vars) => {
+      toast.success(vars.approved ? "Operação aprovada e executada!" : "Operação rejeitada.");
+      setExpandedId(null);
+      setComment("");
+      qc.invalidateQueries({ queryKey: ["server-ops-pending"] });
+      qc.invalidateQueries({ queryKey: ["audit-pending-count"] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(msg ?? "Erro ao processar revisão.");
+    },
+  });
+
+  if (isLoading || srvOps.length === 0) return null;
+
+  return (
+    <div className="border-t border-gray-200 pt-2">
+      <p className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">
+        Servidores — {srvOps.length} pendente(s)
+      </p>
+      <div className="divide-y divide-gray-100">
+        {srvOps.map((op: ServerOperation) => (
+          <Fragment key={op.id}>
+            <button
+              className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-start gap-3"
+              onClick={() => { setExpandedId(expandedId === op.id ? null : op.id); setComment(""); }}
+            >
+              <span className="mt-1 shrink-0 text-gray-400">
+                {expandedId === op.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </span>
+              <div className="flex-1 grid grid-cols-4 gap-4 items-center min-w-0">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 truncate">{op.requester_name ?? "—"}</p>
+                  <p className="text-xs text-gray-400 truncate">{op.requester_email}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-700 truncate">{op.server_name ?? "—"}</p>
+                  <p className="text-xs text-gray-400">{op.server_host}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-700">{op.commands.length} comando(s)</p>
+                  <p className="text-xs text-gray-400 truncate">{op.description}</p>
+                </div>
+                <div className="text-right">
+                  <span className="inline-block text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">Em revisão</span>
+                  <p className="text-xs text-gray-400 mt-0.5">{new Date(op.created_at).toLocaleString("pt-BR")}</p>
+                </div>
+              </div>
+            </button>
+
+            {expandedId === op.id && (
+              <div className="px-6 pb-5 bg-gray-50 border-t border-gray-100">
+                <div className="pt-4 space-y-4 max-w-3xl">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Descrição</p>
+                    <p className="text-sm text-gray-800 bg-white border border-gray-200 rounded-lg p-3">{op.description}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                      Comandos ({op.commands.length})
+                    </p>
+                    <pre className="text-xs text-gray-700 bg-gray-900 text-green-300 rounded-lg p-3 overflow-auto max-h-48 whitespace-pre-wrap font-mono">
+                      {op.commands.join("\n")}
+                    </pre>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Parecer do Revisor</p>
+                    <textarea
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      placeholder="Comentário de revisão (obrigatório para rejeição)"
+                      rows={3}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => reviewMut.mutate({ id: op.id, approved: true, comment })}
+                      disabled={reviewMut.isPending}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    >
+                      <CheckCircle2 size={15} /> Aprovar e Executar
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!comment.trim()) { toast.error("Informe o motivo da rejeição."); return; }
+                        reviewMut.mutate({ id: op.id, approved: false, comment });
+                      }}
+                      disabled={reviewMut.isPending}
+                      className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+                    >
+                      <XCircle size={15} /> Rejeitar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Pending Tab ───────────────────────────────────────────────────────────────
 function PendingTab() {
   const qc = useQueryClient();
@@ -302,13 +422,17 @@ function PendingTab() {
 
   if (ops.length === 0)
     return (
-      <div className="py-14 text-center text-gray-400">
-        <CheckCircle2 size={40} className="mx-auto mb-3 text-green-300" />
-        <p className="text-sm">Nenhuma operação aguardando revisão.</p>
+      <div>
+        <div className="py-14 text-center text-gray-400">
+          <CheckCircle2 size={40} className="mx-auto mb-3 text-green-300" />
+          <p className="text-sm">Nenhuma operação de firewall aguardando revisão.</p>
+        </div>
+        <ServerPendingSection />
       </div>
     );
 
   return (
+    <div>
     <div className="divide-y divide-gray-100">
       {ops.map((op) => (
         <Fragment key={op.id}>
@@ -412,6 +536,8 @@ function PendingTab() {
           )}
         </Fragment>
       ))}
+    </div>
+    <ServerPendingSection />
     </div>
   );
 }
@@ -1067,11 +1193,17 @@ function LoteTab() {
 export function Audit() {
   const [tab, setTab] = useState<Tab>("live");
 
-  const { data: pendingCount = 0 } = useQuery({
+  const { data: firewallPending = 0 } = useQuery({
     queryKey: ["audit-pending-count"],
     queryFn: auditApi.getPendingCount,
     refetchInterval: 30000,
   });
+  const { data: serverPending = 0 } = useQuery({
+    queryKey: ["server-ops-pending-count"],
+    queryFn: serverOpsApi.getPendingCount,
+    refetchInterval: 30000,
+  });
+  const pendingCount = firewallPending + serverPending;
 
   const tabs: { id: Tab; label: string; icon?: React.ReactNode }[] = [
     { id: "live", label: "Ao Vivo", icon: <Radio size={13} className="text-green-500" /> },

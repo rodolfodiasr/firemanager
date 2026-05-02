@@ -8,6 +8,8 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TenantContext, get_tenant_context, require_module_reviewer, require_reviewer
+from app.models.server_operation import ServerOperation, ServerOpStatus
+from app.schemas.server_operation import ExecRequest, ServerOperationRead
 
 _require_server_analysis = require_module_reviewer("server_analysis")
 from app.database import get_db
@@ -153,6 +155,103 @@ async def test_server(
 
     ok, message = await connector.ping()
     return {"success": ok, "message": message}
+
+
+# ── Server Modo Técnico ───────────────────────────────────────────────────────
+
+async def _build_connector(server: Server) -> "SshLinuxConnector | WinRMConnector":
+    from app.connectors.ssh_linux import SshLinuxConnector
+    from app.connectors.winrm_windows import WinRMConnector
+    from app.models.server import ServerOsType
+
+    creds = decrypt_credentials(server.encrypted_credentials)
+    if server.os_type == ServerOsType.windows:
+        return WinRMConnector(
+            host=server.host, port=server.ssh_port,
+            username=creds.get("username", ""), password=creds.get("password", ""),
+            auth_type=creds.get("auth_type", "ntlm"),
+            verify_ssl=creds.get("verify_ssl", False),
+        )
+    return SshLinuxConnector(
+        host=server.host, port=server.ssh_port,
+        username=creds.get("username", ""), password=creds.get("password", ""),
+        private_key=creds.get("private_key", ""),
+    )
+
+
+@router.post("/{server_id}/exec", response_model=ServerOperationRead, status_code=201)
+async def exec_server(
+    server_id: UUID,
+    body: ExecRequest,
+    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> ServerOperationRead:
+    result = await db.execute(
+        select(Server).where(Server.id == server_id, Server.tenant_id == ctx.tenant.id)
+    )
+    server = result.scalar_one_or_none()
+    if not server:
+        raise HTTPException(status_code=404, detail="Servidor não encontrado")
+
+    op = ServerOperation(
+        tenant_id=ctx.tenant.id,
+        user_id=ctx.user.id,
+        server_id=server.id,
+        description=body.description,
+        commands=body.commands,
+        status=ServerOpStatus.executing,
+        requester_name=ctx.user.name,
+        requester_email=ctx.user.email,
+        server_name=server.name,
+        server_host=server.host,
+    )
+    db.add(op)
+    await db.flush()
+    await db.refresh(op)
+
+    connector = await _build_connector(server)
+    output, success = await connector.run_commands(body.commands)
+
+    op.output = output
+    op.status = ServerOpStatus.completed if success else ServerOpStatus.failed
+    if not success:
+        op.error_message = "Execução com erros — verifique o output acima."
+
+    await db.flush()
+    await db.refresh(op)
+    return ServerOperationRead.model_validate(op)
+
+
+@router.post("/{server_id}/exec/review", response_model=ServerOperationRead, status_code=201)
+async def submit_server_exec_for_review(
+    server_id: UUID,
+    body: ExecRequest,
+    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> ServerOperationRead:
+    result = await db.execute(
+        select(Server).where(Server.id == server_id, Server.tenant_id == ctx.tenant.id)
+    )
+    server = result.scalar_one_or_none()
+    if not server:
+        raise HTTPException(status_code=404, detail="Servidor não encontrado")
+
+    op = ServerOperation(
+        tenant_id=ctx.tenant.id,
+        user_id=ctx.user.id,
+        server_id=server.id,
+        description=body.description,
+        commands=body.commands,
+        status=ServerOpStatus.pending_review,
+        requester_name=ctx.user.name,
+        requester_email=ctx.user.email,
+        server_name=server.name,
+        server_host=server.host,
+    )
+    db.add(op)
+    await db.flush()
+    await db.refresh(op)
+    return ServerOperationRead.model_validate(op)
 
 
 # ── Analyze (N3 Analyst) ──────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import { Inspector } from "./pages/Inspector";
 import { MSSPDashboard } from "./pages/MSSPDashboard";
 import { AcceptInvite } from "./pages/AcceptInvite";
 import { Servers } from "./pages/Servers";
+import { ServerDirectMode } from "./pages/ServerDirectMode";
 import { ServerAnalysis } from "./pages/ServerAnalysis";
 import { Remediation } from "./pages/Remediation";
 import { Compliance } from "./pages/Compliance";
@@ -57,6 +58,7 @@ export function AppRouter() {
       <Route path="/organization" element={<ProtectedLayout><Organisation /></ProtectedLayout>} />
       <Route path="/mssp" element={<ProtectedLayout><MSSPDashboard /></ProtectedLayout>} />
       <Route path="/servers" element={<ProtectedLayout><Servers /></ProtectedLayout>} />
+      <Route path="/server-direct" element={<ProtectedLayout><ServerDirectMode /></ProtectedLayout>} />
       <Route path="/server-analysis" element={<ProtectedLayout><ServerAnalysis /></ProtectedLayout>} />
       <Route path="/remediation" element={<ProtectedLayout><Remediation /></ProtectedLayout>} />
       <Route path="/compliance" element={<ProtectedLayout><Compliance /></ProtectedLayout>} />

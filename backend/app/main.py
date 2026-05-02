@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, audit, auth, bulk_jobs, category_roles, compliance, device_groups, devices, documents, inspect, integrations, invite, module_roles, operations, recommendations, remediation, servers, templates, tenants, variables
+from app.api import admin, audit, auth, bulk_jobs, category_roles, compliance, device_groups, devices, documents, inspect, integrations, invite, module_roles, operations, recommendations, remediation, server_operations, servers, templates, tenants, variables
 from app.config import settings
 
 log = structlog.get_logger()
@@ -55,6 +55,7 @@ app.include_router(bulk_jobs.router, prefix="/bulk-jobs", tags=["bulk-jobs"])
 app.include_router(device_groups.router, prefix="/device-groups", tags=["device-groups"])
 app.include_router(variables.router, prefix="/variables", tags=["variables"])
 app.include_router(servers.router, prefix="/servers", tags=["servers"])
+app.include_router(server_operations.router, prefix="/server-operations", tags=["server-operations"])
 app.include_router(remediation.router, prefix="/remediation", tags=["remediation"])
 app.include_router(compliance.router, prefix="/compliance", tags=["compliance"])
 app.include_router(category_roles.router, prefix="/category-roles", tags=["category-roles"])
