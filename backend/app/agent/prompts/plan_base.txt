@@ -10,7 +10,7 @@ Dispositivo alvo:
 
 Intenção identificada: {intent}
 
-Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, toggle_gateway_av, toggle_anti_spyware, toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl, configure_app_rules, add_security_exclusion, get_security_status, health_check, get_snapshot, list_vlans, list_ports, get_info
+Intenções disponíveis: create_rule, delete_rule, edit_rule, list_rules, create_group, list_nat_policies, create_nat_policy, delete_nat_policy, list_route_policies, create_route_policy, delete_route_policy, configure_content_filter, toggle_gateway_av, toggle_anti_spyware, toggle_ips, toggle_app_control, toggle_geo_ip, toggle_botnet, toggle_dpi_ssl, configure_app_rules, add_security_exclusion, get_security_status, health_check, get_snapshot, list_vlans, list_ports, get_info, create_vlan, delete_vlan, configure_port
 
 Gere o ActionPlan no seguinte formato JSON (sem markdown):
 {
@@ -193,6 +193,33 @@ Para qualquer vendor CLI que o usuário pedir "listar portas", "status das inter
 - Consulte a seção do vendor abaixo para o comando exato e regras de porta específica
 
 Pode combinar VLANs + portas na mesma operação usando múltiplos comandos em ssh_show_commands.
+
+── CREATE_VLAN — criar uma ou mais VLANs no switch ─────────────────────────
+
+Para qualquer vendor CLI que o usuário pedir "criar VLAN", "adicionar VLAN", "crie as
+VLANs", "configurar VLAN X description Y", etc.:
+- Defina intent="create_vlan", execution_mode="ssh"
+- Preencha ssh_commands com os comandos de configuração
+- ssh_show_commands deve ser null
+- Consulte a seção do vendor para a sintaxe exata (ex: HP Comware usa "vlan X / description Y / quit")
+- Use apenas os IDs e descrições que o usuário informou — não invente VLANs
+
+── DELETE_VLAN — remover uma ou mais VLANs do switch ───────────────────────
+
+Para qualquer vendor CLI que o usuário pedir "remover VLAN", "deletar VLAN", "excluir VLAN X":
+- Defina intent="delete_vlan", execution_mode="ssh"
+- Preencha ssh_commands com os comandos de remoção (ex: HP Comware usa "undo vlan X")
+- ssh_show_commands deve ser null
+
+── CONFIGURE_PORT — configurar uma porta/interface do switch ───────────────
+
+Para qualquer vendor CLI que o usuário pedir "configurar porta X", "colocar porta em
+access/trunk/hybrid", "definir VLAN da porta", "configurar uplink", "configurar porta AP", etc.:
+- Defina intent="configure_port", execution_mode="ssh"
+- Preencha ssh_commands com os comandos de configuração do bloco de interface
+- ssh_show_commands deve ser null
+- Consulte a seção do vendor para a sintaxe de cada modo (access / trunk / hybrid)
+- Use apenas os números de porta, VLANs e modos que o usuário especificou
 
 ── REGRAS GERAIS PARA VENDORS CLI ─────────────────────────────────────────
 

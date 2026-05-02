@@ -28,6 +28,9 @@ Analise a solicitação do usuário e identifique:
    - list_vlans: Listar VLANs configuradas no switch/roteador
    - list_ports: Listar portas/interfaces e seus status
    - get_info: Executar um comando específico de leitura/consulta (display, show, ping, traceroute) que o usuário mencionou explicitamente — use quando o usuário pede para "executar o comando X", "rodar display X", "fazer show X"
+   - create_vlan: Criar uma ou mais VLANs no switch/roteador — use quando o usuário pede "criar VLAN", "adicionar VLAN", "crie as VLANs", "configurar VLAN X" com descrição/nome
+   - delete_vlan: Remover/deletar uma ou mais VLANs do switch/roteador
+   - configure_port: Configurar uma porta/interface do switch — access, trunk, hybrid, SVI; inclui definir VLAN de acesso, uplink trunk, porta de AP, etc.
    - unknown: Solicitação não reconhecida
 
 2. **present_fields**: Campos já fornecidos pelo usuário (ex: src_address, dst_address, service, action, name)

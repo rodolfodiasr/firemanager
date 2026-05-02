@@ -23,6 +23,12 @@ _REQUIRED_FIELDS_BY_INTENT: dict[str, list[str]] = {
     "configure_content_filter": ["profile_name"],
     "health_check": [],
     "get_snapshot": [],
+    "create_vlan": [],
+    "delete_vlan": [],
+    "configure_port": [],
+    "list_vlans": [],
+    "list_ports": [],
+    "get_info": [],
 }
 
 

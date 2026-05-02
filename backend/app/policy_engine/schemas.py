@@ -34,6 +34,9 @@ class IntentType(str, Enum):
     list_vlans = "list_vlans"
     list_ports = "list_ports"
     get_info = "get_info"
+    create_vlan = "create_vlan"
+    delete_vlan = "delete_vlan"
+    configure_port = "configure_port"
     unknown = "unknown"
 
 
