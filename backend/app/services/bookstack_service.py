@@ -90,7 +90,7 @@ async def append_changelog(db: AsyncSession, device: Device, operation: Operatio
             if not book_id:
                 return
 
-            chapter_id = await _resolve_device_chapter_id(db, device)
+            chapter_id = await _resolve_chapter_id(db, device, config)
             page_name = f"[FIREMANAGER] {device.name} — Histórico de Alterações"
             new_page = await connector.create_page(
                 book_id=int(book_id),
@@ -124,6 +124,17 @@ async def _resolve_device_chapter_id(db: AsyncSession, device: Device) -> int | 
     )
     group = result.scalar_one_or_none()
     return group.bookstack_chapter_id if group else None
+
+
+async def _resolve_chapter_id(db: AsyncSession, device: Device, config: dict) -> int | None:
+    """Resolve chapter_id with priority: device group > integration config > None."""
+    chapter_id = await _resolve_device_chapter_id(db, device)
+    if chapter_id is None and config.get("chapter_id"):
+        try:
+            chapter_id = int(config["chapter_id"])
+        except (ValueError, TypeError):
+            pass
+    return chapter_id
 
 
 def _build_changelog_entry(device: Device, operation: Operation) -> str:
@@ -233,7 +244,7 @@ async def publish_doc_draft(db: AsyncSession, device: Device) -> str:
         )
         page_slug = existing.slug
     else:
-        chapter_id = await _resolve_device_chapter_id(db, device)
+        chapter_id = await _resolve_chapter_id(db, device, config)
         page_name = f"[FIREMANAGER DRAFT] {device.name} — Documentação"
         new_page = await connector.create_page(
             book_id=int(book_id),
@@ -293,7 +304,7 @@ async def publish_device_snapshot(db: AsyncSession, device: Device) -> None:
                 markdown=snapshot_md,
             )
         else:
-            chapter_id = await _resolve_device_chapter_id(db, device)
+            chapter_id = await _resolve_chapter_id(db, device, config)
             new_page = await connector.create_page(
                 book_id=int(book_id),
                 name=page_name,
