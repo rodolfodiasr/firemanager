@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -174,9 +174,26 @@ function IntegrationCard({ type, existing, tenantId, isSuperAdmin }: Integration
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency_ms?: number } | null>(null);
   const [testing, setTesting] = useState(false);
 
-  const { register, handleSubmit, formState: { isSubmitting } } = useForm({
+  const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm({
     defaultValues: meta.fields.reduce((acc, f) => ({ ...acc, [f.key]: f.defaultValue ?? "" }), {} as Record<string, string>),
   });
+
+  useEffect(() => {
+    if (!open) return;
+    const preview = existing?.config_preview ?? {};
+    const values: Record<string, string | boolean> = {};
+    meta.fields.forEach((f) => {
+      const v = preview[f.key];
+      if (v === undefined || v === "__masked__") {
+        values[f.key] = f.type === "checkbox" ? false : (f.defaultValue ?? "");
+      } else if (f.type === "checkbox") {
+        values[f.key] = Boolean(v);
+      } else {
+        values[f.key] = String(v);
+      }
+    });
+    reset(values);
+  }, [open]);
 
   const saveMut = useMutation({
     mutationFn: async (formData: Record<string, string>) => {

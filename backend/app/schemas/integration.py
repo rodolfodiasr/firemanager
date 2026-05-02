@@ -27,6 +27,7 @@ class IntegrationRead(BaseModel):
     name: str
     is_active: bool
     scope: str            # "global" | "tenant"
+    config_preview: dict = {}
     created_at: datetime
     updated_at: datetime
 

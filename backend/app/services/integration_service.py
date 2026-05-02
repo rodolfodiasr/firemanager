@@ -47,7 +47,18 @@ async def resolve_integration(
 
 # ── CRUD helpers ──────────────────────────────────────────────────────────────
 
+_SENSITIVE_KEYS = {"token_secret", "api_key", "password", "secret"}
+
+
+def _sanitize_config(config: dict) -> dict:
+    return {
+        k: ("__masked__" if any(s in k.lower() for s in _SENSITIVE_KEYS) and v else v)
+        for k, v in config.items()
+    }
+
+
 def _to_read(intg: Integration) -> dict:
+    config = decrypt_credentials(intg.encrypted_config)
     return {
         "id": intg.id,
         "tenant_id": intg.tenant_id,
@@ -55,6 +66,7 @@ def _to_read(intg: Integration) -> dict:
         "name": intg.name,
         "is_active": intg.is_active,
         "scope": "global" if intg.tenant_id is None else "tenant",
+        "config_preview": _sanitize_config(config),
         "created_at": intg.created_at,
         "updated_at": intg.updated_at,
     }
@@ -128,7 +140,14 @@ async def update_integration(
     if name is not None:
         intg.name = name
     if config is not None:
-        intg.encrypted_config = encrypt_credentials(config)
+        existing_config = decrypt_credentials(intg.encrypted_config)
+        merged = {**existing_config}
+        for k, v in config.items():
+            # Keep existing value for masked/empty sensitive fields
+            if v == "" or v == "__masked__":
+                continue
+            merged[k] = v
+        intg.encrypted_config = encrypt_credentials(merged)
     if is_active is not None:
         intg.is_active = is_active
 

@@ -7,6 +7,7 @@ export interface Integration {
   name: string;
   is_active: boolean;
   scope: "global" | "tenant";
+  config_preview: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
