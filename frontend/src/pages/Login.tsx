@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Flame, Eye, EyeOff, Building2, ArrowRight } from "lucide-react";
+import { ShieldAlert, Eye, EyeOff, Building2, ArrowRight } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 
 interface LoginForm {
@@ -44,10 +44,10 @@ export function Login() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center h-16 w-16 bg-brand-600 rounded-2xl mb-4">
-            <Flame size={32} className="text-white" />
+            <ShieldAlert size={32} className="text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white">FireManager</h1>
-          <p className="text-gray-400 mt-1">Gestão de Firewalls com Inteligência Artificial</p>
+          <h1 className="text-3xl font-bold text-white">Eternity SecOps</h1>
+          <p className="text-gray-400 mt-1">Plataforma de Segurança e Gestão de Infraestrutura com IA</p>
         </div>
 
         <div className="bg-gray-900 rounded-2xl p-8 shadow-xl">
@@ -88,7 +88,7 @@ export function Login() {
                   type="email"
                   {...register("email", { required: true })}
                   className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  placeholder="admin@firemanager.local"
+                  placeholder="admin@eternity.local"
                 />
               </div>
 
@@ -140,7 +140,7 @@ export function Login() {
         </div>
 
         <p className="text-center text-xs text-gray-600 mt-6">
-          FireManager v0.1.0 — Open-Core
+          Eternity SecOps v0.1.0
         </p>
       </div>
     </div>
