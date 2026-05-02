@@ -1,10 +1,12 @@
 """SonicWall SonicOS 6/7/8 REST API connector."""
+import asyncio
 import contextlib
 import ipaddress
 import json
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, AsyncGenerator
 
 import httpx
@@ -1018,7 +1020,7 @@ class SonicWallConnector(BaseConnector):
                         result["security_settings"][key] = {"enabled": False}
 
                 logger.info(
-                    "sw_snapshot complete: addr_obj=%d addr_grp=%d svc_obj=%d svc_grp=%d cf=%d app=%d sec=%d",
+                    "sw_snapshot REST complete: addr_obj=%d addr_grp=%d svc_obj=%d svc_grp=%d cf=%d app=%d sec=%d",
                     len(result["address_objects"]), len(result["address_groups"]),
                     len(result["service_objects"]), len(result["service_groups"]),
                     len(result["content_filter"]), len(result["app_rules"]),
@@ -1027,5 +1029,223 @@ class SonicWallConnector(BaseConnector):
 
         except Exception as exc:
             logger.error("sw_snapshot session error: %s", exc)
+
+        # ── SSH fallback for sections not available via REST API ──────────────
+        needs_ssh = (
+            not result["content_filter"]
+            or not result["app_rules"]
+            or not result["security_settings"]
+        )
+        if needs_ssh:
+            ssh_data = await self._collect_via_ssh()
+            if not result["content_filter"] and ssh_data.get("content_filter"):
+                result["content_filter"] = ssh_data["content_filter"]
+            if not result["app_rules"] and ssh_data.get("app_rules"):
+                result["app_rules"] = ssh_data["app_rules"]
+            if not result["security_settings"] and ssh_data.get("security_settings"):
+                result["security_settings"] = ssh_data["security_settings"]
+
         return result
+
+    # ------------------------------------------------------------------
+    # SSH CLI collector — features not exposed via REST API
+    # ------------------------------------------------------------------
+
+    def _extract_host(self) -> str:
+        """Return bare hostname/IP from base_url."""
+        return re.sub(r"^https?://", "", self.base_url).split(":")[0]
+
+    def _ssh_run_commands(self, commands: list[str]) -> dict[str, str]:
+        """Open a SonicWall SSH shell, run commands, return {cmd: output}."""
+        import paramiko
+
+        host = self._extract_host()
+        results: dict[str, str] = {}
+
+        def _read_until_prompt(channel: paramiko.Channel, timeout: float = 4.0) -> str:
+            output = ""
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if channel.recv_ready():
+                    chunk = channel.recv(16384).decode("utf-8", errors="replace")
+                    output += chunk
+                    # SonicWall prompt ends with > or # at line start
+                    if re.search(r"[\r\n][^\r\n]*[>#]\s*$", output):
+                        break
+                else:
+                    time.sleep(0.1)
+            return output
+
+        try:
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(
+                hostname=host,
+                port=22,
+                username=self.username,
+                password=self.password,
+                timeout=15,
+                look_for_keys=False,
+                allow_agent=False,
+            )
+            shell = client.invoke_shell(width=220, height=5000)
+            time.sleep(1.5)
+            # Drain banner / initial prompt
+            _read_until_prompt(shell, timeout=4.0)
+
+            for cmd in commands:
+                shell.send(cmd + "\n")
+                output = _read_until_prompt(shell, timeout=6.0)
+                # Strip the echoed command and trailing prompt
+                lines = output.replace("\r", "").split("\n")
+                clean_lines = [
+                    l for l in lines
+                    if cmd not in l and not re.match(r"^[^\r\n]*[>#]\s*$", l.strip())
+                ]
+                results[cmd] = "\n".join(clean_lines).strip()
+                logger.debug("sw_ssh cmd=%r lines=%d", cmd, len(clean_lines))
+
+            client.close()
+        except Exception as exc:
+            logger.warning("sw_ssh connection failed (%s): %s", host, exc)
+
+        return results
+
+    async def _collect_via_ssh(self) -> dict:
+        """Collect content filter, app rules and security settings via SSH CLI."""
+        loop = asyncio.get_event_loop()
+        commands = [
+            "show security-services",
+            "show app-rules",
+            "show cfs policy",
+        ]
+        try:
+            raw = await loop.run_in_executor(
+                ThreadPoolExecutor(max_workers=1),
+                lambda: self._ssh_run_commands(commands),
+            )
+        except Exception as exc:
+            logger.warning("sw_ssh executor failed: %s", exc)
+            return {}
+
+        result: dict = {}
+        sec = self._parse_security_services_cli(raw.get("show security-services", ""))
+        if sec:
+            result["security_settings"] = sec
+            logger.info("sw_ssh security_settings: %d services", len(sec))
+
+        app_rules = self._parse_app_rules_cli(raw.get("show app-rules", ""))
+        if app_rules:
+            result["app_rules"] = app_rules
+            logger.info("sw_ssh app_rules: %d rules", len(app_rules))
+
+        cf = self._parse_content_filter_cli(raw.get("show cfs policy", ""))
+        if cf:
+            result["content_filter"] = cf
+            logger.info("sw_ssh content_filter: %d policies", len(cf))
+
+        return result
+
+    @staticmethod
+    def _parse_security_services_cli(text: str) -> dict:
+        """Parse 'show security-services' output into security_settings dict."""
+        if not text:
+            return {}
+        patterns = {
+            "gateway_av": [
+                r"gateway\s+anti.?virus\s*[:\-]\s*(\w+)",
+                r"gateway.?av\s*[:\-]\s*(\w+)",
+                r"GAV\s*[:\-]\s*(\w+)",
+            ],
+            "anti_spyware": [
+                r"anti.spyware\s*[:\-]\s*(\w+)",
+                r"anti\s+spyware\s*[:\-]\s*(\w+)",
+                r"IPS\s*/\s*Anti.Spyware\s*[:\-]\s*(\w+)",
+            ],
+            "ips": [
+                r"intrusion\s+prevention\s*[:\-]\s*(\w+)",
+                r"\bIPS\b\s*[:\-]\s*(\w+)",
+                r"intrusion\s+detection\s*[:\-]\s*(\w+)",
+            ],
+        }
+        result = {}
+        for key, pats in patterns.items():
+            for pat in pats:
+                m = re.search(pat, text, re.IGNORECASE)
+                if m:
+                    enabled = m.group(1).lower() in ("enabled", "enable", "true", "yes", "active", "on")
+                    result[key] = {"enabled": enabled, "inbound": enabled, "outbound": enabled}
+                    break
+        return result
+
+    @staticmethod
+    def _parse_app_rules_cli(text: str) -> list[dict]:
+        """Parse 'show app-rules' table output into list of rule dicts."""
+        if not text:
+            return []
+        rules: list[dict] = []
+        lines = text.replace("\r", "").split("\n")
+        in_table = False
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            # Separator line = table data starts next
+            if re.match(r"^[-=]{4,}", stripped):
+                in_table = True
+                continue
+            if not in_table:
+                continue
+            # Stop at next section header
+            if re.match(r"^[A-Z][A-Za-z\s]+:$", stripped):
+                break
+            parts = re.split(r"\s{2,}", stripped)
+            if len(parts) < 2:
+                continue
+            name = parts[0]
+            action = parts[1] if len(parts) > 1 else ""
+            app = parts[2] if len(parts) > 2 else ""
+            status_str = parts[-1] if parts else ""
+            enabled = status_str.lower() in ("enable", "enabled", "active", "yes")
+            if name:
+                rules.append({
+                    "name": name,
+                    "action": action,
+                    "application": app,
+                    "enabled": enabled,
+                })
+        return rules
+
+    @staticmethod
+    def _parse_content_filter_cli(text: str) -> list[dict]:
+        """Parse 'show cfs policy' output into list of policy dicts."""
+        if not text:
+            return []
+        policies: list[dict] = []
+        lines = text.replace("\r", "").split("\n")
+        in_table = False
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if re.match(r"^[-=]{4,}", stripped):
+                in_table = True
+                continue
+            if not in_table:
+                continue
+            if re.match(r"^[A-Z][A-Za-z\s]+:$", stripped):
+                break
+            parts = re.split(r"\s{2,}", stripped)
+            if len(parts) < 2:
+                continue
+            name = parts[0]
+            status = parts[1] if len(parts) > 1 else ""
+            enabled = status.lower() in ("enable", "enabled", "active", "yes")
+            if name:
+                policies.append({
+                    "name": name,
+                    "enabled": enabled,
+                    "blocked_categories": [],
+                })
+        return policies
 
