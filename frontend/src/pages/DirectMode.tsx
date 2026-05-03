@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuthStore } from "../store/authStore";
 import {
   Terminal, Play, Send, ChevronRight, CheckCircle2, XCircle, Loader2, Pencil,
   Layers, Square, CheckSquare, AlertCircle,
@@ -57,6 +58,9 @@ export function DirectMode() {
     setRawCommands(cmds.join("\n"));
   }, [editOp?.id]);
 
+  const tenantRole = useAuthStore((s) => s.tenantRole);
+  const isN1 = tenantRole === "analyst_n1";
+
   const { data: devices = [] } = useQuery({
     queryKey: ["devices"],
     queryFn: devicesApi.list,
@@ -96,10 +100,11 @@ export function DirectMode() {
       if (data.status === "completed") toast.success("Comandos executados com sucesso!");
       else toast.error("Execução falhou. Verifique o histórico.");
     },
-    onError: () => {
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setOpStatus("failed");
       setStep("done");
-      toast.error("Erro ao executar operação.");
+      toast.error(msg ?? "Erro ao executar operação.");
     },
   });
 
@@ -393,17 +398,28 @@ export function DirectMode() {
               </pre>
             </div>
 
+            {isN1 && (
+              <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                <span>
+                  Analistas N1 não executam diretamente. Use <strong>Enviar para N2</strong> para enviar para revisão.
+                </span>
+              </div>
+            )}
+
             <div className="flex gap-3 pt-1">
-              <button
-                onClick={() => executeMutation.mutate()}
-                disabled={executeMutation.isPending || reviewMutation.isPending}
-                className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50"
-              >
-                {executeMutation.isPending
-                  ? <Loader2 size={15} className="animate-spin" />
-                  : <Play size={15} />}
-                Executar
-              </button>
+              {!isN1 && (
+                <button
+                  onClick={() => executeMutation.mutate()}
+                  disabled={executeMutation.isPending || reviewMutation.isPending}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {executeMutation.isPending
+                    ? <Loader2 size={15} className="animate-spin" />
+                    : <Play size={15} />}
+                  Executar
+                </button>
+              )}
               <button
                 onClick={() => reviewMutation.mutate()}
                 disabled={executeMutation.isPending || reviewMutation.isPending}

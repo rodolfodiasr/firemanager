@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TenantContext, get_tenant_context, require_module_reviewer, require_reviewer
 from app.models.server_operation import ServerOperation, ServerOpStatus
+from app.models.user_tenant_role import TenantRole
 from app.schemas.server_operation import ExecRequest, ServerOperationRead
 
 _require_server_analysis = require_module_reviewer("server_analysis")
@@ -186,6 +187,11 @@ async def exec_server(
     ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> ServerOperationRead:
+    if ctx.role == TenantRole.readonly:
+        raise HTTPException(status_code=403, detail="Sem permissão para executar operações em servidores.")
+    if ctx.role == TenantRole.analyst_n1:
+        raise HTTPException(status_code=403, detail="Analistas N1 não executam diretamente. Use 'Enviar para Revisão'.")
+
     result = await db.execute(
         select(Server).where(Server.id == server_id, Server.tenant_id == ctx.tenant.id)
     )
@@ -229,6 +235,9 @@ async def submit_server_exec_for_review(
     ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> ServerOperationRead:
+    if ctx.role == TenantRole.readonly:
+        raise HTTPException(status_code=403, detail="Sem permissão para enviar operações para revisão.")
+
     result = await db.execute(
         select(Server).where(Server.id == server_id, Server.tenant_id == ctx.tenant.id)
     )

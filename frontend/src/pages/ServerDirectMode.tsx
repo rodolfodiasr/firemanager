@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuthStore } from "../store/authStore";
 import {
   Terminal, Play, Send, ChevronRight, CheckCircle2, XCircle,
   Loader2, AlertCircle, Server,
@@ -17,6 +18,9 @@ export function ServerDirectMode() {
   const [description, setDescription] = useState("");
   const [rawCommands, setRawCommands] = useState("");
   const [result, setResult] = useState<ServerOperation | null>(null);
+
+  const tenantRole = useAuthStore((s) => s.tenantRole);
+  const isN1 = tenantRole === "analyst_n1";
 
   const { data: servers = [], isLoading: loadingServers } = useQuery({
     queryKey: ["servers"],
@@ -157,27 +161,38 @@ export function ServerDirectMode() {
               )}
             </div>
 
-            {/* Warning */}
-            {commands.length > 0 && serverId && (
-              <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
-                <AlertCircle size={13} className="mt-0.5 shrink-0" />
+            {/* Warning / N1 banner */}
+            {isN1 ? (
+              <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-500" />
                 <span>
-                  Os comandos serão executados diretamente em{" "}
-                  <strong>{selectedServer?.name}</strong>. Use "Enviar para N2" para operações
-                  que exijam aprovação antes de executar.
+                  Analistas N1 não executam diretamente. Use <strong>Enviar para N2</strong> para enviar para revisão.
                 </span>
               </div>
+            ) : (
+              commands.length > 0 && serverId && (
+                <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                  <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                  <span>
+                    Os comandos serão executados diretamente em{" "}
+                    <strong>{selectedServer?.name}</strong>. Use "Enviar para N2" para operações
+                    que exijam aprovação antes de executar.
+                  </span>
+                </div>
+              )
             )}
 
             <div className="flex gap-3 pt-1">
-              <button
-                onClick={() => execMut.mutate()}
-                disabled={!canSubmit || execMut.isPending || reviewMut.isPending}
-                className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50"
-              >
-                {execMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
-                Executar agora
-              </button>
+              {!isN1 && (
+                <button
+                  onClick={() => execMut.mutate()}
+                  disabled={!canSubmit || execMut.isPending || reviewMut.isPending}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {execMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
+                  Executar agora
+                </button>
+              )}
               <button
                 onClick={() => reviewMut.mutate()}
                 disabled={!canSubmit || execMut.isPending || reviewMut.isPending}
