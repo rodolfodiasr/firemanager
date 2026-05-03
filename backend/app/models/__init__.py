@@ -9,7 +9,7 @@ from app.models.device_group import DeviceGroup, DeviceGroupMember
 from app.models.document import Document
 from app.models.integration import Integration
 from app.models.invite_token import InviteToken
-from app.models.operation import Operation, OperationStatus
+from app.models.operation import Operation, OperationRisk, OperationStatus, classify_risk
 from app.models.operation_step import OperationStep
 from app.models.remediation import RemediationPlan, RemediationCommand
 from app.models.rule_template import RuleTemplate
@@ -35,7 +35,9 @@ __all__ = [
     "Integration",
     "InviteToken",
     "Operation",
+    "OperationRisk",
     "OperationStatus",
+    "classify_risk",
     "OperationStep",
     "RemediationPlan",
     "RemediationCommand",

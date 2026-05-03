@@ -151,9 +151,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.agent import AgentSession
+from app.agent.guardrails import GuardrailResult, check_action_plan, check_ssh_commands
 from app.connectors.base import RuleSpec
 from app.connectors.factory import CLI_VENDORS, get_connector, get_ssh_connector
-from app.models.operation import Operation, OperationStatus
+from app.models.operation import Operation, OperationRisk, OperationStatus, classify_risk
 from app.models.operation_step import OperationStep, StepStatus
 from app.models.snapshot import Snapshot
 from app.policy_engine.schemas import IntentType
@@ -210,9 +211,35 @@ async def start_or_continue_operation(
     response = await session.process(user_message)
 
     if session.ready_to_execute and session.plan:
-        operation.intent = session.plan.intent.value
+        intent_value = session.plan.intent.value
+        operation.intent = intent_value
         operation.action_plan = session.plan.model_dump(mode="json")
         operation.status = OperationStatus.approved
+
+        # Classify risk and set required approvals based on intent
+        risk, req_approvals = classify_risk(intent_value)
+        operation.risk_level = risk
+        operation.required_approvals = req_approvals
+
+        # Run guardrails on the generated plan
+        guardrail_result = check_action_plan(
+            operation.action_plan, user_message
+        )
+        if guardrail_result.blocked:
+            operation.status = OperationStatus.failed
+            operation.error_message = (
+                f"[GUARDRAIL BLOCK] {guardrail_result.block_reason}"
+            )
+        elif guardrail_result.warnings:
+            # Escalate critical intents detected by guardrails to require 2 approvals
+            if risk != OperationRisk.critical:
+                operation.required_approvals = max(req_approvals, 1)
+            # Append warnings to action plan for display in UI
+            if operation.action_plan:
+                operation.action_plan = {
+                    **operation.action_plan,
+                    "_guardrail_warnings": guardrail_result.warnings,
+                }
 
     await db.flush()
     await db.refresh(operation)

@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, Enum, ForeignKey, String, TIMESTAMP, Text
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, TIMESTAMP, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -19,6 +19,41 @@ class OperationStatus(str, enum.Enum):
     completed = "completed"
     failed = "failed"
     rejected = "rejected"
+
+
+class OperationRisk(str, enum.Enum):
+    low      = "low"       # read-only — no approval gate
+    medium   = "medium"    # create/edit — standard single approval
+    high     = "high"      # delete — standard approval + notification
+    critical = "critical"  # destructive bulk / guardrail-flagged — multi-sig required
+
+
+# Intents classified as critical always require 2 approvals (direct_ssh + guardrail-blocked)
+_CRITICAL_INTENTS = frozenset({"direct_ssh"})
+
+# Intents classified as high risk (single-approval but flagged)
+_HIGH_INTENTS = frozenset({
+    "delete_rule", "delete_nat_policy", "delete_route_policy", "delete_vlan",
+})
+
+# Read-only intents — no approval needed
+_LOW_INTENTS = frozenset({
+    "list_rules", "list_nat_policies", "list_route_policies", "get_security_status",
+    "health_check", "get_snapshot", "list_vlans", "list_ports", "get_info",
+})
+
+
+def classify_risk(intent: str | None) -> tuple[OperationRisk, int]:
+    """Return (risk_level, required_approvals) for a given intent string."""
+    if not intent:
+        return OperationRisk.medium, 1
+    if intent in _CRITICAL_INTENTS:
+        return OperationRisk.critical, 2
+    if intent in _HIGH_INTENTS:
+        return OperationRisk.high, 1
+    if intent in _LOW_INTENTS:
+        return OperationRisk.low, 1
+    return OperationRisk.medium, 1
 
 
 class Operation(Base):
@@ -46,6 +81,12 @@ class Operation(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     executed_direct: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     tutorial: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Multi-sig approval fields (P6)
+    risk_level: Mapped[OperationRisk] = mapped_column(
+        Enum(OperationRisk, native_enum=False), nullable=False, default=OperationRisk.medium
+    )
+    required_approvals: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    co_approvals: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     bulk_job_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("bulk_jobs.id", ondelete="SET NULL"), nullable=True, index=True
     )

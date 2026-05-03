@@ -1,3 +1,9 @@
+networks:
+  # public-net: only nginx, frontend and api are reachable from outside
+  public-net: {}
+  # internal-net: data tier + workers — never directly exposed to host
+  internal-net: {}
+
 services:
   postgres:
     image: pgvector/pgvector:pg15
@@ -5,8 +11,9 @@ services:
       POSTGRES_USER: fm_user
       POSTGRES_PASSWORD: fm_pass
       POSTGRES_DB: firemanager
-    ports:
-      - "5432:5432"
+    # No host port binding — only reachable within internal-net
+    networks:
+      - internal-net
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,8 +24,9 @@ services:
 
   redis:
     image: redis:7.2-alpine
-    ports:
-      - "6379:6379"
+    # No host port binding — only reachable within internal-net
+    networks:
+      - internal-net
     volumes:
       - redis_data:/data
     healthcheck:
@@ -43,6 +51,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - public-net
+      - internal-net
     volumes:
       - ../backend:/app
       - ../scripts:/app/scripts
@@ -64,6 +75,8 @@ services:
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - api
+    networks:
+      - internal-net
     volumes:
       - ../backend:/app
       - ../scripts:/app/scripts
@@ -85,6 +98,8 @@ services:
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - api
+    networks:
+      - internal-net
     volumes:
       - ../backend:/app
     command: celery -A app.workers.celery_app beat --loglevel=info
@@ -95,6 +110,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:80"
+    networks:
+      - public-net
     depends_on:
       - api
 
@@ -102,6 +119,8 @@ services:
     image: nginx:alpine
     ports:
       - "80:80"
+    networks:
+      - public-net
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
@@ -110,6 +129,8 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
+    networks:
+      - internal-net
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
@@ -119,6 +140,8 @@ services:
     image: grafana/grafana:latest
     ports:
       - "3001:3000"
+    networks:
+      - internal-net
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:

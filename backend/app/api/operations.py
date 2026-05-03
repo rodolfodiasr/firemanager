@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -8,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TenantContext, get_tenant_context
 from app.database import get_db
+from app.middleware.rate_limit import limit_destructive, limit_execute, limit_ssh_direct
 from app.models.device import Device
-from app.models.operation import Operation, OperationStatus
+from app.models.operation import Operation, OperationRisk, OperationStatus
+from app.models.user import User
 from app.models.user_tenant_role import TenantRole
 from app.services.permission_service import resolve_device_role
 from app.schemas.operation import ChatMessage, OperationCreate, OperationRead
@@ -106,7 +109,8 @@ async def continue_chat(
     return await _chat_response(db, ctx, updated_op, agent_response)
 
 
-@router.post("/{operation_id}/execute", response_model=OperationRead)
+@router.post("/{operation_id}/execute", response_model=OperationRead,
+             dependencies=[Depends(limit_execute)])
 async def execute_op(
     operation_id: UUID,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
@@ -138,6 +142,27 @@ async def execute_op(
             raise HTTPException(
                 status_code=403,
                 detail="Esta operação requer aprovação N2. Use 'Enviar para Revisão'.",
+            )
+
+    # Multi-sig check: critical operations require co-approvals before execute
+    if operation.required_approvals > 1:
+        co_approvals: list = operation.co_approvals or []
+        co_approvals_needed = operation.required_approvals - 1  # primary approver counts as 1
+        if len(co_approvals) < co_approvals_needed:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "multi_sig_required",
+                    "message": (
+                        f"Esta operação de risco '{operation.risk_level}' requer "
+                        f"{operation.required_approvals} aprovações. "
+                        f"Aprovações pendentes: {co_approvals_needed - len(co_approvals)}. "
+                        "Use o endpoint /co-approve para adicionar co-aprovadores."
+                    ),
+                    "required_approvals": operation.required_approvals,
+                    "co_approvals_received": len(co_approvals),
+                    "co_approvals_needed": co_approvals_needed - len(co_approvals),
+                },
             )
 
     mark_direct = effective_role in (TenantRole.analyst_n2, TenantRole.analyst)
@@ -205,7 +230,8 @@ class DirectSSHCreate(BaseModel):
     template_params: dict | None = None
 
 
-@router.post("/direct-ssh", response_model=OperationRead)
+@router.post("/direct-ssh", response_model=OperationRead,
+             dependencies=[Depends(limit_ssh_direct)])
 async def create_direct_ssh_operation(
     data: DirectSSHCreate,
     ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
@@ -251,6 +277,54 @@ async def create_direct_ssh_operation(
     db.add(operation)
     await db.commit()
     await db.refresh(operation)
+    return OperationRead.model_validate(operation)
+
+
+@router.post("/{operation_id}/co-approve", response_model=OperationRead)
+async def co_approve_operation(
+    operation_id: UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> OperationRead:
+    """Add the current user as a co-approver for a multi-sig critical operation."""
+    operation = await _get_tenant_operation(db, operation_id, ctx.tenant.id)
+
+    if operation.required_approvals <= 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Esta operação não requer co-aprovação (required_approvals=1).",
+        )
+
+    if operation.status not in (
+        OperationStatus.pending_review, OperationStatus.awaiting_approval, OperationStatus.approved
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Co-aprovação não permitida para operações com status '{operation.status}'.",
+        )
+
+    # Prevent self-approval: co-approver must be different from the operation creator
+    if str(ctx.user.id) == str(operation.user_id):
+        raise HTTPException(
+            status_code=403,
+            detail="O criador da operação não pode ser seu próprio co-aprovador.",
+        )
+
+    # Prevent self-approval: co-approver must be different from the primary reviewer
+    if operation.reviewer_id and str(ctx.user.id) == str(operation.reviewer_id):
+        raise HTTPException(
+            status_code=403,
+            detail="O revisor primário não pode ser co-aprovador da mesma operação.",
+        )
+
+    co_approvals: list = list(operation.co_approvals or [])
+    user_id_str = str(ctx.user.id)
+    if user_id_str not in co_approvals:
+        co_approvals.append(user_id_str)
+        operation.co_approvals = co_approvals
+        await db.flush()
+        await db.refresh(operation)
+
     return OperationRead.model_validate(operation)
 
 
