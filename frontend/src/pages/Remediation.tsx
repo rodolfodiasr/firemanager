@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
+import { useAuthStore } from "../store/authStore";
 import {
   ShieldCheck, ShieldX, Play, Trash2, ChevronDown, ChevronUp,
   AlertTriangle, CheckCircle2, XCircle, Clock, Loader2, Plus,
@@ -162,11 +163,13 @@ function CommandRow({
   planId,
   planStatus,
   onAction,
+  isN1,
 }: {
   cmd: RemediationCommand;
   planId: string;
   planStatus: RemediationStatus;
   onAction: () => void;
+  isN1: boolean;
 }) {
   const [expanded, setExpanded] = useState(cmd.status === "failed" || cmd.status === "completed");
   const [editing, setEditing] = useState(false);
@@ -208,7 +211,7 @@ function CommandRow({
         <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${RISK_STYLES[cmd.risk]}`}>
           {cmd.risk}
         </span>
-        {canReview && (
+        {canReview && !isN1 && (
           <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
             {canEdit && !editing && (
               <button
@@ -312,10 +315,12 @@ function RollbackSection({
   steps,
   planId,
   onRollbackCreated,
+  isN1,
 }: {
   steps: RollbackStep[];
   planId: string;
   onRollbackCreated: () => void;
+  isN1: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
@@ -368,19 +373,28 @@ function RollbackSection({
           </div>
 
           <div className="flex items-center gap-3 pt-1">
-            <button
-              disabled={createRollback.isPending}
-              onClick={() => createRollback.mutate()}
-              className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-            >
-              {createRollback.isPending
-                ? <Loader2 size={14} className="animate-spin" />
-                : <Undo2 size={14} />}
-              {createRollback.isPending ? "Criando…" : "Criar plano de rollback"}
-            </button>
-            <p className="text-xs text-gray-400">
-              O rollback será criado como um novo plano pendente de aprovação.
-            </p>
+            {isN1 ? (
+              <p className="text-xs text-amber-700 flex items-center gap-1.5">
+                <AlertTriangle size={12} />
+                Requer analista N2 para criar plano de rollback.
+              </p>
+            ) : (
+              <>
+                <button
+                  disabled={createRollback.isPending}
+                  onClick={() => createRollback.mutate()}
+                  className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                >
+                  {createRollback.isPending
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : <Undo2 size={14} />}
+                  {createRollback.isPending ? "Criando…" : "Criar plano de rollback"}
+                </button>
+                <p className="text-xs text-gray-400">
+                  O rollback será criado como um novo plano pendente de aprovação.
+                </p>
+              </>
+            )}
           </div>
           {createRollback.isError && (
             <p className="text-xs text-red-600">{errMsg(createRollback.error)}</p>
@@ -393,7 +407,7 @@ function RollbackSection({
 
 // ── Plan card ─────────────────────────────────────────────────────────────────
 
-function PlanCard({ plan }: { plan: RemediationPlan }) {
+function PlanCard({ plan, isN1 }: { plan: RemediationPlan; isN1: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [showCorrective, setShowCorrective] = useState(false);
   const [observation, setObservation] = useState("");
@@ -473,6 +487,7 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
                 planId={plan.id}
                 planStatus={plan.status}
                 onAction={() => {}}
+                isN1={isN1}
               />
             ))}
           </div>
@@ -483,38 +498,54 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
               steps={plan.rollback_steps}
               planId={plan.id}
               onRollbackCreated={() => setExpanded(true)}
+              isN1={isN1}
             />
           )}
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-2 flex-wrap">
-            {canExecute && (
-              <button
-                disabled={execute.isPending}
-                onClick={() => execute.mutate()}
-                className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              >
-                {execute.isPending ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
-                {execute.isPending ? "Executando…" : `Executar ${approvedCount} aprovado(s)`}
-              </button>
-            )}
-            {plan.status === "partial" && (
-              <button
-                disabled={retry.isPending}
-                onClick={() => retry.mutate()}
-                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              >
-                {retry.isPending ? <Loader2 size={15} className="animate-spin" /> : <RotateCcw size={15} />}
-                {retry.isPending ? "Analisando…" : "Retentar falhas"}
-              </button>
-            )}
-            {canCorrectiveOrExport && !showCorrective && (
-              <button
-                onClick={() => { setShowCorrective(true); setExpanded(true); }}
-                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              >
-                <Wrench size={15} /> Plano corretivo
-              </button>
+            {isN1 ? (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                <AlertTriangle size={12} className="shrink-0" />
+                Plano gerado. Aguardando analista N2 para aprovar e executar.
+              </p>
+            ) : (
+              <>
+                {canExecute && (
+                  <button
+                    disabled={execute.isPending}
+                    onClick={() => execute.mutate()}
+                    className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                  >
+                    {execute.isPending ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
+                    {execute.isPending ? "Executando…" : `Executar ${approvedCount} aprovado(s)`}
+                  </button>
+                )}
+                {plan.status === "partial" && (
+                  <button
+                    disabled={retry.isPending}
+                    onClick={() => retry.mutate()}
+                    className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                  >
+                    {retry.isPending ? <Loader2 size={15} className="animate-spin" /> : <RotateCcw size={15} />}
+                    {retry.isPending ? "Analisando…" : "Retentar falhas"}
+                  </button>
+                )}
+                {canCorrectiveOrExport && !showCorrective && (
+                  <button
+                    onClick={() => { setShowCorrective(true); setExpanded(true); }}
+                    className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <Wrench size={15} /> Plano corretivo
+                  </button>
+                )}
+                {!canExecute && plan.status !== "executing" && plan.status !== "rejected" && pendingCount > 0 && (
+                  <p className="text-xs text-gray-400 flex items-center gap-1">
+                    <AlertTriangle size={12} />
+                    {pendingCount} pendente(s) — aprove para executar
+                  </p>
+                )}
+              </>
             )}
             {canCorrectiveOrExport && (
               <button
@@ -526,20 +557,18 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
                 {pdfLoading ? "Gerando…" : "Exportar PDF"}
               </button>
             )}
-            {!canExecute && plan.status !== "executing" && plan.status !== "rejected" && pendingCount > 0 && (
-              <p className="text-xs text-gray-400 flex items-center gap-1">
-                <AlertTriangle size={12} />
-                {pendingCount} pendente(s) — aprove para executar
-              </p>
+            {!isN1 && (
+              <>
+                <div className="flex-1" />
+                <button
+                  disabled={remove.isPending || plan.status === "executing"}
+                  onClick={() => remove.mutate()}
+                  className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-600 disabled:opacity-40 transition-colors"
+                >
+                  <Trash2 size={13} /> Excluir
+                </button>
+              </>
             )}
-            <div className="flex-1" />
-            <button
-              disabled={remove.isPending || plan.status === "executing"}
-              onClick={() => remove.mutate()}
-              className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-600 disabled:opacity-40 transition-colors"
-            >
-              <Trash2 size={13} /> Excluir
-            </button>
           </div>
 
           {/* Corrective plan form */}
@@ -596,6 +625,8 @@ function PlanCard({ plan }: { plan: RemediationPlan }) {
 export function Remediation() {
   const location = useLocation();
   const navState = location.state as { server_id?: string; request?: string } | null;
+  const tenantRole = useAuthStore((s) => s.tenantRole);
+  const isN1 = tenantRole === "analyst_n1";
 
   const { data: plans = [], isLoading } = useQuery({
     queryKey: ["remediation"],
@@ -630,7 +661,7 @@ export function Remediation() {
         ) : (
           <div className="space-y-4">
             {plans.map((plan) => (
-              <PlanCard key={plan.id} plan={plan} />
+              <PlanCard key={plan.id} plan={plan} isN1={isN1} />
             ))}
           </div>
         )}

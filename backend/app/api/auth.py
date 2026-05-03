@@ -213,6 +213,37 @@ def require_module_reviewer(module_name: str):
     return _dep
 
 
+def require_module_n2(module_name: str):
+    """Like require_module_reviewer but requires analyst_n2 or admin — blocks analyst_n1."""
+    async def _dep(
+        token: Annotated[str, Depends(oauth2_scheme)],
+        db:    Annotated[AsyncSession, Depends(get_db)],
+    ) -> TenantContext:
+        ctx = await get_tenant_context(token, db)
+        from app.models.user_functional_module_role import FunctionalModule
+        from app.services.permission_service import resolve_module_role
+
+        try:
+            mod = FunctionalModule(module_name)
+        except ValueError:
+            raise HTTPException(status_code=500, detail=f"Módulo desconhecido: {module_name}")
+
+        effective = await resolve_module_role(db, ctx.user.id, ctx.tenant.id, mod)
+        if effective is None or effective == TenantRole.readonly:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Sem permissão de analista para o módulo '{module_name}'.",
+            )
+        if effective == TenantRole.analyst_n1:
+            raise HTTPException(
+                status_code=403,
+                detail="Analistas N1 não podem executar esta ação. Requer analista N2 ou administrador.",
+            )
+        return ctx
+
+    return _dep
+
+
 async def resolve_tenant_access(token: str, tenant_id: UUID, db: AsyncSession) -> TenantContext:
     """Super admin OR tenant admin can access the given tenant's members."""
     payload = _decode_token(token)

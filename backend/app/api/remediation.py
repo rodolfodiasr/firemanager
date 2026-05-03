@@ -6,9 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import TenantContext, get_tenant_context, require_module_reviewer, require_reviewer
+from app.api.auth import TenantContext, get_tenant_context, require_module_n2, require_module_reviewer, require_reviewer
 
-_require_remediation = require_module_reviewer("remediation")
+_require_remediation    = require_module_reviewer("remediation")
+_require_remediation_n2 = require_module_n2("remediation")
 from app.database import get_db
 from app.schemas.remediation import (
     CommandEdit,
@@ -71,7 +72,7 @@ async def update_command(
     plan_id: UUID,
     command_id: UUID,
     body: CommandEdit,
-    ctx: Annotated[TenantContext, Depends(_require_remediation)],
+    ctx: Annotated[TenantContext, Depends(_require_remediation_n2)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> RemediationCommandRead:
     try:
@@ -88,7 +89,7 @@ async def update_command(
 @router.post("/{plan_id}/retry", response_model=RemediationPlanRead, status_code=201)
 async def retry_plan(
     plan_id: UUID,
-    ctx: Annotated[TenantContext, Depends(_require_remediation)],
+    ctx: Annotated[TenantContext, Depends(_require_remediation_n2)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> RemediationPlanRead:
     try:
@@ -104,7 +105,7 @@ async def retry_plan(
 async def approve_command(
     plan_id: UUID,
     command_id: UUID,
-    ctx: Annotated[TenantContext, Depends(_require_remediation)],
+    ctx: Annotated[TenantContext, Depends(_require_remediation_n2)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     try:
@@ -119,7 +120,7 @@ async def reject_command(
     plan_id: UUID,
     command_id: UUID,
     body: CommandReview,
-    ctx: Annotated[TenantContext, Depends(_require_remediation)],
+    ctx: Annotated[TenantContext, Depends(_require_remediation_n2)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     try:
@@ -134,7 +135,7 @@ async def reject_command(
 @router.post("/{plan_id}/execute", response_model=RemediationPlanRead)
 async def execute_plan(
     plan_id: UUID,
-    ctx: Annotated[TenantContext, Depends(_require_remediation)],
+    ctx: Annotated[TenantContext, Depends(_require_remediation_n2)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> RemediationPlanRead:
     try:
@@ -149,7 +150,7 @@ async def execute_plan(
 @router.post("/{plan_id}/rollback", response_model=RemediationPlanRead, status_code=201)
 async def create_rollback_plan(
     plan_id: UUID,
-    ctx: Annotated[TenantContext, Depends(_require_remediation)],
+    ctx: Annotated[TenantContext, Depends(_require_remediation_n2)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> RemediationPlanRead:
     try:
@@ -165,7 +166,7 @@ async def create_rollback_plan(
 async def corrective_plan(
     plan_id: UUID,
     body: CorrectiveRequest,
-    ctx: Annotated[TenantContext, Depends(_require_remediation)],
+    ctx: Annotated[TenantContext, Depends(_require_remediation_n2)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> RemediationPlanRead:
     try:
@@ -214,7 +215,7 @@ async def export_pdf(
 @router.delete("/{plan_id}", status_code=204)
 async def delete_plan(
     plan_id: UUID,
-    ctx: Annotated[TenantContext, Depends(_require_remediation)],
+    ctx: Annotated[TenantContext, Depends(_require_remediation_n2)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     plan = await remediation_service.get_plan(db, ctx.tenant.id, plan_id)
