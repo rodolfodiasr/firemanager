@@ -285,16 +285,37 @@ class FortinetConnector(BaseConnector):
             return ExecutionResult(success=False, error=resp.text)
 
     async def edit_rule(self, rule_id: str, spec: RuleSpec) -> ExecutionResult:
-        payload: dict[str, Any] = {
-            "name": spec.name,
-            "srcaddr": [{"name": spec.src_address}],
-            "dstaddr": [{"name": spec.dst_address}],
-            "service": [{"name": spec.service}],
-            "action": spec.action,
-            "comments": spec.comment or "",
-        }
-        payload.update(spec.extra)
         async with self._client() as client:
+            src_name = await self._ensure_address(client, spec.src_address)
+            dst_name = await self._ensure_address(client, spec.dst_address)
+            try:
+                svc_name = await self._ensure_service(client, spec.service)
+            except ValueError as exc:
+                return ExecutionResult(success=False, error=str(exc))
+            if svc_name is None:
+                return ExecutionResult(
+                    success=False,
+                    error=f"Não foi possível resolver o serviço '{spec.service}'.",
+                )
+            src_intf = await self._resolve_interface(client, spec.src_zone or "any")
+            dst_intf = await self._resolve_interface(client, spec.dst_zone or "any")
+            _VALID_EXTRA = {"nat", "logtraffic", "schedule", "utm-status", "inspection-mode",
+                            "profile-protocol-options", "ssl-ssh-profile", "av-profile",
+                            "webfilter-profile", "ips-sensor", "application-list"}
+            payload: dict[str, Any] = {
+                "name": spec.name,
+                "srcintf": [{"name": src_intf}],
+                "dstintf": [{"name": dst_intf}],
+                "srcaddr": [{"name": src_name}],
+                "dstaddr": [{"name": dst_name}],
+                "service": [{"name": svc_name}],
+                "action": spec.action,
+                "schedule": "always",
+                "comments": spec.comment or "",
+            }
+            for k, v in spec.extra.items():
+                if k in _VALID_EXTRA:
+                    payload[k] = v
             resp = await client.put(
                 f"/api/v2/cmdb/firewall/policy/{rule_id}?vdom={self.vdom}", json=payload
             )
@@ -416,3 +437,91 @@ class FortinetConnector(BaseConnector):
             if resp.status_code in (200, 204):
                 return ExecutionResult(success=True, rule_id=rule_id)
             return ExecutionResult(success=False, error=resp.text)
+
+    # ── Statistics & Security Status ─────────────────────────────────────────
+
+    async def get_rule_statistics(self) -> dict[str, int]:
+        """Return {policy_id: hit_count} from the FortiOS monitor endpoint."""
+        stats: dict[str, int] = {}
+        try:
+            async with self._client() as client:
+                resp = await client.get(f"/api/v2/monitor/firewall/policy?vdom={self.vdom}")
+                if resp.status_code != 200:
+                    return stats
+                for entry in resp.json().get("results", []):
+                    pid = str(entry.get("policyid", ""))
+                    count = int(entry.get("hit_count", 0) or 0)
+                    if pid:
+                        stats[pid] = count
+        except Exception:
+            pass
+        return stats
+
+    async def get_security_status(self) -> dict:
+        """Collect security service profiles and VPN tunnel status."""
+        result: dict[str, Any] = {}
+
+        _profile_endpoints: list[tuple[str, str]] = [
+            (f"/api/v2/cmdb/antivirus/profile?vdom={self.vdom}&format=name,scan-mode,http,ftp",
+             "av_profiles"),
+            (f"/api/v2/cmdb/ips/sensor?vdom={self.vdom}&format=name,comment",
+             "ips_sensors"),
+            (f"/api/v2/cmdb/webfilter/profile?vdom={self.vdom}&format=name,comment",
+             "webfilter_profiles"),
+            (f"/api/v2/cmdb/application/list?vdom={self.vdom}&format=name,comment",
+             "app_control_lists"),
+            (f"/api/v2/cmdb/firewall/ssl-ssh-profile?vdom={self.vdom}&format=name,comment,ssl",
+             "ssl_profiles"),
+            (f"/api/v2/cmdb/dnsfilter/profile?vdom={self.vdom}&format=name,comment",
+             "dns_filter_profiles"),
+        ]
+
+        async with self._client() as client:
+            # ── Configuration profiles ────────────────────────────────────────
+            for url, key in _profile_endpoints:
+                try:
+                    r = await client.get(url)
+                    if r.status_code == 200:
+                        result[key] = r.json().get("results", [])
+                except Exception:
+                    result[key] = []
+
+            # ── Geo-IP blocked countries (address objects of type geography) ──
+            try:
+                r = await client.get(
+                    f"/api/v2/cmdb/firewall/address?vdom={self.vdom}"
+                    f"&filter=type==geography&format=name,country"
+                )
+                if r.status_code == 200:
+                    result["geo_blocked"] = r.json().get("results", [])
+            except Exception:
+                result["geo_blocked"] = []
+
+            # ── VPN IPSec tunnel status (monitor, live data) ──────────────────
+            try:
+                r = await client.get(f"/api/v2/monitor/vpn/ipsec?vdom={self.vdom}")
+                if r.status_code == 200:
+                    result["vpn_ipsec"] = r.json().get("results", [])
+            except Exception:
+                result["vpn_ipsec"] = []
+
+            # ── VPN SSL active sessions ───────────────────────────────────────
+            try:
+                r = await client.get(f"/api/v2/monitor/vpn/ssl?vdom={self.vdom}")
+                if r.status_code == 200:
+                    result["vpn_ssl_sessions"] = r.json().get("results", [])
+            except Exception:
+                result["vpn_ssl_sessions"] = []
+
+            # ── VPN IPSec tunnel config (configured tunnels, not just active) ─
+            try:
+                r = await client.get(
+                    f"/api/v2/cmdb/vpn.ipsec/phase1-interface?vdom={self.vdom}"
+                    f"&format=name,status,remote-gw,comments"
+                )
+                if r.status_code == 200:
+                    result["vpn_ipsec_config"] = r.json().get("results", [])
+            except Exception:
+                result["vpn_ipsec_config"] = []
+
+        return result

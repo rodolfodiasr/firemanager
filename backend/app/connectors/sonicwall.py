@@ -1030,3 +1030,120 @@ class SonicWallConnector(BaseConnector):
 
         return result
 
+    async def get_security_status(self) -> dict:
+        """Return structured security service status + VPN tunnel overview."""
+        result: dict[str, Any] = {
+            "gateway_av": {},
+            "anti_spyware": {},
+            "ips": {},
+            "content_filter": [],
+            "app_rules": [],
+            "vpn_ipsec_policies": [],
+            "vpn_ssl_clients": [],
+        }
+
+        _sec_endpoints = [
+            ("/api/sonicos/security-services/gateway-av",        "gateway_av",
+             ("gateway_antivirus", "gateway_av")),
+            ("/api/sonicos/security-services/anti-spyware",      "anti_spyware",
+             ("anti_spyware",)),
+            ("/api/sonicos/security-services/intrusion-prevention", "ips",
+             ("intrusion_prevention", "ips")),
+        ]
+
+        try:
+            async with self._session() as client:
+                # Security services
+                for endpoint, key, field_names in _sec_endpoints:
+                    try:
+                        r = await client.get(endpoint)
+                        if r.status_code == 200:
+                            data = r.json()
+                            inner: dict = {}
+                            for f in field_names:
+                                if f in data:
+                                    inner = data[f]
+                                    break
+                            result[key] = {
+                                "enabled": inner.get("enable", inner.get("enabled", False)),
+                                "inbound": bool(inner.get("inbound_inspection",
+                                                           inner.get("inbound", False))),
+                                "outbound": bool(inner.get("outbound_inspection",
+                                                            inner.get("outbound", False))),
+                            }
+                    except Exception:
+                        pass
+
+                # Content filter
+                try:
+                    r = await client.get("/api/sonicos/content-filter/policies")
+                    if r.status_code != 200:
+                        r = await client.get("/api/sonicos/content-filter/uri-list-policies")
+                    if r.status_code == 200:
+                        raw = (r.json().get("policies")
+                               or r.json().get("content_filter_policies")
+                               or r.json().get("uri_list_policies") or [])
+                        for p in raw:
+                            if not isinstance(p, dict):
+                                continue
+                            inner = p.get("content_filter", p.get("uri_list", p))
+                            name = inner.get("name", "")
+                            if name:
+                                result["content_filter"].append({
+                                    "name": name,
+                                    "enabled": inner.get("enable", True),
+                                })
+                except Exception:
+                    pass
+
+                # App rules
+                try:
+                    r = await client.get("/api/sonicos/app-rules/policies")
+                    if r.status_code == 200:
+                        for p in (r.json().get("policies") or r.json().get("app_rules_policies") or []):
+                            if not isinstance(p, dict):
+                                continue
+                            inner = p.get("app_rules", p)
+                            name = inner.get("name", "")
+                            if name:
+                                result["app_rules"].append({
+                                    "name": name,
+                                    "enabled": inner.get("enable", True),
+                                    "action": str(inner.get("action", "")),
+                                })
+                except Exception:
+                    pass
+
+                # VPN IPSec configured policies
+                try:
+                    r = await client.get("/api/sonicos/vpn/policies/ipsec/ipv4")
+                    if r.status_code == 200:
+                        for p in (r.json().get("vpn_policies", []) or []):
+                            entry = p.get("ipv4", p) if isinstance(p, dict) else {}
+                            name = entry.get("name", "")
+                            if name:
+                                result["vpn_ipsec_policies"].append({
+                                    "name": name,
+                                    "enabled": entry.get("enable", True),
+                                    "gateway": entry.get("gateway", {}).get("primary", ""),
+                                })
+                except Exception:
+                    pass
+
+                # VPN SSL active clients
+                try:
+                    r = await client.get("/api/sonicos/vpn/ssl/status")
+                    if r.status_code == 200:
+                        clients = r.json().get("ssl_vpn", {}).get("sessions", [])
+                        result["vpn_ssl_clients"] = [
+                            {"user": s.get("user", ""), "ip": s.get("ip", "")}
+                            for s in (clients or [])
+                        ]
+                except Exception:
+                    pass
+
+        except Exception as exc:
+            logger.error("sw_get_security_status error: %s", exc)
+
+        return result
+

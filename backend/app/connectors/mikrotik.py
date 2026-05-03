@@ -206,3 +206,109 @@ class MikroTikConnector(BaseConnector):
             resp = await client.delete(f"/rest/ip/route/{rule_id}")
             resp.raise_for_status()
             return ExecutionResult(success=True)
+
+    # ── Security & Routing Status (P2 additions) ─────────────────────────────
+
+    async def get_security_status(self) -> dict:
+        """Return routing protocol status, VPN tunnels, and firewall stats."""
+        result: dict = {}
+
+        async with self._client() as client:
+            # OSPF neighbors
+            try:
+                r = await client.get("/rest/routing/ospf/neighbor")
+                if r.status_code == 200:
+                    result["ospf_neighbors"] = r.json()
+            except Exception:
+                result["ospf_neighbors"] = []
+
+            # BGP sessions (RouterOS 7.x uses /rest/routing/bgp/session)
+            for bgp_path in ("/rest/routing/bgp/session", "/rest/routing/bgp/peer"):
+                try:
+                    r = await client.get(bgp_path)
+                    if r.status_code == 200:
+                        result["bgp_peers"] = r.json()
+                        break
+                except Exception:
+                    pass
+            if "bgp_peers" not in result:
+                result["bgp_peers"] = []
+
+            # IPSec active peers
+            try:
+                r = await client.get("/rest/ip/ipsec/active-peers")
+                if r.status_code == 200:
+                    result["ipsec_active_peers"] = r.json()
+            except Exception:
+                result["ipsec_active_peers"] = []
+
+            # IPSec policies (configured tunnels)
+            try:
+                r = await client.get("/rest/ip/ipsec/policy")
+                if r.status_code == 200:
+                    result["ipsec_policies"] = r.json()
+            except Exception:
+                result["ipsec_policies"] = []
+
+            # L7 protocol patterns (application control)
+            try:
+                r = await client.get("/rest/ip/firewall/layer7-protocol")
+                if r.status_code == 200:
+                    result["l7_protocols"] = r.json()
+            except Exception:
+                result["l7_protocols"] = []
+
+            # Address lists
+            try:
+                r = await client.get("/rest/ip/firewall/address-list")
+                if r.status_code == 200:
+                    result["address_lists"] = r.json()
+            except Exception:
+                result["address_lists"] = []
+
+            # System resources
+            try:
+                r = await client.get("/rest/system/resource")
+                if r.status_code == 200:
+                    result["system_resources"] = r.json()
+            except Exception:
+                result["system_resources"] = {}
+
+        return result
+
+    async def list_interfaces(self) -> list[dict]:
+        """List IP addresses assigned to interfaces."""
+        async with self._client() as client:
+            resp = await client.get("/rest/ip/address")
+            resp.raise_for_status()
+            return resp.json()
+
+    async def list_dhcp_leases(self) -> list[dict]:
+        """List active DHCP server leases."""
+        async with self._client() as client:
+            resp = await client.get("/rest/ip/dhcp-server/lease")
+            resp.raise_for_status()
+            return resp.json()
+
+    async def list_ospf_neighbors(self) -> list[dict]:
+        """List active OSPF neighbors."""
+        async with self._client() as client:
+            resp = await client.get("/rest/routing/ospf/neighbor")
+            resp.raise_for_status()
+            return resp.json()
+
+    async def list_bgp_peers(self) -> list[dict]:
+        """List BGP peer sessions (RouterOS 7.x)."""
+        async with self._client() as client:
+            for path in ("/rest/routing/bgp/session", "/rest/routing/bgp/peer"):
+                resp = await client.get(path)
+                if resp.status_code == 200:
+                    return resp.json()
+            return []
+
+    async def list_ipsec_policies(self) -> list[dict]:
+        """List configured IPSec policies."""
+        async with self._client() as client:
+            resp = await client.get("/rest/ip/ipsec/policy")
+            resp.raise_for_status()
+            return resp.json()
