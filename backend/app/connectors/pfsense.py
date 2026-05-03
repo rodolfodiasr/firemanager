@@ -170,10 +170,44 @@ class PfSenseConnector(BaseConnector):
             return ExecutionResult(success=True)
 
     async def list_route_policies(self) -> list[RoutePolicy]:
-        return []
+        async with self._client() as client:
+            resp = await client.get("/api/v1/routing/static_route")
+            resp.raise_for_status()
+            result = []
+            for i, r in enumerate(resp.json().get("data", [])):
+                result.append(RoutePolicy(
+                    rule_id=str(i),
+                    name=r.get("descr", ""),
+                    interface=r.get("interface", ""),
+                    source="any",
+                    destination=r.get("network", ""),
+                    service="any",
+                    gateway=r.get("gateway", ""),
+                    metric=int(r.get("metric", 1) or 1),
+                    distance=1,
+                    route_type="static",
+                    comment=r.get("descr", ""),
+                    enabled=not r.get("disabled", False),
+                    raw=r,
+                ))
+            return result
 
     async def create_route_policy(self, spec: RouteSpec) -> ExecutionResult:
-        return ExecutionResult(success=False, error="Not implemented for pfSense")
+        async with self._client() as client:
+            payload = {
+                "network": spec.destination,
+                "gateway": spec.gateway,
+                "descr": spec.name or spec.comment or "",
+                "disabled": False,
+            }
+            resp = await client.post("/api/v1/routing/static_route", json=payload)
+            resp.raise_for_status()
+            await client.post("/api/v1/routing/apply")
+            return ExecutionResult(success=True, raw_response=resp.json())
 
     async def delete_route_policy(self, rule_id: str) -> ExecutionResult:
-        return ExecutionResult(success=False, error="Not implemented for pfSense")
+        async with self._client() as client:
+            resp = await client.delete(f"/api/v1/routing/static_route?id={rule_id}")
+            resp.raise_for_status()
+            await client.post("/api/v1/routing/apply")
+            return ExecutionResult(success=True)

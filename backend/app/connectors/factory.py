@@ -113,6 +113,7 @@ def get_connector(device: Device) -> BaseConnector:
             host=base_url,
             username=creds.get("username", ""),
             password=creds.get("password", ""),
+            ssh_port=int(creds.get("ssh_port", 22)),
             verify_ssl=device.verify_ssl,
         )
 

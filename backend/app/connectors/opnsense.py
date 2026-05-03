@@ -178,10 +178,47 @@ class OPNsenseConnector(BaseConnector):
             return ExecutionResult(success=True)
 
     async def list_route_policies(self) -> list[RoutePolicy]:
-        return []
+        async with self._client() as client:
+            resp = await client.post(
+                "/api/routes/routes/searchRoute",
+                json={"current": 1, "rowCount": 500},
+            )
+            resp.raise_for_status()
+            result = []
+            for r in resp.json().get("rows", []):
+                result.append(RoutePolicy(
+                    rule_id=r.get("uuid", ""),
+                    name=r.get("descr", ""),
+                    interface="",
+                    source="any",
+                    destination=r.get("network", ""),
+                    service="any",
+                    gateway=r.get("gateway", ""),
+                    metric=1,
+                    distance=1,
+                    route_type="static",
+                    comment=r.get("descr", ""),
+                    enabled=r.get("disabled", "0") == "0",
+                    raw=r,
+                ))
+            return result
 
     async def create_route_policy(self, spec: RouteSpec) -> ExecutionResult:
-        return ExecutionResult(success=False, error="Not implemented for OPNsense")
+        async with self._client() as client:
+            resp = await client.post("/api/routes/routes/addRoute", json={"route": {
+                "network": spec.destination,
+                "gateway": spec.gateway,
+                "descr": spec.name or spec.comment or "",
+                "disabled": "0",
+            }})
+            resp.raise_for_status()
+            await client.post("/api/routes/routes/reconfigure", json={})
+            data = resp.json()
+            return ExecutionResult(success=True, rule_id=data.get("uuid"), raw_response=data)
 
     async def delete_route_policy(self, rule_id: str) -> ExecutionResult:
-        return ExecutionResult(success=False, error="Not implemented for OPNsense")
+        async with self._client() as client:
+            resp = await client.post(f"/api/routes/routes/delRoute/{rule_id}")
+            resp.raise_for_status()
+            await client.post("/api/routes/routes/reconfigure", json={})
+            return ExecutionResult(success=True)
