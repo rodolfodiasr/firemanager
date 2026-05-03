@@ -211,3 +211,57 @@ class PfSenseConnector(BaseConnector):
             resp.raise_for_status()
             await client.post("/api/v1/routing/apply")
             return ExecutionResult(success=True)
+
+    async def get_security_status(self) -> dict:
+        """Return pfSense firewall state summary, interface info, and system status."""
+        result: dict = {}
+        async with self._client() as client:
+            # Firewall state summary (active connections)
+            try:
+                r = await client.get("/api/v1/diagnostics/state_summary")
+                if r.status_code == 200:
+                    result["state_summary"] = r.json().get("data", {})
+            except Exception:
+                result["state_summary"] = {}
+
+            # System info (CPU, memory, uptime, version)
+            try:
+                r = await client.get("/api/v1/status/system")
+                if r.status_code == 200:
+                    result["system"] = r.json().get("data", {})
+            except Exception:
+                result["system"] = {}
+
+            # Configured interfaces
+            try:
+                r = await client.get("/api/v1/interface")
+                if r.status_code == 200:
+                    result["interfaces"] = r.json().get("data", [])
+            except Exception:
+                result["interfaces"] = []
+
+            # Firewall aliases (address groups / blocklists)
+            try:
+                r = await client.get("/api/v1/firewall/alias")
+                if r.status_code == 200:
+                    result["aliases"] = r.json().get("data", [])
+            except Exception:
+                result["aliases"] = []
+
+            # VPN status (OpenVPN — if configured)
+            try:
+                r = await client.get("/api/v1/vpn/openvpn/server")
+                if r.status_code == 200:
+                    result["openvpn_servers"] = r.json().get("data", [])
+            except Exception:
+                result["openvpn_servers"] = []
+
+            # IPSec status (if configured)
+            try:
+                r = await client.get("/api/v1/vpn/ipsec/phase1")
+                if r.status_code == 200:
+                    result["ipsec_phase1"] = r.json().get("data", [])
+            except Exception:
+                result["ipsec_phase1"] = []
+
+        return result

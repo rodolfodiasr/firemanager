@@ -146,16 +146,48 @@ class MikroTikConnector(BaseConnector):
             return result
 
     async def create_nat_policy(self, spec: NatSpec) -> ExecutionResult:
-        async with self._client() as client:
-            resp = await client.put("/rest/ip/firewall/nat", json={
+        disabled = "no" if spec.enable else "yes"
+        comment  = spec.name or spec.comment or ""
+
+        # Masquerade — source NAT sem IP fixo (ex: saída para Internet)
+        if spec.translated_source.lower() == "masquerade":
+            payload: dict = {
+                "chain": "srcnat",
+                "out-interface": spec.outbound_interface or spec.inbound_interface,
+                "action": "masquerade",
+                "comment": comment,
+                "disabled": disabled,
+            }
+
+        # SNAT explícito — translated_source preenchido e destination não traduzido
+        elif spec.translated_source not in ("Original", "original", "") and \
+                spec.translated_destination in ("Original", "original", ""):
+            payload = {
+                "chain": "srcnat",
+                "action": "src-nat",
+                "to-addresses": spec.translated_source,
+                "comment": comment,
+                "disabled": disabled,
+            }
+            if spec.source not in ("Any", "any", ""):
+                payload["src-address"] = spec.source
+            if spec.outbound_interface:
+                payload["out-interface"] = spec.outbound_interface
+
+        # DNAT padrão (comportamento original)
+        else:
+            payload = {
                 "chain": "dstnat",
                 "in-interface": spec.inbound_interface,
                 "dst-address": spec.destination,
                 "to-addresses": spec.translated_destination,
                 "action": "dst-nat",
-                "comment": spec.name or spec.comment or "",
-                "disabled": "no" if spec.enable else "yes",
-            })
+                "comment": comment,
+                "disabled": disabled,
+            }
+
+        async with self._client() as client:
+            resp = await client.put("/rest/ip/firewall/nat", json=payload)
             resp.raise_for_status()
             data = resp.json()
             return ExecutionResult(success=True, rule_id=data.get(".id"), raw_response=data)

@@ -1142,6 +1142,25 @@ class SonicWallConnector(BaseConnector):
                 except Exception:
                     pass
 
+                # DPI-SSL (Deep Packet Inspection — SSL/TLS)
+                for dpi_path, dpi_key in [
+                    ("/api/sonicos/security-services/dpi-ssl/client", "dpi_ssl_client"),
+                    ("/api/sonicos/security-services/dpi-ssl/server", "dpi_ssl_server"),
+                ]:
+                    try:
+                        r = await client.get(dpi_path)
+                        if r.status_code == 200:
+                            data = r.json()
+                            inner = (data.get("dpi_ssl")
+                                     or data.get("client")
+                                     or data.get("server")
+                                     or data)
+                            result[dpi_key] = {
+                                "enabled": inner.get("enable", inner.get("enabled", False)),
+                            }
+                    except Exception:
+                        pass
+
         except Exception as exc:
             logger.error("sw_get_security_status error: %s", exc)
 

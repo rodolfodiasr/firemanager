@@ -222,3 +222,68 @@ class OPNsenseConnector(BaseConnector):
             resp.raise_for_status()
             await client.post("/api/routes/routes/reconfigure", json={})
             return ExecutionResult(success=True)
+
+    async def get_security_status(self) -> dict:
+        """Return OPNsense security status: aliases, IDS/IPS, interfaces, firmware."""
+        result: dict = {}
+        async with self._client() as client:
+            # Firewall aliases (address groups / blocklists)
+            try:
+                r = await client.post(
+                    "/api/firewall/alias/searchItem",
+                    json={"current": 1, "rowCount": 200},
+                )
+                if r.status_code == 200:
+                    result["aliases"] = r.json().get("rows", [])
+            except Exception:
+                result["aliases"] = []
+
+            # IDS/IPS status — Suricata plugin (returns 404 if not installed)
+            try:
+                r = await client.get("/api/ids/service/status")
+                if r.status_code == 200:
+                    result["ids_status"] = r.json()
+            except Exception:
+                result["ids_status"] = None
+
+            # IDS rulesets (if Suricata installed)
+            try:
+                r = await client.get("/api/ids/settings/listRulesets")
+                if r.status_code == 200:
+                    result["ids_rulesets"] = r.json().get("rows", [])
+            except Exception:
+                result["ids_rulesets"] = []
+
+            # Firmware / system info
+            try:
+                r = await client.get("/api/core/firmware/status")
+                if r.status_code == 200:
+                    result["firmware"] = r.json()
+            except Exception:
+                result["firmware"] = {}
+
+            # Interface overview (built-in API)
+            try:
+                r = await client.get("/api/interfaces/overview/interfacesInfo")
+                if r.status_code == 200:
+                    result["interfaces"] = r.json().get("rows", [])
+            except Exception:
+                result["interfaces"] = []
+
+            # OpenVPN instances (if configured)
+            try:
+                r = await client.get("/api/openvpn/instances/search")
+                if r.status_code == 200:
+                    result["openvpn_instances"] = r.json().get("rows", [])
+            except Exception:
+                result["openvpn_instances"] = []
+
+            # IPSec tunnel status
+            try:
+                r = await client.get("/api/ipsec/sessions/searchPhase1")
+                if r.status_code == 200:
+                    result["ipsec_tunnels"] = r.json().get("rows", [])
+            except Exception:
+                result["ipsec_tunnels"] = []
+
+        return result
