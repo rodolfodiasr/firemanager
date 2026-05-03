@@ -50,7 +50,7 @@ def upgrade() -> None:
             "co_approvals",
             JSONB,
             nullable=False,
-            server_default="'[]'::jsonb",
+            server_default=sa.text("'[]'::jsonb"),
         ),
     )
     op.create_index(
