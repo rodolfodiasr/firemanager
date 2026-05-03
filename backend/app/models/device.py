@@ -21,6 +21,7 @@ class VendorEnum(str, enum.Enum):
     opnsense  = "opnsense"
     mikrotik  = "mikrotik"
     endian    = "endian"
+    sophos    = "sophos"
     # Routers / Switches
     cisco_ios  = "cisco_ios"
     cisco_nxos = "cisco_nxos"

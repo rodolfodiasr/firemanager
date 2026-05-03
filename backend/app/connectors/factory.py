@@ -6,6 +6,7 @@ from app.connectors.opnsense import OPNsenseConnector
 from app.connectors.pfsense import PfSenseConnector
 from app.connectors.sonicwall import SonicWallConnector
 from app.connectors.sonicwall_ssh import SonicWallSSHConnector
+from app.connectors.sophos import SophosConnector
 from app.connectors.ssh import (
     ArubaConnector,
     BaseSSHConnector,
@@ -114,6 +115,14 @@ def get_connector(device: Device) -> BaseConnector:
             username=creds.get("username", ""),
             password=creds.get("password", ""),
             ssh_port=int(creds.get("ssh_port", 22)),
+            verify_ssl=device.verify_ssl,
+        )
+
+    if device.vendor == VendorEnum.sophos:
+        return SophosConnector(
+            host=base_url,
+            username=creds.get("username", ""),
+            password=creds.get("password", ""),
             verify_ssl=device.verify_ssl,
         )
 
