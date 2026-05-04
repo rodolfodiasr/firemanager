@@ -4,6 +4,7 @@ from app.models.audit_policy import AuditPolicy
 from app.models.bookstack_embedding import BookstackEmbedding
 from app.models.bulk_job import BulkJob
 from app.models.compliance import ComplianceReport
+from app.models.trust_score import TrustScore, FrameworkEnum
 from app.models.device import Device, VendorEnum
 from app.models.device_group import DeviceGroup, DeviceGroupMember
 from app.models.document import Document
@@ -28,6 +29,8 @@ __all__ = [
     "BookstackEmbedding",
     "BulkJob",
     "ComplianceReport",
+    "TrustScore",
+    "FrameworkEnum",
     "Device",
     "DeviceGroup",
     "DeviceGroupMember",

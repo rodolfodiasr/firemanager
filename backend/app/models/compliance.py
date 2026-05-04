@@ -38,6 +38,8 @@ class ComplianceReport(Base):
     controls: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     ai_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     ai_recommendations: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    framework: Mapped[str] = mapped_column(String(20), nullable=False, default="cis_benchmark", index=True)
+    framework_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False, index=True
     )
