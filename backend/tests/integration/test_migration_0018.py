@@ -224,7 +224,7 @@ class TestP3ImmutableAuditLog:
 class TestP2RowLevelSecurity:
     async def _rls_status(self, pg, table: str) -> dict:
         row = await pg.fetchrow(
-            "SELECT rowsecurity, relforcerowsecurity "
+            "SELECT relrowsecurity, relforcerowsecurity "
             "FROM pg_class WHERE relname = $1 AND relkind = 'r'",
             table,
         )
@@ -240,7 +240,7 @@ class TestP2RowLevelSecurity:
     # audit_logs
     async def test_rls_enabled_on_audit_logs(self, pg):
         s = await self._rls_status(pg, "audit_logs")
-        assert s.get("rowsecurity") is True, "RLS not enabled on audit_logs"
+        assert s.get("relrowsecurity") is True, "RLS not enabled on audit_logs"
 
     async def test_rls_forced_on_audit_logs(self, pg):
         s = await self._rls_status(pg, "audit_logs")
@@ -253,7 +253,7 @@ class TestP2RowLevelSecurity:
     # devices
     async def test_rls_enabled_on_devices(self, pg):
         s = await self._rls_status(pg, "devices")
-        assert s.get("rowsecurity") is True, "RLS not enabled on devices"
+        assert s.get("relrowsecurity") is True, "RLS not enabled on devices"
 
     async def test_rls_forced_on_devices(self, pg):
         s = await self._rls_status(pg, "devices")
@@ -266,7 +266,7 @@ class TestP2RowLevelSecurity:
     # operations
     async def test_rls_enabled_on_operations(self, pg):
         s = await self._rls_status(pg, "operations")
-        assert s.get("rowsecurity") is True, "RLS not enabled on operations"
+        assert s.get("relrowsecurity") is True, "RLS not enabled on operations"
 
     async def test_rls_forced_on_operations(self, pg):
         s = await self._rls_status(pg, "operations")
