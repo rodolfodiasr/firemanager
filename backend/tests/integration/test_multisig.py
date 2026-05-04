@@ -295,18 +295,18 @@ class TestExecuteGateMultiSig:
 
 class TestOperationModelDefaults:
     def test_default_risk_is_medium(self):
-        op = Operation.__new__(Operation)
-        op.risk_level = OperationRisk.medium
-        op.required_approvals = 1
-        op.co_approvals = []
-        assert op.risk_level == OperationRisk.medium
-        assert op.required_approvals == 1
+        col = Operation.__table__.c.risk_level
+        assert col.default is not None
+        assert col.default.arg == OperationRisk.medium
+        assert col.nullable is False
 
     def test_co_approvals_default_is_empty_list(self):
-        op = Operation.__new__(Operation)
-        op.co_approvals = []
-        assert isinstance(op.co_approvals, list)
-        assert len(op.co_approvals) == 0
+        col = Operation.__table__.c.co_approvals
+        assert col.default is not None
+        # default=list means the callable produces []
+        default_val = col.default.arg
+        assert callable(default_val)
+        assert default_val() == []
 
     def test_direct_ssh_risk_classification(self):
         from app.models.operation import classify_risk

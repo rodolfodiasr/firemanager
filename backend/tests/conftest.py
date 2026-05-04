@@ -6,12 +6,19 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import Base, get_db
 from app.main import app
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+
+# SQLite doesn't know PostgreSQL-specific types — teach it to render them as TEXT
+if not hasattr(SQLiteTypeCompiler, "visit_JSONB"):
+    SQLiteTypeCompiler.visit_JSONB = lambda self, type_, **kw: "TEXT"
+if not hasattr(SQLiteTypeCompiler, "visit_TSVECTOR"):
+    SQLiteTypeCompiler.visit_TSVECTOR = lambda self, type_, **kw: "TEXT"
 
 
 @pytest.fixture(scope="session")
