@@ -115,7 +115,7 @@ class TestCoApproveEndpoint:
     ):
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user2, tenant_id)
         try:
-            resp = await client.post(f"/api/operations/{critical_op.id}/co-approve")
+            resp = await client.post(f"/operations/{critical_op.id}/co-approve")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
 
@@ -128,7 +128,7 @@ class TestCoApproveEndpoint:
     ):
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user1, tenant_id)
         try:
-            resp = await client.post(f"/api/operations/{critical_op.id}/co-approve")
+            resp = await client.post(f"/operations/{critical_op.id}/co-approve")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
 
@@ -142,8 +142,8 @@ class TestCoApproveEndpoint:
     ):
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user2, tenant_id)
         try:
-            await client.post(f"/api/operations/{critical_op.id}/co-approve")
-            resp = await client.post(f"/api/operations/{critical_op.id}/co-approve")
+            await client.post(f"/operations/{critical_op.id}/co-approve")
+            resp = await client.post(f"/operations/{critical_op.id}/co-approve")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
 
@@ -172,7 +172,7 @@ class TestCoApproveEndpoint:
 
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user2, tenant_id)
         try:
-            resp = await client.post(f"/api/operations/{normal_op.id}/co-approve")
+            resp = await client.post(f"/operations/{normal_op.id}/co-approve")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
 
@@ -183,7 +183,7 @@ class TestCoApproveEndpoint:
     ):
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user2, tenant_id)
         try:
-            resp = await client.post(f"/api/operations/{uuid4()}/co-approve")
+            resp = await client.post(f"/operations/{uuid4()}/co-approve")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
 
@@ -209,7 +209,7 @@ class TestCoApproveEndpoint:
 
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user2, tenant_id)
         try:
-            resp = await client.post(f"/api/operations/{op.id}/co-approve")
+            resp = await client.post(f"/operations/{op.id}/co-approve")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
 
@@ -225,7 +225,7 @@ class TestExecuteGateMultiSig:
         # critical_op requires 2 approvals but co_approvals=[] (0 co-approvers)
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user1, tenant_id)
         try:
-            resp = await client.post(f"/api/operations/{critical_op.id}/execute")
+            resp = await client.post(f"/operations/{critical_op.id}/execute")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
 
@@ -250,7 +250,7 @@ class TestExecuteGateMultiSig:
                 new_callable=AsyncMock,
                 return_value=critical_op,
             ):
-                resp = await client.post(f"/api/operations/{critical_op.id}/execute")
+                resp = await client.post(f"/operations/{critical_op.id}/execute")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
 
@@ -279,7 +279,7 @@ class TestExecuteGateMultiSig:
 
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user1, tenant_id)
         try:
-            resp = await client.post(f"/api/operations/{op.id}/execute")
+            resp = await client.post(f"/operations/{op.id}/execute")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
 
@@ -303,10 +303,8 @@ class TestOperationModelDefaults:
     def test_co_approvals_default_is_empty_list(self):
         col = Operation.__table__.c.co_approvals
         assert col.default is not None
-        # default=list means the callable produces []
-        default_val = col.default.arg
-        assert callable(default_val)
-        assert default_val() == []
+        # default=list — verify the registered callable IS the list built-in
+        assert col.default.arg is list
 
     def test_direct_ssh_risk_classification(self):
         from app.models.operation import classify_risk
