@@ -42,9 +42,9 @@ pytestmark = pytest.mark.skipif(
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-@pytest_asyncio.fixture(scope="module")
+@pytest_asyncio.fixture
 async def pg():
-    """Module-scoped read-only connection for DDL introspection queries."""
+    """Per-test connection for DDL introspection queries."""
     conn = await asyncpg.connect(PG_URL)
     yield conn
     await conn.close()
