@@ -16,6 +16,7 @@ import { ServerDirectMode } from "./pages/ServerDirectMode";
 import { ServerAnalysis } from "./pages/ServerAnalysis";
 import { Remediation } from "./pages/Remediation";
 import { Compliance } from "./pages/Compliance";
+import { Governance } from "./pages/Governance";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -62,6 +63,7 @@ export function AppRouter() {
       <Route path="/server-analysis" element={<ProtectedLayout><ServerAnalysis /></ProtectedLayout>} />
       <Route path="/remediation" element={<ProtectedLayout><Remediation /></ProtectedLayout>} />
       <Route path="/compliance" element={<ProtectedLayout><Compliance /></ProtectedLayout>} />
+      <Route path="/governance" element={<ProtectedLayout><Governance /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

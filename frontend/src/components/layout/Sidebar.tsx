@@ -16,6 +16,7 @@ import {
   HardDrive,
   ShieldCheck,
   ClipboardCheck,
+  BarChart3,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -53,6 +54,7 @@ const navSections: NavSection[] = [
       { to: "/server-analysis",icon: Brain,          label: "Analista N3"   },
       { to: "/server-direct",  icon: Terminal,       label: "Modo Técnico"  },
       { to: "/compliance",     icon: ClipboardCheck, label: "Conformidade"  },
+      { to: "/governance",     icon: BarChart3,      label: "Governança"    },
       { to: "/remediation",    icon: ShieldCheck,    label: "Remediações"   },
       { to: "/servers",        icon: HardDrive,      label: "Servidores"    },
     ],

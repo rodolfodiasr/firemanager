@@ -4,7 +4,31 @@ import type {
   ComplianceGenerateRequest,
 } from "../types/compliance";
 import type { RemediationPlan } from "../types/remediation";
+import type {
+  GovernanceSummary,
+  TrustScoreRead,
+  FrameworkScoreItem,
+  Framework,
+} from "../types/governance";
 import apiClient from "./client";
+
+export const governanceApi = {
+  summary: () =>
+    apiClient.get<GovernanceSummary>("/compliance/governance/summary").then((r) => r.data),
+
+  compute: () =>
+    apiClient.post<TrustScoreRead[]>("/compliance/governance/compute").then((r) => r.data),
+
+  history: (framework: Framework, limit = 30) =>
+    apiClient
+      .get<FrameworkScoreItem[]>(`/compliance/governance/history/${framework}`, {
+        params: { limit },
+      })
+      .then((r) => r.data),
+
+  exportExcelUrl: () =>
+    `${apiClient.defaults.baseURL}/compliance/governance/export-excel`,
+};
 
 export const complianceApi = {
   list: () =>
