@@ -27,8 +27,8 @@ def upgrade() -> None:
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("framework", sa.String(20), nullable=False),
         sa.Column("score_pct", sa.Float(), nullable=False),
-        sa.Column("breakdown", JSONB(), nullable=False, server_default="'{}'::jsonb"),
-        sa.Column("narrative", sa.Text(), nullable=False, server_default=""),
+        sa.Column("breakdown", JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column("narrative", sa.Text(), nullable=False, server_default=sa.text("''")),
         sa.Column(
             "computed_at",
             sa.TIMESTAMP(timezone=True),
