@@ -61,13 +61,11 @@ def _op_status(root: ET.Element, tag: str) -> tuple[bool, str]:
     node = root.find(tag)
     if node is None:
         return False, f"Tag <{tag}> not found in response"
-    code = node.findtext("Status/@code") or ""
-    msg = node.findtext("Status") or ""
-    # ET doesn't support attribute selectors — find Status element directly
     status_el = node.find("Status")
-    if status_el is not None:
-        code = status_el.get("code", "")
-        msg = status_el.text or ""
+    if status_el is None:
+        return False, f"<Status> not found under <{tag}>"
+    code = status_el.get("code", "")
+    msg = status_el.text or ""
     return code == "200", msg
 
 
