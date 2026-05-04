@@ -450,7 +450,7 @@ export function Governance() {
               <p className="text-sm font-semibold text-gray-800 mb-4">
                 Eternity — Componentes do Score
               </p>
-              <EternityBreakdownPanel breakdown={eternity.breakdown as EternityBreakdown} />
+              <EternityBreakdownPanel breakdown={eternity.breakdown as unknown as EternityBreakdown} />
             </div>
           )}
 
@@ -459,7 +459,7 @@ export function Governance() {
               <p className="text-sm font-semibold text-gray-800 mb-4">
                 NIST CSF — Funções
               </p>
-              <NistBreakdownPanel breakdown={nist.breakdown as NistBreakdown} />
+              <NistBreakdownPanel breakdown={nist.breakdown as unknown as NistBreakdown} />
             </div>
           )}
 
@@ -468,7 +468,7 @@ export function Governance() {
               <p className="text-sm font-semibold text-gray-800 mb-4">
                 ISO 27001 — Controles (baseado em hardening P1–P6)
               </p>
-              <IsoBreakdownPanel breakdown={iso.breakdown as IsoBreakdown} />
+              <IsoBreakdownPanel breakdown={iso.breakdown as unknown as IsoBreakdown} />
             </div>
           )}
 
