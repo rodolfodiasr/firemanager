@@ -288,8 +288,7 @@ async def compute_all(
     if save:
         for rec in records:
             db.add(rec)
-        await db.flush()
-        for rec in records:
+            await db.flush()
             await db.refresh(rec)
     return records
 
