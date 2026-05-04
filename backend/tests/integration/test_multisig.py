@@ -16,8 +16,11 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from unittest.mock import AsyncMock, patch
+
 from app.api.auth import TenantContext, get_tenant_context
 from app.main import app
+from app.middleware.rate_limit import limit_execute
 from app.models.device import Device, DeviceCategory, VendorEnum
 from app.models.operation import Operation, OperationRisk, OperationStatus
 from app.models.user import User, UserRole
@@ -224,10 +227,17 @@ class TestExecuteGateMultiSig:
     ):
         # critical_op requires 2 approvals but co_approvals=[] (0 co-approvers)
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user1, tenant_id)
+        app.dependency_overrides[limit_execute] = lambda: None
         try:
-            resp = await client.post(f"/operations/{critical_op.id}/execute")
+            with patch(
+                "app.api.operations.resolve_device_role",
+                new_callable=AsyncMock,
+                return_value=TenantRole.admin,
+            ):
+                resp = await client.post(f"/operations/{critical_op.id}/execute")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
+            app.dependency_overrides.pop(limit_execute, None)
 
         assert resp.status_code == 403
         detail = resp.json()["detail"]
@@ -237,15 +247,18 @@ class TestExecuteGateMultiSig:
     async def test_execute_allowed_when_co_approvals_satisfied(
         self, client, db_session, critical_op, user1, user2, device, tenant_id
     ):
-        from unittest.mock import patch, AsyncMock
-
         # Add user2 as co-approver
         critical_op.co_approvals = [str(user2.id)]
         await db_session.flush()
 
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user1, tenant_id)
+        app.dependency_overrides[limit_execute] = lambda: None
         try:
             with patch(
+                "app.api.operations.resolve_device_role",
+                new_callable=AsyncMock,
+                return_value=TenantRole.admin,
+            ), patch(
                 "app.api.operations.execute_operation",
                 new_callable=AsyncMock,
                 return_value=critical_op,
@@ -253,6 +266,7 @@ class TestExecuteGateMultiSig:
                 resp = await client.post(f"/operations/{critical_op.id}/execute")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
+            app.dependency_overrides.pop(limit_execute, None)
 
         # Should not be 403 multi_sig_required — may be other errors (device connect, etc.)
         if resp.status_code == 403:
@@ -278,10 +292,17 @@ class TestExecuteGateMultiSig:
         await db_session.flush()
 
         app.dependency_overrides[get_tenant_context] = lambda: _ctx(user1, tenant_id)
+        app.dependency_overrides[limit_execute] = lambda: None
         try:
-            resp = await client.post(f"/operations/{op.id}/execute")
+            with patch(
+                "app.api.operations.resolve_device_role",
+                new_callable=AsyncMock,
+                return_value=TenantRole.admin,
+            ):
+                resp = await client.post(f"/operations/{op.id}/execute")
         finally:
             app.dependency_overrides.pop(get_tenant_context, None)
+            app.dependency_overrides.pop(limit_execute, None)
 
         assert resp.status_code == 403
         detail = resp.json()["detail"]
@@ -303,8 +324,9 @@ class TestOperationModelDefaults:
     def test_co_approvals_default_is_empty_list(self):
         col = Operation.__table__.c.co_approvals
         assert col.default is not None
-        # default=list — verify the registered callable IS the list built-in
-        assert col.default.arg is list
+        # SQLAlchemy wraps the callable — check the name rather than identity
+        assert callable(col.default.arg)
+        assert col.default.arg.__name__ == "list"
 
     def test_direct_ssh_risk_classification(self):
         from app.models.operation import classify_risk
