@@ -65,12 +65,13 @@ const NIST_LABELS: Record<string, string> = {
 };
 
 const ISO_LABELS: Record<string, string> = {
-  "A.10_cryptography":   "A.10 — Criptografia",
-  "A.9_access_control":  "A.9 — Controle de Acesso",
-  "A.8.15_logging":      "A.8.15 — Logging",
-  "A.8.6_operations":    "A.8.6 — Operações",
-  "A.9.4_system_access": "A.9.4 — Acesso ao Sistema",
-  "A.12_compliance":     "A.12 — Conformidade Técnica",
+  "A.5_access_auth": "A.5 Controle de Acesso e Autenticação",
+  "A.8_crypto":      "A.8.10/24 Criptografia",
+  "A.8_logging":     "A.8.15/16 Logging e Monitoramento",
+  "A.8_network":     "A.8.20/22 Segurança de Rede",
+  "A.8_vuln":        "A.8.8 Gestão de Vulnerabilidades",
+  "A.8_config":      "A.8.9 Gestão de Configuração",
+  "A.8_assets":      "A.8.3 Gestão de Ativos",
 };
 
 // ── Score gauge ───────────────────────────────────────────────────────────────
@@ -93,19 +94,27 @@ function ScoreGauge({ pct, size = "md" }: { pct: number | null; size?: "sm" | "m
 
 // ── Bar row ───────────────────────────────────────────────────────────────────
 
-function ScoreBar({ label, value, weight }: { label: string; value: number; weight?: number }) {
+function ScoreBar({
+  label, value, weight,
+}: {
+  label: string;
+  value: number | null;
+  weight?: number;
+}) {
   const col = scoreColor(value);
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs text-gray-600 w-52 shrink-0">{label}</span>
+      <span className="text-xs text-gray-600 w-56 shrink-0">{label}</span>
       <div className="flex-1 bg-gray-100 rounded-full h-2">
-        <div
-          className={`h-2 rounded-full transition-all ${col.bg}`}
-          style={{ width: `${Math.min(value, 100)}%` }}
-        />
+        {value !== null && (
+          <div
+            className={`h-2 rounded-full transition-all ${col.bg}`}
+            style={{ width: `${Math.min(value, 100)}%` }}
+          />
+        )}
       </div>
-      <span className={`text-xs font-semibold w-10 text-right ${col.text}`}>
-        {value.toFixed(0)}%
+      <span className={`text-xs font-semibold w-12 text-right ${col.text}`}>
+        {value !== null ? `${value.toFixed(0)}%` : "N/A"}
       </span>
       {weight !== undefined && (
         <span className="text-xs text-gray-400 w-12 text-right">
@@ -169,22 +178,71 @@ function EternityBreakdownPanel({ breakdown }: { breakdown: EternityBreakdown })
   );
 }
 
+function MethodologyNote({ text }: { text: string }) {
+  return (
+    <p className="mt-3 text-xs text-gray-400 leading-relaxed border-t border-gray-100 pt-3">
+      <span className="font-medium text-gray-500">Metodologia: </span>
+      {text}
+    </p>
+  );
+}
+
+function DataQualityBadge({ serverCount, totalControls }: { serverCount: number; totalControls: number }) {
+  if (totalControls === 0) {
+    return (
+      <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3 flex items-center gap-1.5">
+        <AlertTriangle size={12} />
+        Nenhum relatório de conformidade encontrado. Execute uma análise em pelo menos 1 servidor.
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-gray-500 mb-3">
+      Baseado em <span className="font-medium">{totalControls} controles</span> de{" "}
+      <span className="font-medium">{serverCount} servidor(es)</span>
+    </p>
+  );
+}
+
 function NistBreakdownPanel({ breakdown }: { breakdown: NistBreakdown }) {
   return (
-    <div className="flex flex-col gap-2.5">
-      {Object.entries(breakdown.nist_functions).map(([key, val]) => (
-        <ScoreBar key={key} label={NIST_LABELS[key] ?? key} value={val} />
-      ))}
+    <div>
+      <DataQualityBadge serverCount={breakdown.server_count} totalControls={breakdown.total_controls} />
+      <div className="flex flex-col gap-2.5">
+        {Object.entries(breakdown.nist_functions).map(([key, val]) => (
+          <ScoreBar key={key} label={breakdown.nist_labels?.[key] ?? NIST_LABELS[key] ?? key} value={val} />
+        ))}
+      </div>
+      <MethodologyNote text={breakdown.methodology} />
     </div>
   );
 }
 
 function IsoBreakdownPanel({ breakdown }: { breakdown: IsoBreakdown }) {
   return (
-    <div className="flex flex-col gap-2.5">
-      {Object.entries(breakdown.iso_controls).map(([key, val]) => (
-        <ScoreBar key={key} label={ISO_LABELS[key] ?? key} value={val} />
-      ))}
+    <div>
+      <DataQualityBadge serverCount={breakdown.server_count} totalControls={breakdown.total_controls} />
+      {breakdown.mfa_adoption && (
+        <p className="text-xs text-gray-500 mb-3">
+          MFA:{" "}
+          <span className="font-medium">
+            {breakdown.mfa_adoption.score !== null
+              ? `${breakdown.mfa_adoption.score.toFixed(0)}% dos usuários`
+              : "sem dados"}
+          </span>
+          {breakdown.mfa_adoption.total_users > 0 && (
+            <span className="text-gray-400">
+              {" "}({breakdown.mfa_adoption.mfa_enabled}/{breakdown.mfa_adoption.total_users})
+            </span>
+          )}
+        </p>
+      )}
+      <div className="flex flex-col gap-2.5">
+        {Object.entries(breakdown.iso_domains).map(([key, val]) => (
+          <ScoreBar key={key} label={breakdown.iso_labels?.[key] ?? ISO_LABELS[key] ?? key} value={val} />
+        ))}
+      </div>
+      <MethodologyNote text={breakdown.methodology} />
     </div>
   );
 }
@@ -411,8 +469,8 @@ export function Governance() {
           {/* ── Second row: NIST + ISO ─────────────────────────────────────── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <FrameworkCard
-              title="NIST CSF"
-              subtitle="5 funções: Identify, Protect, Detect, Respond, Recover"
+              title="NIST CSF 2.0"
+              subtitle="Controles CIS mapeados para 5 funções via crosswalk oficial"
               score={summary.nist_score}
               extra={
                 nist && (
@@ -427,8 +485,8 @@ export function Governance() {
               }
             />
             <FrameworkCard
-              title="ISO 27001"
-              subtitle="Evidências das fases de hardening P1–P6"
+              title="ISO 27001:2022"
+              subtitle="Controles CIS mapeados para Annex A via crosswalk oficial"
               score={summary.iso_score}
               extra={
                 iso && (
@@ -457,7 +515,7 @@ export function Governance() {
           {expandedBreakdown === "nist" && nist && (
             <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
               <p className="text-sm font-semibold text-gray-800 mb-4">
-                NIST CSF — Funções
+                NIST CSF 2.0 — Funções
               </p>
               <NistBreakdownPanel breakdown={nist.breakdown as unknown as NistBreakdown} />
             </div>
@@ -466,7 +524,7 @@ export function Governance() {
           {expandedBreakdown === "iso" && iso && (
             <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
               <p className="text-sm font-semibold text-gray-800 mb-4">
-                ISO 27001 — Controles (baseado em hardening P1–P6)
+                ISO 27001:2022 — Domínios Annex A
               </p>
               <IsoBreakdownPanel breakdown={iso.breakdown as unknown as IsoBreakdown} />
             </div>

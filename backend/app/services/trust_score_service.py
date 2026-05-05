@@ -1,4 +1,13 @@
-"""Trust Score service — Eternity Trust Score + per-framework governance scores."""
+"""Trust Score service — Eternity Trust Score + per-framework governance scores.
+
+Data sources and methodology transparency:
+  CIS Benchmark    — average score_pct across latest ComplianceReport per server
+  NIST CSF         — CIS controls classified via official CIS→NIST crosswalk (cis_crosswalk.py);
+                     gaps in Detect/Respond/Recover filled by audit log density and remediation data
+  ISO 27001:2022   — CIS controls classified via official CIS→ISO crosswalk;
+                     A.5 Access Control supplemented by real MFA adoption rate from user table
+  Eternity Score   — weighted composite of 5 platform signals (no proxies, no inflated defaults)
+"""
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -12,6 +21,7 @@ from app.models.device import Device
 from app.models.operation import Operation, OperationStatus
 from app.models.remediation import RemediationPlan, RemediationStatus
 from app.models.trust_score import FrameworkEnum, TrustScore
+from app.models.user import User
 from app.models.user_tenant_role import UserTenantRole
 
 _ETERNITY_WEIGHTS = {
@@ -26,7 +36,7 @@ _ETERNITY_WEIGHTS = {
 # ── Raw data collectors ───────────────────────────────────────────────────────
 
 async def _cis_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
-    """Latest CIS score per server, then average across all servers."""
+    """Latest CIS score per server, averaged across all servers."""
     subq = (
         select(
             ComplianceReport.server_id,
@@ -50,8 +60,44 @@ async def _cis_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
     return {"score": avg, "server_count": len(scores), "per_server_scores": scores}
 
 
+async def _controls_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
+    """Fetch all control-level results from the latest compliance report per server."""
+    subq = (
+        select(
+            ComplianceReport.server_id,
+            func.max(ComplianceReport.created_at).label("latest"),
+        )
+        .where(ComplianceReport.tenant_id == tenant_id)
+        .group_by(ComplianceReport.server_id)
+        .subquery()
+    )
+    result = await db.execute(
+        select(ComplianceReport.controls, ComplianceReport.server_id)
+        .join(
+            subq,
+            (ComplianceReport.server_id == subq.c.server_id)
+            & (ComplianceReport.created_at == subq.c.latest),
+        )
+        .where(ComplianceReport.tenant_id == tenant_id)
+    )
+    rows = result.fetchall()
+
+    all_controls: list[dict] = []
+    server_ids: set = set()
+    for controls_json, server_id in rows:
+        server_ids.add(server_id)
+        if isinstance(controls_json, list):
+            all_controls.extend(controls_json)
+
+    return {
+        "all_controls": all_controls,
+        "server_count": len(server_ids),
+        "total_count": len(all_controls),
+    }
+
+
 async def _ops_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
-    """Ratio of completed operations in the last 90 days (via device tenant join)."""
+    """Ratio of completed firewall operations in the last 90 days."""
     cutoff = datetime.utcnow() - timedelta(days=90)
 
     total_r = await db.execute(
@@ -74,7 +120,8 @@ async def _ops_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
     )
     completed = completed_r.scalar() or 0
 
-    score = round(completed / total * 100, 1) if total > 0 else 80.0
+    # 0.0 when no operations — no data is not the same as 80% completion
+    score = round(completed / total * 100, 1) if total > 0 else 0.0
     return {"score": score, "total_90d": total, "completed": completed}
 
 
@@ -100,12 +147,13 @@ async def _remediation_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]
     )
     done = done_r.scalar() or 0
 
-    score = round(done / total * 100, 1) if total > 0 else 70.0
+    # 0.0 when no plans — absence of remediations is not a neutral signal
+    score = round(done / total * 100, 1) if total > 0 else 0.0
     return {"score": score, "plans_60d": total, "completed": done}
 
 
 async def _audit_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
-    """Audit log density for tenant devices in the last 30 days."""
+    """Platform audit log density for tenant devices in the last 30 days."""
     from app.models.audit_log import AuditLog
 
     cutoff = datetime.utcnow() - timedelta(days=30)
@@ -116,9 +164,8 @@ async def _audit_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
         .where(Device.tenant_id == tenant_id, AuditLog.created_at >= cutoff)
     )
     count = count_r.scalar() or 0
-    # 5 events/day = 150/month expected minimum; floor at 20 (P3 immutability guarantees infra exists)
+    # 5 events/day = 150/month as minimum expected baseline
     score = min(round(count / 150 * 100, 1), 100.0)
-    score = max(score, 20.0)
     return {"score": score, "events_30d": count, "events_per_day": round(count / 30, 1)}
 
 
@@ -145,6 +192,35 @@ async def _access_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
     return {"score": score, "total_users": total, "roles": role_counts}
 
 
+async def _mfa_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
+    """MFA adoption rate among users with access to this tenant."""
+    total_r = await db.execute(
+        select(func.count())
+        .select_from(UserTenantRole)
+        .where(UserTenantRole.tenant_id == tenant_id)
+    )
+    total = total_r.scalar() or 0
+
+    if total == 0:
+        return {"score": None, "mfa_enabled": 0, "total_users": 0}
+
+    mfa_r = await db.execute(
+        select(func.count())
+        .select_from(UserTenantRole)
+        .join(User, UserTenantRole.user_id == User.id)
+        .where(
+            UserTenantRole.tenant_id == tenant_id,
+            User.mfa_enabled.is_(True),
+        )
+    )
+    mfa_count = mfa_r.scalar() or 0
+    return {
+        "score": round(mfa_count / total * 100, 1),
+        "mfa_enabled": mfa_count,
+        "total_users": total,
+    }
+
+
 # ── Per-framework computers ───────────────────────────────────────────────────
 
 async def compute_cis(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
@@ -153,48 +229,105 @@ async def compute_cis(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
 
 
 async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
-    """NIST CSF score derived from CIS + operational posture across 5 functions."""
-    cis   = await _cis_data(db, tenant_id)
-    ops   = await _ops_data(db, tenant_id)
-    audit = await _audit_data(db, tenant_id)
-    rem   = await _remediation_data(db, tenant_id)
+    """
+    NIST CSF score via official CIS→NIST crosswalk.
+    Each CIS compliance control is classified into Identify/Protect/Detect/Respond/Recover
+    by section number (SSH/WinRM reports) or title keywords (Wazuh reports).
+    Risk-weighted pass rate per function.
+    Gaps in Detect/Respond/Recover (functions rarely covered by CIS controls) are
+    supplemented by audit log density and remediation velocity respectively.
+    """
+    from app.services.cis_crosswalk import (
+        score_by_nist, aggregate_score, NIST_LABELS,
+    )
 
-    funcs = {
-        "identify": round(min(cis["score"] * 0.8 + 20, 100), 1),
-        "protect":  round(cis["score"], 1),
-        "detect":   round(audit["score"], 1),
-        "respond":  round(ops["score"] * 0.6 + rem["score"] * 0.4, 1),
-        "recover":  round(rem["score"], 1),
+    controls = await _controls_data(db, tenant_id)
+    functions = score_by_nist(controls["all_controls"])
+
+    # Supplement Detect when CIS reports have no logging/audit controls
+    if functions["detect"] is None:
+        audit = await _audit_data(db, tenant_id)
+        functions["detect"] = audit["score"] if audit["score"] > 0 else None
+
+    # Supplement Respond and Recover from operational platform data
+    if functions["respond"] is None:
+        ops = await _ops_data(db, tenant_id)
+        rem = await _remediation_data(db, tenant_id)
+        candidates = [s for s in [ops["score"], rem["score"]] if s > 0]
+        if candidates:
+            functions["respond"] = round(sum(candidates) / len(candidates), 1)
+
+    if functions["recover"] is None:
+        rem = await _remediation_data(db, tenant_id)
+        if rem["score"] > 0:
+            functions["recover"] = rem["score"]
+
+    overall = aggregate_score(functions)
+
+    return overall or 0.0, {
+        "nist_functions": functions,
+        "nist_labels": NIST_LABELS,
+        "source": "cis_crosswalk",
+        "server_count": controls["server_count"],
+        "total_controls": controls["total_count"],
+        "methodology": (
+            "Controles CIS Benchmark mapeados para funções NIST CSF via "
+            "crosswalk oficial CIS Controls v8. "
+            "Detect suplementado por densidade de logs da plataforma. "
+            "Respond/Recover suplementados por velocidade de remediação quando "
+            "ausentes nos relatórios CIS."
+        ),
     }
-    overall = round(sum(funcs.values()) / 5, 1)
-    return overall, {"nist_functions": funcs}
 
 
 async def compute_iso_27001(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
-    """ISO 27001 score from Security Hardening evidence (P1–P6) + CIS compliance data."""
-    cis    = await _cis_data(db, tenant_id)
-    ops    = await _ops_data(db, tenant_id)
-    access = await _access_data(db, tenant_id)
-    audit  = await _audit_data(db, tenant_id)
+    """
+    ISO 27001:2022 score via official CIS→ISO crosswalk.
+    CIS controls classified into ISO Annex A domains by section number and keywords.
+    A.5 Access Control supplemented by real MFA adoption rate.
+    A.8 Cryptography derived exclusively from CIS controls (no hardcoded values).
+    """
+    from app.services.cis_crosswalk import (
+        score_by_iso, aggregate_score, ISO_LABELS,
+    )
 
-    # P1=A.10 Crypto, P2=A.9 Access, P3=A.8.15 Logging, P4-P5=A.8.6 Ops, P6=A.9.4 System Access
-    controls = {
-        "A.10_cryptography":   100.0,
-        "A.9_access_control":  access["score"],
-        "A.8.15_logging":      audit["score"],
-        "A.8.6_operations":    ops["score"],
-        "A.9.4_system_access": min(ops["score"] * 0.7 + 30, 100),
-        "A.12_compliance":     cis["score"],
-    }
-    overall = round(min(sum(controls.values()) / len(controls), 100.0), 1)
-    return overall, {
-        "iso_controls": {k: round(v, 1) for k, v in controls.items()},
-        "based_on": ["P1", "P2", "P3", "P4", "P5", "P6"],
+    controls = await _controls_data(db, tenant_id)
+    domains = score_by_iso(controls["all_controls"])
+
+    # Supplement A.5 with real MFA adoption (blended: 70% CIS auth controls + 30% MFA rate)
+    mfa = await _mfa_data(db, tenant_id)
+    if mfa["score"] is not None:
+        if domains["A.5_access_auth"] is not None:
+            domains["A.5_access_auth"] = round(
+                domains["A.5_access_auth"] * 0.7 + mfa["score"] * 0.3, 1
+            )
+        else:
+            domains["A.5_access_auth"] = mfa["score"]
+
+    overall = aggregate_score(domains)
+
+    return overall or 0.0, {
+        "iso_domains": domains,
+        "iso_labels": ISO_LABELS,
+        "source": "cis_crosswalk",
+        "server_count": controls["server_count"],
+        "total_controls": controls["total_count"],
+        "mfa_adoption": mfa,
+        "methodology": (
+            "Controles CIS Benchmark mapeados para domínios ISO 27001:2022 Annex A via "
+            "crosswalk oficial CIS Controls v8. "
+            "A.5 Controle de Acesso suplementado por taxa de adoção de MFA (blend 70/30). "
+            "A.8.10/24 Criptografia derivada exclusivamente de controles CIS — "
+            "N/A indica ausência de controles de criptografia nos relatórios coletados."
+        ),
     }
 
 
 async def compute_eternity(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
-    """Composite Eternity Trust Score — C-level risk index."""
+    """
+    Composite Eternity Trust Score (C-level risk index, 0–100).
+    Five components each from real platform data — no proxy values or inflated defaults.
+    """
     cis    = await _cis_data(db, tenant_id)
     ops    = await _ops_data(db, tenant_id)
     rem    = await _remediation_data(db, tenant_id)

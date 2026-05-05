@@ -26,16 +26,34 @@ export interface GovernanceSummary {
   scores: TrustScoreRead[];
 }
 
-// breakdown shapes per framework
+// Eternity Trust Score breakdown
 export interface EternityBreakdown {
   components: Record<string, number>;
   weights: Record<string, number>;
+  details: Record<string, Record<string, unknown>>;
 }
 
+// NIST CSF breakdown — values are null when no CIS controls mapped to that function
 export interface NistBreakdown {
-  nist_functions: Record<string, number>;
+  nist_functions: Record<string, number | null>;
+  nist_labels: Record<string, string>;
+  source: string;
+  server_count: number;
+  total_controls: number;
+  methodology: string;
 }
 
+// ISO 27001:2022 breakdown — values are null when no CIS controls mapped to that domain
 export interface IsoBreakdown {
-  iso_controls: Record<string, number>;
+  iso_domains: Record<string, number | null>;
+  iso_labels: Record<string, string>;
+  source: string;
+  server_count: number;
+  total_controls: number;
+  mfa_adoption: {
+    score: number | null;
+    mfa_enabled: number;
+    total_users: number;
+  };
+  methodology: string;
 }
