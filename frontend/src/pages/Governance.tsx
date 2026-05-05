@@ -97,7 +97,7 @@ function ScoreGauge({ pct, size = "md" }: { pct: number | null; size?: "sm" | "m
 // ── Bar row ───────────────────────────────────────────────────────────────────
 
 function ScoreBar({
-  label, value, weight, controls, onClick, expanded,
+  label, value, weight, controls, onClick, expanded, totalServers,
 }: {
   label: string;
   value: number | null;
@@ -105,6 +105,7 @@ function ScoreBar({
   controls?: ControlItem[];
   onClick?: () => void;
   expanded?: boolean;
+  totalServers?: number;
 }) {
   const col = scoreColor(value);
   const hasControls = controls && controls.length > 0;
@@ -143,7 +144,7 @@ function ScoreBar({
         )}
       </div>
       {expanded && hasControls && (
-        <ControlDrillDown controls={controls!} />
+        <ControlDrillDown controls={controls!} totalServers={totalServers ?? 0} />
       )}
     </div>
   );
@@ -202,6 +203,15 @@ function ServerTags({ servers, variant }: { servers: string[]; variant: "fail" |
   const cls = variant === "fail"
     ? "bg-red-50 text-red-700 border border-red-100"
     : "bg-green-50 text-green-700 border border-green-100";
+  const hasRealNames = servers.some(s => s !== "?");
+  if (!hasRealNames) {
+    // server_name not yet in stored data — show count only
+    return (
+      <span className={`text-xs px-1.5 py-0.5 rounded ${cls}`}>
+        {servers.length} servidor{servers.length !== 1 ? "es" : ""}
+      </span>
+    );
+  }
   return (
     <div className="flex flex-wrap gap-1 mt-0.5">
       {servers.map((s, i) => (
@@ -211,12 +221,14 @@ function ServerTags({ servers, variant }: { servers: string[]; variant: "fail" |
   );
 }
 
-function ControlDrillDown({ controls }: { controls: ControlItem[] }) {
+function ControlDrillDown({ controls, totalServers: totalFromMeta }: { controls: ControlItem[]; totalServers: number }) {
   const grouped = groupControls(controls);
   const failed  = grouped.filter(g => g.failed_servers.length > 0);
   const allPass = grouped.filter(g => g.failed_servers.length === 0);
-  const total   = controls.map(c => c.server_name ?? c.server_id ?? "?");
-  const totalServers = [...new Set(total)].length;
+  // Use metadata server_count as denominator; fallback to unique server_ids if unavailable
+  const totalServers = totalFromMeta > 0
+    ? totalFromMeta
+    : [...new Set(controls.map(c => c.server_id ?? c.server_name ?? "?").filter(s => s !== "?"))].length || 1;
 
   return (
     <div className="ml-4 mt-1 mb-3 border-l-2 border-gray-100 pl-3 flex flex-col gap-2">
@@ -419,6 +431,7 @@ function NistBreakdownPanel({ breakdown }: { breakdown: NistBreakdown }) {
             controls={breakdown.control_breakdown?.[key]}
             expanded={expanded === key}
             onClick={() => toggle(key)}
+            totalServers={breakdown.server_count}
           />
         ))}
       </div>
@@ -457,6 +470,7 @@ function IsoBreakdownPanel({ breakdown }: { breakdown: IsoBreakdown }) {
             controls={breakdown.control_breakdown?.[key]}
             expanded={expanded === key}
             onClick={() => toggle(key)}
+            totalServers={breakdown.server_count}
           />
         ))}
       </div>
