@@ -42,7 +42,10 @@ async def _cis_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
             ComplianceReport.server_id,
             func.max(ComplianceReport.created_at).label("latest"),
         )
-        .where(ComplianceReport.tenant_id == tenant_id)
+        .where(
+            ComplianceReport.tenant_id == tenant_id,
+            ComplianceReport.server_id.isnot(None),
+        )
         .group_by(ComplianceReport.server_id)
         .subquery()
     )
@@ -53,7 +56,10 @@ async def _cis_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
             (ComplianceReport.server_id == subq.c.server_id)
             & (ComplianceReport.created_at == subq.c.latest),
         )
-        .where(ComplianceReport.tenant_id == tenant_id)
+        .where(
+            ComplianceReport.tenant_id == tenant_id,
+            ComplianceReport.server_id.isnot(None),
+        )
     )
     scores = [r[0] for r in result.fetchall()]
     avg = round(sum(scores) / len(scores), 1) if scores else 0.0
@@ -70,7 +76,10 @@ async def _controls_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
             ComplianceReport.server_id,
             func.max(ComplianceReport.created_at).label("latest"),
         )
-        .where(ComplianceReport.tenant_id == tenant_id)
+        .where(
+            ComplianceReport.tenant_id == tenant_id,
+            ComplianceReport.server_id.isnot(None),
+        )
         .group_by(ComplianceReport.server_id)
         .subquery()
     )
@@ -82,7 +91,10 @@ async def _controls_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
             & (ComplianceReport.created_at == subq.c.latest),
         )
         .join(Server, ComplianceReport.server_id == Server.id)
-        .where(ComplianceReport.tenant_id == tenant_id)
+        .where(
+            ComplianceReport.tenant_id == tenant_id,
+            ComplianceReport.server_id.isnot(None),
+        )
     )
     rows = result.fetchall()
 
@@ -102,6 +114,69 @@ async def _controls_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
         "all_controls": all_controls,
         "server_count": len(server_ids),
         "total_count": len(all_controls),
+    }
+
+
+async def _network_compliance_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
+    """Fetch latest network device compliance controls (firewalls + switches).
+
+    Returns the latest report per device, combined into a single controls list.
+    avg_score is the unweighted average score_pct across devices.
+    """
+    subq = (
+        select(
+            ComplianceReport.device_id,
+            func.max(ComplianceReport.created_at).label("latest"),
+        )
+        .where(
+            ComplianceReport.tenant_id == tenant_id,
+            ComplianceReport.device_id.isnot(None),
+        )
+        .group_by(ComplianceReport.device_id)
+        .subquery()
+    )
+    result = await db.execute(
+        select(
+            ComplianceReport.controls,
+            ComplianceReport.score_pct,
+            ComplianceReport.device_id,
+            Device.name,
+        )
+        .join(
+            subq,
+            (ComplianceReport.device_id == subq.c.device_id)
+            & (ComplianceReport.created_at == subq.c.latest),
+        )
+        .join(Device, ComplianceReport.device_id == Device.id)
+        .where(
+            ComplianceReport.tenant_id == tenant_id,
+            ComplianceReport.device_id.isnot(None),
+        )
+    )
+    rows = result.fetchall()
+
+    all_controls: list[dict] = []
+    scores: list[float] = []
+    device_ids: set = set()
+
+    for controls_json, score_pct, device_id, device_name in rows:
+        device_ids.add(device_id)
+        scores.append(score_pct)
+        if isinstance(controls_json, list):
+            for ctrl in controls_json:
+                all_controls.append({
+                    **ctrl,
+                    "device_id":   str(device_id),
+                    "device_name": device_name or str(device_id),
+                })
+
+    avg = round(sum(scores) / len(scores), 1) if scores else 0.0
+    return {
+        "all_controls": all_controls,
+        "avg_score":    avg,
+        "device_count": len(device_ids),
+        "total_count":  len(all_controls),
+        "per_device_scores": scores,
     }
 
 
@@ -290,36 +365,76 @@ async def _mfa_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
 # ── Per-framework computers ───────────────────────────────────────────────────
 
 async def compute_cis(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
-    d = await _cis_data(db, tenant_id)
-    return d["score"], d
+    """CIS compliance average: server reports + network device reports (weighted by count)."""
+    server = await _cis_data(db, tenant_id)
+    network = await _network_compliance_data(db, tenant_id)
+
+    s_count = server["server_count"]
+    n_count = network["device_count"]
+
+    if s_count > 0 and n_count > 0:
+        total = s_count + n_count
+        blended = round(
+            server["score"] * (s_count / total) + network["avg_score"] * (n_count / total), 1
+        )
+    elif s_count > 0:
+        blended = server["score"]
+    elif n_count > 0:
+        blended = network["avg_score"]
+    else:
+        blended = 0.0
+
+    return blended, {
+        **server,
+        "network_devices": {
+            "avg_score":    network["avg_score"],
+            "device_count": n_count,
+            "per_device_scores": network["per_device_scores"],
+        },
+        "blended": s_count > 0 and n_count > 0,
+    }
 
 
 async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
     """
-    NIST CSF score via official CIS→NIST crosswalk + Wazuh real-time detection signal.
+    NIST CSF score via official CIS→NIST crosswalk + Wazuh real-time detection signal
+    + network device compliance (firewalls/switches) blended into Protect and Detect.
 
-    Detect function priority:
-      1. Wazuh (real): agent health + critical alert volume (30-day window)
-         If CIS also has audit controls → blended 50/50 for maximum signal richness
-      2. CIS audit controls only (when Wazuh not configured)
-      3. Platform audit log density (last fallback when neither is available)
+    Blending order:
+      1. Server CIS controls → classify by NIST function (section-based crosswalk)
+      2. Network device controls → classify by NIST function (explicit ID mapping)
+         Blend per-function: 60% server / 40% network when both have data
+      3. Detect: Wazuh (real-time) overrides/supplements the blended CIS+network detect
+      4. Respond/Recover: supplemented by remediation velocity when no covering controls
 
-    Respond/Recover gaps filled by remediation velocity when CIS has no covering controls.
+    Server weight 60% / Network 40%: servers have 10-50× more controls than network checks,
+    so equal-count weighting would over-represent the sparser network data.
     """
     from app.services.cis_crosswalk import (
-        score_by_nist, aggregate_score, NIST_LABELS, classify_controls_by_nist,
+        score_by_nist, score_network_by_nist, blend_scores,
+        aggregate_score, NIST_LABELS, classify_controls_by_nist,
     )
 
-    controls = await _controls_data(db, tenant_id)
-    functions = score_by_nist(controls["all_controls"])
-    control_breakdown = classify_controls_by_nist(controls["all_controls"])
+    # ── Step 1: Server CIS controls ───────────────────────────────────────────
+    server_ctrl = await _controls_data(db, tenant_id)
+    srv_functions = score_by_nist(server_ctrl["all_controls"])
+    control_breakdown = classify_controls_by_nist(server_ctrl["all_controls"])
 
-    # ── Detect: Wazuh-first, then CIS audit, then log density ────────────────
+    # ── Step 2: Network device controls ───────────────────────────────────────
+    net_ctrl = await _network_compliance_data(db, tenant_id)
+    net_functions = score_network_by_nist(net_ctrl["all_controls"])
+
+    # Blend per function
+    functions = {
+        f: blend_scores(srv_functions[f], net_functions[f], server_weight=0.60)
+        for f in srv_functions
+    }
+
+    # ── Step 3: Detect — Wazuh-first, then blended CIS+net, then log density ─
     wazuh_detect = await _wazuh_detect_data(db, tenant_id)
 
     if wazuh_detect is not None:
         if functions["detect"] is not None:
-            # Blend: CIS audit controls provide config evidence, Wazuh provides live signal
             functions["detect"] = round(
                 functions["detect"] * 0.5 + wazuh_detect["score"] * 0.5, 1
             )
@@ -329,7 +444,7 @@ async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, di
         audit = await _audit_data(db, tenant_id)
         functions["detect"] = audit["score"] if audit["score"] > 0 else None
 
-    # ── Respond/Recover: supplemented from platform operational data ──────────
+    # ── Step 4: Respond/Recover — operational supplements ────────────────────
     if functions["respond"] is None:
         ops = await _ops_data(db, tenant_id)
         rem = await _remediation_data(db, tenant_id)
@@ -344,16 +459,22 @@ async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, di
 
     overall = aggregate_score(functions)
 
+    # ── Methodology notes ─────────────────────────────────────────────────────
+    net_note = (
+        f" Dispositivos de rede: {net_ctrl['device_count']} dispositivos, "
+        f"{net_ctrl['total_count']} controles (blend 60% servidores / 40% rede)."
+        if net_ctrl["device_count"] > 0 else ""
+    )
     if wazuh_detect:
         detect_note = (
             f"Detect: Wazuh ({wazuh_detect['active_agents']}/{wazuh_detect['total_agents']} "
             f"agentes ativos, {wazuh_detect['critical_alerts_30d']} alertas críticos/30d)"
-            + (" + controles CIS (blend 50/50)" if controls["total_count"] > 0 else "") + ". "
+            + (" + controles CIS/rede (blend 50/50)" if server_ctrl["total_count"] > 0 or net_ctrl["total_count"] > 0 else "") + ". "
         )
     else:
         detect_note = (
-            "Detect: controles CIS de auditoria"
-            + (" (Wazuh não configurado — configure a integração para dados em tempo real)" if controls["total_count"] > 0 else " + densidade de logs da plataforma")
+            "Detect: controles CIS de auditoria + checks de syslog de rede"
+            + (" (Wazuh não configurado)" if server_ctrl["total_count"] > 0 else " + densidade de logs da plataforma")
             + ". "
         )
 
@@ -363,10 +484,12 @@ async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, di
         "control_breakdown": control_breakdown,
         "source": "cis_crosswalk",
         "wazuh_detect": wazuh_detect,
-        "server_count": controls["server_count"],
-        "total_controls": controls["total_count"],
+        "server_count": server_ctrl["server_count"],
+        "device_count": net_ctrl["device_count"],
+        "total_controls": server_ctrl["total_count"] + net_ctrl["total_count"],
         "methodology": (
-            "Controles CIS Benchmark mapeados para funções NIST CSF via crosswalk oficial CIS Controls v8. "
+            "Controles CIS Benchmark mapeados para funções NIST CSF via crosswalk oficial CIS Controls v8."
+            + net_note + " "
             + detect_note
             + "Respond/Recover suplementados por velocidade de remediação quando ausentes nos relatórios CIS."
         ),
@@ -375,45 +498,70 @@ async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, di
 
 async def compute_iso_27001(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
     """
-    ISO 27001:2022 score via official CIS→ISO crosswalk.
-    CIS controls classified into ISO Annex A domains by section number and keywords.
-    A.5 Access Control supplemented by real MFA adoption rate.
-    A.8 Cryptography derived exclusively from CIS controls (no hardcoded values).
+    ISO 27001:2022 score via official CIS→ISO crosswalk + network device compliance.
+
+    Network controls significantly enrich domains previously thin on server data:
+      A.8_network  — firewall rule quality + SNMP + telnet checks (often missing from server CIS)
+      A.8_logging  — device syslog + NTP (accurate timestamps for audit trail)
+      A.5_access_auth — device admin accounts, VTY timeout, password policy + MFA (blend 70/30)
+      A.8_crypto   — TLS version + strong crypto + password-encryption checks
+
+    Blending: 60% server CIS / 40% network device per domain, same logic as NIST.
     """
     from app.services.cis_crosswalk import (
-        score_by_iso, aggregate_score, ISO_LABELS, classify_controls_by_iso,
+        score_by_iso, score_network_by_iso, blend_scores,
+        aggregate_score, ISO_LABELS, classify_controls_by_iso,
     )
 
-    controls = await _controls_data(db, tenant_id)
-    domains = score_by_iso(controls["all_controls"])
-    control_breakdown = classify_controls_by_iso(controls["all_controls"])
+    # ── Server CIS controls ───────────────────────────────────────────────────
+    server_ctrl = await _controls_data(db, tenant_id)
+    srv_domains = score_by_iso(server_ctrl["all_controls"])
+    control_breakdown = classify_controls_by_iso(server_ctrl["all_controls"])
 
-    # Supplement A.5 with real MFA adoption (blended: 70% CIS auth controls + 30% MFA rate)
+    # ── Network device controls ───────────────────────────────────────────────
+    net_ctrl = await _network_compliance_data(db, tenant_id)
+    net_domains = score_network_by_iso(net_ctrl["all_controls"])
+
+    # Blend per domain
+    domains = {
+        d: blend_scores(srv_domains[d], net_domains[d], server_weight=0.60)
+        for d in srv_domains
+    }
+
+    # ── A.5 supplemented by MFA adoption (blend: 70% controls + 30% MFA) ─────
     mfa = await _mfa_data(db, tenant_id)
     if mfa["score"] is not None:
         if domains["A.5_access_auth"] is not None:
             domains["A.5_access_auth"] = round(
-                domains["A.5_access_auth"] * 0.7 + mfa["score"] * 0.3, 1
+                domains["A.5_access_auth"] * 0.70 + mfa["score"] * 0.30, 1
             )
         else:
             domains["A.5_access_auth"] = mfa["score"]
 
     overall = aggregate_score(domains)
 
+    net_note = (
+        f" Dispositivos de rede: {net_ctrl['device_count']} dispositivos "
+        f"contribuem para A.8_network, A.8_logging, A.5_access_auth e A.8_crypto "
+        f"(blend 60% servidores / 40% rede)."
+        if net_ctrl["device_count"] > 0 else ""
+    )
+
     return overall or 0.0, {
         "iso_domains": domains,
         "iso_labels": ISO_LABELS,
         "control_breakdown": control_breakdown,
         "source": "cis_crosswalk",
-        "server_count": controls["server_count"],
-        "total_controls": controls["total_count"],
+        "server_count": server_ctrl["server_count"],
+        "device_count": net_ctrl["device_count"],
+        "total_controls": server_ctrl["total_count"] + net_ctrl["total_count"],
         "mfa_adoption": mfa,
         "methodology": (
             "Controles CIS Benchmark mapeados para domínios ISO 27001:2022 Annex A via "
-            "crosswalk oficial CIS Controls v8. "
+            "crosswalk oficial CIS Controls v8."
+            + net_note + " "
             "A.5 Controle de Acesso suplementado por taxa de adoção de MFA (blend 70/30). "
-            "A.8.10/24 Criptografia derivada exclusivamente de controles CIS — "
-            "N/A indica ausência de controles de criptografia nos relatórios coletados."
+            "A.8.10/24 Criptografia derivada de controles CIS e verificações de TLS/criptografia em dispositivos de rede."
         ),
     }
 
@@ -421,16 +569,34 @@ async def compute_iso_27001(db: AsyncSession, tenant_id: UUID) -> tuple[float, d
 async def compute_eternity(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
     """
     Composite Eternity Trust Score (C-level risk index, 0–100).
-    Five components each from real platform data — no proxy values or inflated defaults.
+    Five components — server_compliance now includes network device compliance
+    weighted by device count, making it a full compliance posture signal.
     """
-    cis    = await _cis_data(db, tenant_id)
-    ops    = await _ops_data(db, tenant_id)
-    rem    = await _remediation_data(db, tenant_id)
-    audit  = await _audit_data(db, tenant_id)
-    access = await _access_data(db, tenant_id)
+    cis_server  = await _cis_data(db, tenant_id)
+    cis_network = await _network_compliance_data(db, tenant_id)
+    ops         = await _ops_data(db, tenant_id)
+    rem         = await _remediation_data(db, tenant_id)
+    audit       = await _audit_data(db, tenant_id)
+    access      = await _access_data(db, tenant_id)
+
+    # Blend server + network compliance by count (same logic as compute_cis)
+    s_count = cis_server["server_count"]
+    n_count = cis_network["device_count"]
+    if s_count > 0 and n_count > 0:
+        total = s_count + n_count
+        compliance_score = round(
+            cis_server["score"] * (s_count / total)
+            + cis_network["avg_score"] * (n_count / total), 1
+        )
+    elif s_count > 0:
+        compliance_score = cis_server["score"]
+    elif n_count > 0:
+        compliance_score = cis_network["avg_score"]
+    else:
+        compliance_score = 0.0
 
     components = {
-        "server_compliance":    cis["score"],
+        "server_compliance":    compliance_score,
         "operation_hygiene":    ops["score"],
         "remediation_velocity": rem["score"],
         "audit_integrity":      audit["score"],
@@ -441,7 +607,14 @@ async def compute_eternity(db: AsyncSession, tenant_id: UUID) -> tuple[float, di
         "components": {k: round(v, 1) for k, v in components.items()},
         "weights": _ETERNITY_WEIGHTS,
         "details": {
-            "server_compliance":    cis,
+            "server_compliance": {
+                **cis_server,
+                "network_devices": {
+                    "avg_score":    cis_network["avg_score"],
+                    "device_count": n_count,
+                },
+                "blended_score": compliance_score,
+            },
             "operation_hygiene":    ops,
             "remediation_velocity": rem,
             "audit_integrity":      audit,

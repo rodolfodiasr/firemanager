@@ -1,4 +1,4 @@
-export type DeviceCategory = "firewall" | "router" | "switch" | "l3_switch";
+export type DeviceCategory = "firewall" | "router" | "switch" | "l3_switch" | "routing";
 
 export type VendorEnum =
   // Firewalls

@@ -20,13 +20,20 @@ class ComplianceReport(Base):
         nullable=False,
         index=True,
     )
-    server_id: Mapped[UUID] = mapped_column(
+    server_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("servers.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
-    source: Mapped[str] = mapped_column(String(8), nullable=False)        # "wazuh" | "ssh"
+    device_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    device_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source: Mapped[str] = mapped_column(String(8), nullable=False)        # "wazuh" | "ssh" | "rest"
     agent_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     policy_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     policy_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")

@@ -2,6 +2,7 @@ import type {
   ComplianceReport,
   ComplianceReportSummary,
   ComplianceGenerateRequest,
+  NetworkComplianceGenerateRequest,
 } from "../types/compliance";
 import type { RemediationPlan } from "../types/remediation";
 import type {
@@ -60,4 +61,22 @@ export const complianceApi = {
 
   exportPdfUrl: (id: string) =>
     `${apiClient.defaults.baseURL}/compliance/${id}/export-pdf`,
+};
+
+export const networkComplianceApi = {
+  list: (deviceType?: string) =>
+    apiClient
+      .get<ComplianceReportSummary[]>("/compliance/network", {
+        params: deviceType ? { device_type: deviceType } : undefined,
+      })
+      .then((r) => r.data),
+
+  generate: (data: NetworkComplianceGenerateRequest) =>
+    apiClient.post<ComplianceReport>("/compliance/network", data).then((r) => r.data),
+
+  get: (id: string) =>
+    apiClient.get<ComplianceReport>(`/compliance/${id}`).then((r) => r.data),
+
+  remove: (id: string) =>
+    apiClient.delete(`/compliance/${id}`),
 };

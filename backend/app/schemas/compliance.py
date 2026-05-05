@@ -7,7 +7,9 @@ from pydantic import BaseModel
 class ComplianceReportRead(BaseModel):
     id: UUID
     tenant_id: UUID
-    server_id: UUID
+    server_id: UUID | None
+    device_id: UUID | None = None
+    device_type: str | None = None
     source: str
     agent_id: str | None
     policy_id: str | None
@@ -30,7 +32,9 @@ class ComplianceReportRead(BaseModel):
 class ComplianceReportSummary(BaseModel):
     id: UUID
     tenant_id: UUID
-    server_id: UUID
+    server_id: UUID | None
+    device_id: UUID | None = None
+    device_type: str | None = None
     source: str
     policy_name: str
     score_pct: float
@@ -48,6 +52,10 @@ class ComplianceGenerateRequest(BaseModel):
     server_id: UUID
     policy_id: str | None = None
     force_source: str | None = None  # "wazuh" | "ssh" | None (auto)
+
+
+class NetworkComplianceGenerateRequest(BaseModel):
+    device_id: UUID
 
 
 class ComplianceRemediateRequest(BaseModel):

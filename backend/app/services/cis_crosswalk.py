@@ -172,6 +172,88 @@ _RISK_WEIGHT: dict[str, int] = {
     "low": 1,
 }
 
+# ── Network device control ID → NIST / ISO mappings ──────────────────────────
+# Covers FGT-* (Fortinet), CIS-* (Cisco IOS), HPC-* (HP Comware), GEN-* (generic SSH).
+# Controls with "detect" meaning (syslog, logging): detect.
+# NTP (time sync / asset identity): identify.
+# All others: protect.
+
+_NETWORK_CTRL_NIST: dict[str, NistFunction] = {
+    # Fortinet
+    "FGT-01": "protect",   # Admin idle timeout
+    "FGT-02": "protect",   # HTTPS redirect (no HTTP mgmt)
+    "FGT-03": "protect",   # TLS 1.2+ only
+    "FGT-04": "protect",   # Strong crypto enabled
+    "FGT-05": "protect",   # SNMP default communities removed
+    "FGT-06": "identify",  # NTP configured
+    "FGT-07": "detect",    # Syslog to remote server
+    "FGT-08": "protect",   # No any→any allow rules
+    "FGT-09": "detect",    # All rules have logging enabled
+    "FGT-10": "protect",   # Multiple admin accounts + 2FA
+    "FGT-11": "protect",   # Password policy enabled
+    # Cisco IOS
+    "CIS-01": "protect",   # SNMP default communities removed
+    "CIS-02": "protect",   # SSH v2 only
+    "CIS-03": "protect",   # Service password-encryption
+    "CIS-04": "identify",  # NTP configured
+    "CIS-05": "detect",    # Syslog to remote host
+    "CIS-06": "protect",   # Enable secret configured
+    "CIS-07": "protect",   # AAA new-model enabled
+    "CIS-08": "protect",   # Login banner configured
+    "CIS-09": "protect",   # Telnet disabled on VTY
+    "CIS-10": "protect",   # CDP disabled globally
+    # HP Comware
+    "HPC-01": "protect",   # SNMP default communities removed
+    "HPC-02": "protect",   # SSH v2 enabled
+    "HPC-03": "identify",  # NTP configured
+    "HPC-04": "detect",    # Syslog (info-center) enabled
+    "HPC-05": "protect",   # VTY idle timeout ≤ 15 min
+    "HPC-06": "protect",   # Password complexity policy
+    "HPC-07": "protect",   # Telnet server disabled
+    # Generic SSH fallback
+    "GEN-01": "protect",   # SNMP default communities removed
+    "GEN-02": "identify",  # NTP configured
+    "GEN-03": "detect",    # Syslog remote configured
+}
+
+_NETWORK_CTRL_ISO: dict[str, IsoDomain] = {
+    # Fortinet
+    "FGT-01": "A.5_access_auth",  # Admin idle timeout → Access Control
+    "FGT-02": "A.8_config",       # HTTPS redirect → Configuration Mgmt
+    "FGT-03": "A.8_crypto",       # TLS 1.2+ → Cryptography
+    "FGT-04": "A.8_crypto",       # Strong crypto → Cryptography
+    "FGT-05": "A.8_network",      # SNMP communities → Network Security
+    "FGT-06": "A.8_logging",      # NTP → Logging (accurate timestamps)
+    "FGT-07": "A.8_logging",      # Syslog → Logging and Monitoring
+    "FGT-08": "A.8_network",      # No any→any → Network Segregation
+    "FGT-09": "A.8_logging",      # Rule logging → Logging and Monitoring
+    "FGT-10": "A.5_access_auth",  # Admin accounts + 2FA → Access Control
+    "FGT-11": "A.5_access_auth",  # Password policy → Access Control
+    # Cisco IOS
+    "CIS-01": "A.8_network",      # SNMP communities → Network Security
+    "CIS-02": "A.8_config",       # SSH v2 → Configuration Mgmt
+    "CIS-03": "A.8_crypto",       # Password-encryption → Cryptography
+    "CIS-04": "A.8_logging",      # NTP → Logging (accurate timestamps)
+    "CIS-05": "A.8_logging",      # Syslog → Logging and Monitoring
+    "CIS-06": "A.5_access_auth",  # Enable secret → Access Control
+    "CIS-07": "A.5_access_auth",  # AAA → Access Control
+    "CIS-08": "A.8_config",       # Login banner → Configuration Mgmt
+    "CIS-09": "A.8_network",      # No telnet → Network Security
+    "CIS-10": "A.8_network",      # CDP disabled → Network Security
+    # HP Comware
+    "HPC-01": "A.8_network",      # SNMP communities → Network Security
+    "HPC-02": "A.8_config",       # SSH v2 → Configuration Mgmt
+    "HPC-03": "A.8_logging",      # NTP → Logging (accurate timestamps)
+    "HPC-04": "A.8_logging",      # Syslog → Logging and Monitoring
+    "HPC-05": "A.5_access_auth",  # VTY timeout → Access Control
+    "HPC-06": "A.5_access_auth",  # Password complexity → Access Control
+    "HPC-07": "A.8_network",      # Telnet disabled → Network Security
+    # Generic SSH fallback
+    "GEN-01": "A.8_network",      # SNMP communities → Network Security
+    "GEN-02": "A.8_logging",      # NTP → Logging (accurate timestamps)
+    "GEN-03": "A.8_logging",      # Syslog → Logging and Monitoring
+}
+
 
 # ── Classifiers ───────────────────────────────────────────────────────────────
 
@@ -333,3 +415,78 @@ def classify_controls_by_iso(controls: list[dict]) -> dict[str, list[dict]]:
             entry["server_name"] = ctrl["server_name"]
         result[domain].append(entry)
     return result
+
+
+# ── Network device scoring (FGT-*, CIS-*, HPC-*, GEN-*) ──────────────────────
+
+def score_network_by_nist(controls: list[dict]) -> dict[str, float | None]:
+    """
+    Return per-NIST-function pass rates from network device compliance controls.
+    Uses explicit ID-based mapping (_NETWORK_CTRL_NIST) instead of section/keyword heuristics.
+    None means no applicable controls were found for that function.
+    """
+    passed_w: dict[str, float] = defaultdict(float)
+    total_w: dict[str, float] = defaultdict(float)
+
+    for ctrl in controls:
+        result = ctrl.get("result", "not_applicable")
+        if result == "not_applicable":
+            continue
+        ctrl_id = str(ctrl.get("control_id", ""))
+        func = _NETWORK_CTRL_NIST.get(ctrl_id)
+        if func is None:
+            continue  # unknown control ID — skip rather than misclassify
+        w = _RISK_WEIGHT.get(str(ctrl.get("risk_level", "low")), 1)
+        total_w[func] += w
+        if result == "passed":
+            passed_w[func] += w
+
+    return {
+        f: (round(passed_w[f] / total_w[f] * 100, 1) if total_w[f] > 0 else None)
+        for f in ALL_NIST_FUNCTIONS
+    }
+
+
+def score_network_by_iso(controls: list[dict]) -> dict[str, float | None]:
+    """
+    Return per-ISO-domain pass rates from network device compliance controls.
+    Uses explicit ID-based mapping (_NETWORK_CTRL_ISO).
+    None means no applicable controls were found for that domain.
+    """
+    passed_w: dict[str, float] = defaultdict(float)
+    total_w: dict[str, float] = defaultdict(float)
+
+    for ctrl in controls:
+        result = ctrl.get("result", "not_applicable")
+        if result == "not_applicable":
+            continue
+        ctrl_id = str(ctrl.get("control_id", ""))
+        domain = _NETWORK_CTRL_ISO.get(ctrl_id)
+        if domain is None:
+            continue  # unknown control ID — skip
+        w = _RISK_WEIGHT.get(str(ctrl.get("risk_level", "low")), 1)
+        total_w[domain] += w
+        if result == "passed":
+            passed_w[domain] += w
+
+    return {
+        d: (round(passed_w[d] / total_w[d] * 100, 1) if total_w[d] > 0 else None)
+        for d in ALL_ISO_DOMAINS
+    }
+
+
+def blend_scores(
+    server: float | None,
+    network: float | None,
+    server_weight: float = 0.60,
+) -> float | None:
+    """
+    Blend server and network scores.
+    - Both present: weighted average (server_weight for server, rest for network).
+    - Only one present: return that one.
+    - Neither: return None.
+    """
+    if server is not None and network is not None:
+        net_weight = 1.0 - server_weight
+        return round(server * server_weight + network * net_weight, 1)
+    return server if server is not None else network

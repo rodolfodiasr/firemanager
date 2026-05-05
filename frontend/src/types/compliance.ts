@@ -1,12 +1,13 @@
-export type ComplianceSource = "wazuh" | "ssh" | "winrm";
+export type ComplianceSource = "wazuh" | "ssh" | "winrm" | "rest";
 
 export interface ComplianceControl {
   control_id: string;
   title: string;
-  description: string;
+  description?: string;
   result: "passed" | "failed" | "not_applicable";
   risk_level: "critical" | "high" | "medium" | "low";
-  remediation: string;
+  remediation?: string;
+  evidence?: string;
   rationale?: string;
   references?: string;
 }
@@ -21,7 +22,9 @@ export interface ComplianceRecommendation {
 export interface ComplianceReportSummary {
   id: string;
   tenant_id: string;
-  server_id: string;
+  server_id: string | null;
+  device_id: string | null;
+  device_type: string | null;
   source: ComplianceSource;
   policy_name: string;
   score_pct: number;
@@ -29,6 +32,7 @@ export interface ComplianceReportSummary {
   passed: number;
   failed: number;
   not_applicable: number;
+  framework: string;
   created_at: string;
 }
 
@@ -44,4 +48,8 @@ export interface ComplianceGenerateRequest {
   server_id: string;
   policy_id?: string;
   force_source?: "wazuh" | "ssh" | "winrm";
+}
+
+export interface NetworkComplianceGenerateRequest {
+  device_id: string;
 }

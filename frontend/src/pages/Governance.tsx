@@ -361,19 +361,31 @@ function MethodologyNote({ text }: { text: string }) {
   );
 }
 
-function DataQualityBadge({ serverCount, totalControls }: { serverCount: number; totalControls: number }) {
+function DataQualityBadge({
+  serverCount,
+  deviceCount = 0,
+  totalControls,
+}: {
+  serverCount: number;
+  deviceCount?: number;
+  totalControls: number;
+}) {
   if (totalControls === 0) {
     return (
       <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3 flex items-center gap-1.5">
         <AlertTriangle size={12} />
-        Nenhum relatório de conformidade encontrado. Execute uma análise em pelo menos 1 servidor.
+        Nenhum relatório de conformidade encontrado. Execute uma análise em pelo menos 1 servidor ou dispositivo de rede.
       </p>
     );
   }
   return (
     <p className="text-xs text-gray-500 mb-3">
-      Baseado em <span className="font-medium">{totalControls} controles</span> de{" "}
+      Baseado em{" "}
+      <span className="font-medium">{totalControls} controles</span> de{" "}
       <span className="font-medium">{serverCount} servidor(es)</span>
+      {deviceCount > 0 && (
+        <> + <span className="font-medium">{deviceCount} dispositivo(s) de rede</span></>
+      )}
     </p>
   );
 }
@@ -420,7 +432,11 @@ function NistBreakdownPanel({ breakdown }: { breakdown: NistBreakdown }) {
   const toggle = (key: string) => setExpanded(p => p === key ? null : key);
   return (
     <div>
-      <DataQualityBadge serverCount={breakdown.server_count} totalControls={breakdown.total_controls} />
+      <DataQualityBadge
+        serverCount={breakdown.server_count}
+        deviceCount={breakdown.device_count ?? 0}
+        totalControls={breakdown.total_controls}
+      />
       {breakdown.wazuh_detect && <WazuhDetectPanel data={breakdown.wazuh_detect} />}
       <div className="flex flex-col gap-1">
         {Object.entries(breakdown.nist_functions).map(([key, val]) => (
@@ -445,7 +461,11 @@ function IsoBreakdownPanel({ breakdown }: { breakdown: IsoBreakdown }) {
   const toggle = (key: string) => setExpanded(p => p === key ? null : key);
   return (
     <div>
-      <DataQualityBadge serverCount={breakdown.server_count} totalControls={breakdown.total_controls} />
+      <DataQualityBadge
+        serverCount={breakdown.server_count}
+        deviceCount={breakdown.device_count ?? 0}
+        totalControls={breakdown.total_controls}
+      />
       {breakdown.mfa_adoption && (
         <p className="text-xs text-gray-500 mb-3">
           MFA:{" "}
@@ -679,12 +699,17 @@ export function Governance() {
             {/* CIS Benchmark */}
             <FrameworkCard
               title="CIS Benchmark"
-              subtitle="Média dos servidores"
+              subtitle="Servidores + dispositivos de rede (ponderado por quantidade)"
               score={summary.cis_score}
               extra={
                 cis && (
                   <div className="flex flex-col gap-1.5 text-xs text-gray-500 flex-1">
-                    <p>{(cis.breakdown as { server_count?: number }).server_count ?? 0} servidor(es) analisado(s)</p>
+                    <p>
+                      {(cis.breakdown as { server_count?: number }).server_count ?? 0} servidor(es)
+                      {(cis.breakdown as { network_devices?: { device_count: number } }).network_devices?.device_count
+                        ? ` + ${(cis.breakdown as { network_devices?: { device_count: number } }).network_devices!.device_count} dispositivo(s) de rede`
+                        : ""}
+                    </p>
                     <button
                       onClick={() => toggleBreakdown("cis")}
                       className="text-left flex items-center gap-1 text-brand-600 hover:underline"

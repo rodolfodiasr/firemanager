@@ -60,6 +60,7 @@ export interface NistBreakdown {
   source: string;
   wazuh_detect: WazuhDetectData | null;
   server_count: number;
+  device_count: number;
   total_controls: number;
   methodology: string;
 }
@@ -71,6 +72,7 @@ export interface IsoBreakdown {
   control_breakdown: Record<string, ControlItem[]>;
   source: string;
   server_count: number;
+  device_count: number;
   total_controls: number;
   mfa_adoption: {
     score: number | null;

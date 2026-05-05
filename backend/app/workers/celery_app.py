@@ -13,6 +13,7 @@ celery_app = Celery(
         "app.workers.generate_documents",
         "app.workers.bookstack_snapshot",
         "app.workers.bookstack_index",
+        "app.workers.compliance_scan",
     ],
 )
 
@@ -34,6 +35,10 @@ celery_app.conf.update(
         "bookstack-reindex": {
             "task": "app.workers.bookstack_index.run_bookstack_indexing",
             "schedule": crontab(minute=0, hour="*/6"),     # every 6 hours
+        },
+        "compliance-daily-scan": {
+            "task": "app.workers.compliance_scan.run_compliance_scan",
+            "schedule": crontab(minute=0, hour=2),         # 02:00 UTC daily
         },
     },
 )

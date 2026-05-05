@@ -20,11 +20,13 @@ from app.schemas.compliance import (
     ComplianceReportSummary,
     FrameworkScoreItem,
     GovernanceSummary,
+    NetworkComplianceGenerateRequest,
     TrustScoreRead,
 )
 from app.schemas.remediation import RemediationPlanRead
 from app.services import compliance_service
 from app.services import trust_score_service
+from app.services import network_compliance_service
 
 router = APIRouter()
 
@@ -113,6 +115,39 @@ async def delete_report(
     await db.flush()
 
 
+# ── Network device compliance (firewall / switch) ─────────────────────────────
+
+@router.post("/network", response_model=ComplianceReportRead, status_code=201)
+async def generate_network_report(
+    data: NetworkComplianceGenerateRequest,
+    ctx:  Annotated[TenantContext, Depends(_require_compliance)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> ComplianceReportRead:
+    try:
+        report = await network_compliance_service.generate_report(
+            db=db,
+            tenant_id=ctx.tenant.id,
+            device_id=data.device_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar relatório: {exc}")
+    return ComplianceReportRead.model_validate(report)
+
+
+@router.get("/network", response_model=list[ComplianceReportSummary])
+async def list_network_reports(
+    ctx:         Annotated[TenantContext, Depends(get_tenant_context)],
+    db:          Annotated[AsyncSession, Depends(get_db)],
+    device_type: str | None = Query(default=None),
+) -> list[ComplianceReportSummary]:
+    reports = await network_compliance_service.list_reports(
+        db, tenant_id=ctx.tenant.id, device_type=device_type
+    )
+    return [ComplianceReportSummary.model_validate(r) for r in reports]
+
+
 @router.get("/{report_id}/export-pdf")
 async def export_pdf(
     report_id: UUID,
@@ -123,12 +158,20 @@ async def export_pdf(
     if not report:
         raise HTTPException(status_code=404, detail="Relatório não encontrado")
 
-    from app.models.server import Server
-    from sqlalchemy import select as sa_select
-
-    srv_result = await db.execute(sa_select(Server).where(Server.id == report.server_id))
-    server = srv_result.scalar_one_or_none()
-    server_name = server.name if server else str(report.server_id)
+    if report.server_id:
+        from app.models.server import Server
+        from sqlalchemy import select as sa_select
+        srv_result = await db.execute(sa_select(Server).where(Server.id == report.server_id))
+        server = srv_result.scalar_one_or_none()
+        server_name = server.name if server else str(report.server_id)
+    elif report.device_id:
+        from app.models.device import Device as DeviceModel
+        from sqlalchemy import select as sa_select
+        dev_result = await db.execute(sa_select(DeviceModel).where(DeviceModel.id == report.device_id))
+        dev = dev_result.scalar_one_or_none()
+        server_name = dev.name if dev else str(report.device_id)
+    else:
+        server_name = "Dispositivo desconhecido"
 
     try:
         from weasyprint import HTML
@@ -291,7 +334,7 @@ async def export_governance_excel(
 
     for row_n, r in enumerate(reports, 2):
         ws3.cell(row=row_n, column=1,  value=str(r.id))
-        ws3.cell(row=row_n, column=2,  value=str(r.server_id))
+        ws3.cell(row=row_n, column=2,  value=str(r.server_id or r.device_id or ""))
         ws3.cell(row=row_n, column=3,  value=r.source)
         ws3.cell(row=row_n, column=4,  value=r.policy_name)
         ws3.cell(row=row_n, column=5,  value=r.framework)
