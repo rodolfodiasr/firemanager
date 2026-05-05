@@ -44,9 +44,17 @@ export interface WazuhDetectData {
   critical_alerts_30d: number;
 }
 
+export interface ControlItem {
+  control_id: string;
+  title: string;
+  result: "passed" | "failed";
+  risk_level: "critical" | "high" | "medium" | "low";
+}
+
 export interface NistBreakdown {
   nist_functions: Record<string, number | null>;
   nist_labels: Record<string, string>;
+  control_breakdown: Record<string, ControlItem[]>;
   source: string;
   wazuh_detect: WazuhDetectData | null;
   server_count: number;
@@ -58,6 +66,7 @@ export interface NistBreakdown {
 export interface IsoBreakdown {
   iso_domains: Record<string, number | null>;
   iso_labels: Record<string, string>;
+  control_breakdown: Record<string, ControlItem[]>;
   source: string;
   server_count: number;
   total_controls: number;

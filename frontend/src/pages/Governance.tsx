@@ -14,6 +14,7 @@ import {
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { governanceApi } from "../api/compliance";
 import type {
+  ControlItem,
   EternityBreakdown,
   Framework,
   FrameworkScoreItem,
@@ -96,31 +97,103 @@ function ScoreGauge({ pct, size = "md" }: { pct: number | null; size?: "sm" | "m
 // ── Bar row ───────────────────────────────────────────────────────────────────
 
 function ScoreBar({
-  label, value, weight,
+  label, value, weight, controls, onClick, expanded,
 }: {
   label: string;
   value: number | null;
   weight?: number;
+  controls?: ControlItem[];
+  onClick?: () => void;
+  expanded?: boolean;
 }) {
   const col = scoreColor(value);
+  const hasControls = controls && controls.length > 0;
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs text-gray-600 w-56 shrink-0">{label}</span>
-      <div className="flex-1 bg-gray-100 rounded-full h-2">
-        {value !== null && (
-          <div
-            className={`h-2 rounded-full transition-all ${col.bg}`}
-            style={{ width: `${Math.min(value, 100)}%` }}
-          />
+    <div>
+      <div
+        className={`flex items-center gap-3 ${hasControls ? "cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1 py-0.5" : ""}`}
+        onClick={hasControls ? onClick : undefined}
+      >
+        <span className="text-xs text-gray-600 w-56 shrink-0 flex items-center gap-1">
+          {hasControls && (
+            expanded ? <ChevronUp size={10} className="text-gray-400" /> : <ChevronDown size={10} className="text-gray-400" />
+          )}
+          {label}
+        </span>
+        <div className="flex-1 bg-gray-100 rounded-full h-2">
+          {value !== null && (
+            <div
+              className={`h-2 rounded-full transition-all ${col.bg}`}
+              style={{ width: `${Math.min(value, 100)}%` }}
+            />
+          )}
+        </div>
+        <span className={`text-xs font-semibold w-12 text-right ${col.text}`}>
+          {value !== null ? `${value.toFixed(0)}%` : "N/A"}
+        </span>
+        {weight !== undefined && (
+          <span className="text-xs text-gray-400 w-12 text-right">
+            ×{(weight * 100).toFixed(0)}%
+          </span>
+        )}
+        {hasControls && (
+          <span className="text-xs text-gray-400 w-16 text-right">
+            {controls!.length} ctrl
+          </span>
         )}
       </div>
-      <span className={`text-xs font-semibold w-12 text-right ${col.text}`}>
-        {value !== null ? `${value.toFixed(0)}%` : "N/A"}
-      </span>
-      {weight !== undefined && (
-        <span className="text-xs text-gray-400 w-12 text-right">
-          ×{(weight * 100).toFixed(0)}%
-        </span>
+      {expanded && hasControls && (
+        <ControlDrillDown controls={controls!} />
+      )}
+    </div>
+  );
+}
+
+const RISK_BADGE: Record<string, string> = {
+  critical: "bg-red-100 text-red-700",
+  high:     "bg-orange-100 text-orange-700",
+  medium:   "bg-yellow-100 text-yellow-700",
+  low:      "bg-gray-100 text-gray-500",
+};
+
+function ControlDrillDown({ controls }: { controls: ControlItem[] }) {
+  const passed = controls.filter(c => c.result === "passed");
+  const failed = controls.filter(c => c.result === "failed");
+  return (
+    <div className="ml-4 mt-1 mb-2 border-l-2 border-gray-100 pl-3">
+      {failed.length > 0 && (
+        <div className="mb-1">
+          <p className="text-xs font-medium text-red-600 mb-1">Falhou ({failed.length})</p>
+          <div className="flex flex-col gap-0.5">
+            {failed.map((c, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs text-gray-700">
+                <span className="text-red-400 shrink-0 mt-0.5">✗</span>
+                <span className={`text-xs px-1 rounded shrink-0 ${RISK_BADGE[c.risk_level] ?? RISK_BADGE.low}`}>
+                  {c.risk_level}
+                </span>
+                <span className="text-gray-400 shrink-0">{c.control_id}</span>
+                <span className="leading-tight">{c.title}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {passed.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-green-600 mb-1">Passou ({passed.length})</p>
+          <div className="flex flex-col gap-0.5">
+            {passed.map((c, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs text-gray-500">
+                <span className="text-green-400 shrink-0 mt-0.5">✓</span>
+                <span className={`text-xs px-1 rounded shrink-0 ${RISK_BADGE[c.risk_level] ?? RISK_BADGE.low}`}>
+                  {c.risk_level}
+                </span>
+                <span className="text-gray-400 shrink-0">{c.control_id}</span>
+                <span className="leading-tight">{c.title}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -243,13 +316,22 @@ function WazuhDetectPanel({ data }: { data: WazuhDetectData }) {
 }
 
 function NistBreakdownPanel({ breakdown }: { breakdown: NistBreakdown }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const toggle = (key: string) => setExpanded(p => p === key ? null : key);
   return (
     <div>
       <DataQualityBadge serverCount={breakdown.server_count} totalControls={breakdown.total_controls} />
       {breakdown.wazuh_detect && <WazuhDetectPanel data={breakdown.wazuh_detect} />}
-      <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-1">
         {Object.entries(breakdown.nist_functions).map(([key, val]) => (
-          <ScoreBar key={key} label={breakdown.nist_labels?.[key] ?? NIST_LABELS[key] ?? key} value={val} />
+          <ScoreBar
+            key={key}
+            label={breakdown.nist_labels?.[key] ?? NIST_LABELS[key] ?? key}
+            value={val}
+            controls={breakdown.control_breakdown?.[key]}
+            expanded={expanded === key}
+            onClick={() => toggle(key)}
+          />
         ))}
       </div>
       <MethodologyNote text={breakdown.methodology} />
@@ -258,6 +340,8 @@ function NistBreakdownPanel({ breakdown }: { breakdown: NistBreakdown }) {
 }
 
 function IsoBreakdownPanel({ breakdown }: { breakdown: IsoBreakdown }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const toggle = (key: string) => setExpanded(p => p === key ? null : key);
   return (
     <div>
       <DataQualityBadge serverCount={breakdown.server_count} totalControls={breakdown.total_controls} />
@@ -276,9 +360,16 @@ function IsoBreakdownPanel({ breakdown }: { breakdown: IsoBreakdown }) {
           )}
         </p>
       )}
-      <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-1">
         {Object.entries(breakdown.iso_domains).map(([key, val]) => (
-          <ScoreBar key={key} label={breakdown.iso_labels?.[key] ?? ISO_LABELS[key] ?? key} value={val} />
+          <ScoreBar
+            key={key}
+            label={breakdown.iso_labels?.[key] ?? ISO_LABELS[key] ?? key}
+            value={val}
+            controls={breakdown.control_breakdown?.[key]}
+            expanded={expanded === key}
+            onClick={() => toggle(key)}
+          />
         ))}
       </div>
       <MethodologyNote text={breakdown.methodology} />

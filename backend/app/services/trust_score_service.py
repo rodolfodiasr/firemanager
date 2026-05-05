@@ -298,11 +298,12 @@ async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, di
     Respond/Recover gaps filled by remediation velocity when CIS has no covering controls.
     """
     from app.services.cis_crosswalk import (
-        score_by_nist, aggregate_score, NIST_LABELS,
+        score_by_nist, aggregate_score, NIST_LABELS, classify_controls_by_nist,
     )
 
     controls = await _controls_data(db, tenant_id)
     functions = score_by_nist(controls["all_controls"])
+    control_breakdown = classify_controls_by_nist(controls["all_controls"])
 
     # ── Detect: Wazuh-first, then CIS audit, then log density ────────────────
     wazuh_detect = await _wazuh_detect_data(db, tenant_id)
@@ -350,6 +351,7 @@ async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, di
     return overall or 0.0, {
         "nist_functions": functions,
         "nist_labels": NIST_LABELS,
+        "control_breakdown": control_breakdown,
         "source": "cis_crosswalk",
         "wazuh_detect": wazuh_detect,
         "server_count": controls["server_count"],
@@ -370,11 +372,12 @@ async def compute_iso_27001(db: AsyncSession, tenant_id: UUID) -> tuple[float, d
     A.8 Cryptography derived exclusively from CIS controls (no hardcoded values).
     """
     from app.services.cis_crosswalk import (
-        score_by_iso, aggregate_score, ISO_LABELS,
+        score_by_iso, aggregate_score, ISO_LABELS, classify_controls_by_iso,
     )
 
     controls = await _controls_data(db, tenant_id)
     domains = score_by_iso(controls["all_controls"])
+    control_breakdown = classify_controls_by_iso(controls["all_controls"])
 
     # Supplement A.5 with real MFA adoption (blended: 70% CIS auth controls + 30% MFA rate)
     mfa = await _mfa_data(db, tenant_id)
@@ -391,6 +394,7 @@ async def compute_iso_27001(db: AsyncSession, tenant_id: UUID) -> tuple[float, d
     return overall or 0.0, {
         "iso_domains": domains,
         "iso_labels": ISO_LABELS,
+        "control_breakdown": control_breakdown,
         "source": "cis_crosswalk",
         "server_count": controls["server_count"],
         "total_controls": controls["total_count"],
