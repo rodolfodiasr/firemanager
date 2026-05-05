@@ -18,6 +18,7 @@ const CATEGORY_ICON: Record<DeviceCategory, React.ElementType> = {
   router:    Route,
   switch:    Network,
   l3_switch: Layers,
+  routing:   Route,
 };
 
 const CATEGORY_STYLE: Record<DeviceCategory, { card: string; icon: string; badge: string }> = {
@@ -25,6 +26,7 @@ const CATEGORY_STYLE: Record<DeviceCategory, { card: string; icon: string; badge
   router:    { card: "bg-blue-50 border-blue-200",  icon: "text-blue-500",   badge: "bg-blue-100 text-blue-700" },
   switch:    { card: "bg-green-50 border-green-200",icon: "text-green-600",  badge: "bg-green-100 text-green-700" },
   l3_switch: { card: "bg-purple-50 border-purple-200", icon: "text-purple-500", badge: "bg-purple-100 text-purple-700" },
+  routing:   { card: "bg-blue-50 border-blue-200",  icon: "text-blue-500",   badge: "bg-blue-100 text-blue-700" },
 };
 
 const CATEGORY_LABELS: Record<DeviceCategory, string> = {
@@ -32,6 +34,7 @@ const CATEGORY_LABELS: Record<DeviceCategory, string> = {
   router:    "Roteador",
   switch:    "Switch",
   l3_switch: "Switch L3",
+  routing:   "Roteamento",
 };
 
 const VENDOR_LABELS: Record<string, string> = {

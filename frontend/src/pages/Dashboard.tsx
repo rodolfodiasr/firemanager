@@ -37,6 +37,7 @@ const CAT_LABEL: Record<DeviceCategory, string> = {
   router:    "Roteador",
   switch:    "Switch",
   l3_switch: "Switch L3",
+  routing:   "Roteamento",
 };
 
 const INTG_META: Record<string, { label: string; dot: string }> = {

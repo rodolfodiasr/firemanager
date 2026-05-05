@@ -177,6 +177,7 @@ const CATEGORY_LABELS: Record<DeviceCategory, string> = {
   router:    "Roteador",
   switch:    "Switch",
   l3_switch: "Switch L3",
+  routing:   "Roteamento",
 };
 
 const CATEGORY_VENDORS: Record<DeviceCategory, VendorEnum[]> = {
@@ -184,6 +185,7 @@ const CATEGORY_VENDORS: Record<DeviceCategory, VendorEnum[]> = {
   router:    ["cisco_ios", "juniper", "mikrotik", "ubiquiti"],
   switch:    ["cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n", "hp_comware", "ubiquiti"],
   l3_switch: ["cisco_ios", "cisco_nxos", "juniper", "aruba", "dell", "dell_n", "hp_comware"],
+  routing:   ["cisco_ios", "cisco_nxos", "juniper", "mikrotik", "ubiquiti"],
 };
 
 export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProps) {
