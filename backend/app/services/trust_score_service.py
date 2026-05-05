@@ -192,6 +192,63 @@ async def _access_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
     return {"score": score, "total_users": total, "roles": role_counts}
 
 
+async def _wazuh_detect_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any] | None:
+    """
+    Wazuh-based NIST Detect signal: agent health + critical alert volume.
+    Returns None if Wazuh is not configured — caller falls back to audit log density.
+
+    Score components:
+      agent_coverage (40%): active_agents / total_agents × 100
+        — measures monitoring completeness (are all servers being watched?)
+      alert_posture  (60%): 100 − (critical_alerts_30d / 30 × 100), floor 0
+        — 0 critical alerts = 100, 30+ critical alerts = 0
+        — measures: absence of active critical threats in the environment
+
+    Rationale for the 30-alert baseline: a well-managed environment of typical MSSP
+    size sees fewer than 1 critical alert/day as normal noise; 30/month already
+    indicates elevated threat activity requiring attention.
+    """
+    from app.connectors.wazuh_platform import WazuhConnector
+    from app.models.integration import IntegrationType
+    from app.services.integration_service import resolve_integration
+
+    cfg = await resolve_integration(db, IntegrationType.wazuh, tenant_id)
+    if not cfg:
+        return None
+
+    try:
+        connector = WazuhConnector(
+            url=cfg.get("url", ""),
+            username=cfg.get("username", ""),
+            password=cfg.get("password", ""),
+            version=cfg.get("version", "4"),
+            verify_ssl=cfg.get("verify_ssl", False),
+        )
+
+        health = await connector.get_agents_health()
+        alerts = await connector.get_critical_alerts_30d()
+
+        total_agents  = health["total"]
+        active_agents = health["active"]
+        critical_count = alerts["critical_count_30d"]
+
+        agent_score = round(active_agents / total_agents * 100, 1) if total_agents > 0 else 0.0
+        alert_score = max(0.0, round(100 - critical_count / 30 * 100, 1))
+        detect_score = round(agent_score * 0.4 + alert_score * 0.6, 1)
+
+        return {
+            "score": detect_score,
+            "agent_coverage": agent_score,
+            "alert_posture": alert_score,
+            "total_agents": total_agents,
+            "active_agents": active_agents,
+            "disconnected_agents": health.get("disconnected", 0),
+            "critical_alerts_30d": critical_count,
+        }
+    except Exception:
+        return None
+
+
 async def _mfa_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
     """MFA adoption rate among users with access to this tenant."""
     total_r = await db.execute(
@@ -230,12 +287,15 @@ async def compute_cis(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
 
 async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, dict]:
     """
-    NIST CSF score via official CIS→NIST crosswalk.
-    Each CIS compliance control is classified into Identify/Protect/Detect/Respond/Recover
-    by section number (SSH/WinRM reports) or title keywords (Wazuh reports).
-    Risk-weighted pass rate per function.
-    Gaps in Detect/Respond/Recover (functions rarely covered by CIS controls) are
-    supplemented by audit log density and remediation velocity respectively.
+    NIST CSF score via official CIS→NIST crosswalk + Wazuh real-time detection signal.
+
+    Detect function priority:
+      1. Wazuh (real): agent health + critical alert volume (30-day window)
+         If CIS also has audit controls → blended 50/50 for maximum signal richness
+      2. CIS audit controls only (when Wazuh not configured)
+      3. Platform audit log density (last fallback when neither is available)
+
+    Respond/Recover gaps filled by remediation velocity when CIS has no covering controls.
     """
     from app.services.cis_crosswalk import (
         score_by_nist, aggregate_score, NIST_LABELS,
@@ -244,12 +304,22 @@ async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, di
     controls = await _controls_data(db, tenant_id)
     functions = score_by_nist(controls["all_controls"])
 
-    # Supplement Detect when CIS reports have no logging/audit controls
-    if functions["detect"] is None:
+    # ── Detect: Wazuh-first, then CIS audit, then log density ────────────────
+    wazuh_detect = await _wazuh_detect_data(db, tenant_id)
+
+    if wazuh_detect is not None:
+        if functions["detect"] is not None:
+            # Blend: CIS audit controls provide config evidence, Wazuh provides live signal
+            functions["detect"] = round(
+                functions["detect"] * 0.5 + wazuh_detect["score"] * 0.5, 1
+            )
+        else:
+            functions["detect"] = wazuh_detect["score"]
+    elif functions["detect"] is None:
         audit = await _audit_data(db, tenant_id)
         functions["detect"] = audit["score"] if audit["score"] > 0 else None
 
-    # Supplement Respond and Recover from operational platform data
+    # ── Respond/Recover: supplemented from platform operational data ──────────
     if functions["respond"] is None:
         ops = await _ops_data(db, tenant_id)
         rem = await _remediation_data(db, tenant_id)
@@ -264,18 +334,30 @@ async def compute_nist_csf(db: AsyncSession, tenant_id: UUID) -> tuple[float, di
 
     overall = aggregate_score(functions)
 
+    if wazuh_detect:
+        detect_note = (
+            f"Detect: Wazuh ({wazuh_detect['active_agents']}/{wazuh_detect['total_agents']} "
+            f"agentes ativos, {wazuh_detect['critical_alerts_30d']} alertas críticos/30d)"
+            + (" + controles CIS (blend 50/50)" if controls["total_count"] > 0 else "") + ". "
+        )
+    else:
+        detect_note = (
+            "Detect: controles CIS de auditoria"
+            + (" (Wazuh não configurado — configure a integração para dados em tempo real)" if controls["total_count"] > 0 else " + densidade de logs da plataforma")
+            + ". "
+        )
+
     return overall or 0.0, {
         "nist_functions": functions,
         "nist_labels": NIST_LABELS,
         "source": "cis_crosswalk",
+        "wazuh_detect": wazuh_detect,
         "server_count": controls["server_count"],
         "total_controls": controls["total_count"],
         "methodology": (
-            "Controles CIS Benchmark mapeados para funções NIST CSF via "
-            "crosswalk oficial CIS Controls v8. "
-            "Detect suplementado por densidade de logs da plataforma. "
-            "Respond/Recover suplementados por velocidade de remediação quando "
-            "ausentes nos relatórios CIS."
+            "Controles CIS Benchmark mapeados para funções NIST CSF via crosswalk oficial CIS Controls v8. "
+            + detect_note
+            + "Respond/Recover suplementados por velocidade de remediação quando ausentes nos relatórios CIS."
         ),
     }
 

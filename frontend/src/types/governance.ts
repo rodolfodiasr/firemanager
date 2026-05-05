@@ -34,10 +34,21 @@ export interface EternityBreakdown {
 }
 
 // NIST CSF breakdown — values are null when no CIS controls mapped to that function
+export interface WazuhDetectData {
+  score: number;
+  agent_coverage: number;
+  alert_posture: number;
+  total_agents: number;
+  active_agents: number;
+  disconnected_agents: number;
+  critical_alerts_30d: number;
+}
+
 export interface NistBreakdown {
   nist_functions: Record<string, number | null>;
   nist_labels: Record<string, string>;
   source: string;
+  wazuh_detect: WazuhDetectData | null;
   server_count: number;
   total_controls: number;
   methodology: string;

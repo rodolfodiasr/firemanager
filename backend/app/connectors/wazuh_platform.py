@@ -167,6 +167,48 @@ class WazuhConnector:
         except Exception:
             return []
 
+    async def get_critical_alerts_30d(self) -> dict[str, Any]:
+        """
+        Count critical alerts (rule.level >= 12) in the last 30 days.
+        Fetches up to 500 most-recent critical alerts and filters by timestamp
+        in Python (Wazuh Manager API has limited native date-range support).
+        """
+        from datetime import datetime, timedelta, timezone
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        try:
+            data = await self._get("/alerts", {
+                "limit": 500,
+                "sort": "-timestamp",
+                "q": "rule.level>=12",
+            })
+            alerts = data.get("data", {}).get("affected_items", [])
+            count = 0
+            for alert in alerts:
+                ts_str = alert.get("timestamp", "")
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    if ts >= cutoff:
+                        count += 1
+                except Exception:
+                    count += 1  # unparseable timestamp — count conservatively
+            return {"critical_count_30d": count, "total_fetched": len(alerts)}
+        except Exception:
+            return {"critical_count_30d": 0, "total_fetched": 0}
+
+    async def get_agents_health(self) -> dict[str, Any]:
+        """Count active vs total agents — measures monitoring coverage."""
+        try:
+            agents = await self.get_agents(limit=500)
+            total = len(agents)
+            active = sum(1 for a in agents if a.get("status") == "active")
+            disconnected = sum(1 for a in agents if a.get("status") == "disconnected")
+            return {"total": total, "active": active, "disconnected": disconnected}
+        except Exception:
+            return {"total": 0, "active": 0, "disconnected": 0}
+
     async def gather_diagnostics(self, agent_filter: str | None = None) -> dict[str, Any]:
         """Aggregate agents + vulnerabilities + alerts for AI analysis."""
         agents = await self.get_agents()

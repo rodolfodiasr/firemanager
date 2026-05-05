@@ -20,6 +20,7 @@ import type {
   GovernanceSummary,
   IsoBreakdown,
   NistBreakdown,
+  WazuhDetectData,
 } from "../types/governance";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -204,10 +205,48 @@ function DataQualityBadge({ serverCount, totalControls }: { serverCount: number;
   );
 }
 
+function WazuhDetectPanel({ data }: { data: WazuhDetectData }) {
+  const agentPct = data.total_agents > 0
+    ? Math.round(data.active_agents / data.total_agents * 100)
+    : 0;
+  const col = scoreColor(data.score);
+  return (
+    <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+      <p className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />
+        Wazuh — Detect em tempo real
+      </p>
+      <div className="grid grid-cols-3 gap-3 text-xs">
+        <div>
+          <p className="text-gray-500">Score Detect</p>
+          <p className={`font-bold text-base ${col.text}`}>{data.score.toFixed(0)}%</p>
+        </div>
+        <div>
+          <p className="text-gray-500">Agentes ativos</p>
+          <p className="font-semibold text-gray-800">
+            {data.active_agents}/{data.total_agents}
+            <span className="text-gray-400 font-normal ml-1">({agentPct}%)</span>
+          </p>
+          {data.disconnected_agents > 0 && (
+            <p className="text-amber-600">{data.disconnected_agents} desconectado(s)</p>
+          )}
+        </div>
+        <div>
+          <p className="text-gray-500">Alertas críticos/30d</p>
+          <p className={`font-semibold ${data.critical_alerts_30d > 10 ? "text-red-600" : data.critical_alerts_30d > 0 ? "text-yellow-600" : "text-green-600"}`}>
+            {data.critical_alerts_30d}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NistBreakdownPanel({ breakdown }: { breakdown: NistBreakdown }) {
   return (
     <div>
       <DataQualityBadge serverCount={breakdown.server_count} totalControls={breakdown.total_controls} />
+      {breakdown.wazuh_detect && <WazuhDetectPanel data={breakdown.wazuh_detect} />}
       <div className="flex flex-col gap-2.5">
         {Object.entries(breakdown.nist_functions).map(([key, val]) => (
           <ScoreBar key={key} label={breakdown.nist_labels?.[key] ?? NIST_LABELS[key] ?? key} value={val} />
