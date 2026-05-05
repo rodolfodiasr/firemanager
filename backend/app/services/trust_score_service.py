@@ -61,7 +61,10 @@ async def _cis_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
 
 
 async def _controls_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
-    """Fetch all control-level results from the latest compliance report per server."""
+    """Fetch all control-level results from the latest compliance report per server.
+    Each control is tagged with server_id and server_name for drill-down display."""
+    from app.models.server import Server
+
     subq = (
         select(
             ComplianceReport.server_id,
@@ -72,22 +75,28 @@ async def _controls_data(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
         .subquery()
     )
     result = await db.execute(
-        select(ComplianceReport.controls, ComplianceReport.server_id)
+        select(ComplianceReport.controls, ComplianceReport.server_id, Server.name)
         .join(
             subq,
             (ComplianceReport.server_id == subq.c.server_id)
             & (ComplianceReport.created_at == subq.c.latest),
         )
+        .join(Server, ComplianceReport.server_id == Server.id)
         .where(ComplianceReport.tenant_id == tenant_id)
     )
     rows = result.fetchall()
 
     all_controls: list[dict] = []
     server_ids: set = set()
-    for controls_json, server_id in rows:
+    for controls_json, server_id, server_name in rows:
         server_ids.add(server_id)
         if isinstance(controls_json, list):
-            all_controls.extend(controls_json)
+            for ctrl in controls_json:
+                all_controls.append({
+                    **ctrl,
+                    "server_id":   str(server_id),
+                    "server_name": server_name or str(server_id),
+                })
 
     return {
         "all_controls": all_controls,

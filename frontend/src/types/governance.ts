@@ -49,6 +49,8 @@ export interface ControlItem {
   title: string;
   result: "passed" | "failed";
   risk_level: "critical" | "high" | "medium" | "low";
+  server_id?: string;
+  server_name?: string;
 }
 
 export interface NistBreakdown {
