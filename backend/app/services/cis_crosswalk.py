@@ -283,7 +283,7 @@ def classify_controls_by_nist(controls: list[dict]) -> dict[str, list[dict]]:
     """
     Return each control assigned to its NIST CSF function.
     Only includes passed/failed controls (not_applicable excluded).
-    Each entry keeps: control_id, title, result, risk_level.
+    Preserves server_id and server_name when present (tagged by _controls_data).
     """
     result: dict[str, list[dict]] = {f: [] for f in ALL_NIST_FUNCTIONS}
     for ctrl in controls:
@@ -293,12 +293,17 @@ def classify_controls_by_nist(controls: list[dict]) -> dict[str, list[dict]]:
             str(ctrl.get("control_id", "")),
             str(ctrl.get("title", "")),
         )
-        result[func].append({
+        entry: dict = {
             "control_id": ctrl.get("control_id", ""),
             "title":      ctrl.get("title", ""),
             "result":     ctrl.get("result", ""),
             "risk_level": ctrl.get("risk_level", "low"),
-        })
+        }
+        if ctrl.get("server_id"):
+            entry["server_id"] = ctrl["server_id"]
+        if ctrl.get("server_name"):
+            entry["server_name"] = ctrl["server_name"]
+        result[func].append(entry)
     return result
 
 
@@ -306,6 +311,7 @@ def classify_controls_by_iso(controls: list[dict]) -> dict[str, list[dict]]:
     """
     Return each control assigned to its ISO 27001:2022 domain.
     Only includes passed/failed controls (not_applicable excluded).
+    Preserves server_id and server_name when present.
     """
     result: dict[str, list[dict]] = {d: [] for d in ALL_ISO_DOMAINS}
     for ctrl in controls:
@@ -315,10 +321,15 @@ def classify_controls_by_iso(controls: list[dict]) -> dict[str, list[dict]]:
             str(ctrl.get("control_id", "")),
             str(ctrl.get("title", "")),
         )
-        result[domain].append({
+        entry: dict = {
             "control_id": ctrl.get("control_id", ""),
             "title":      ctrl.get("title", ""),
             "result":     ctrl.get("result", ""),
             "risk_level": ctrl.get("risk_level", "low"),
-        })
+        }
+        if ctrl.get("server_id"):
+            entry["server_id"] = ctrl["server_id"]
+        if ctrl.get("server_name"):
+            entry["server_name"] = ctrl["server_name"]
+        result[domain].append(entry)
     return result
