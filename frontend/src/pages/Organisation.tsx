@@ -1110,6 +1110,21 @@ const TICKET_TYPE_LABELS: Record<number, string> = {
   1: "Incidente", 2: "Requisição", 3: "Problema", 4: "Mudança",
 };
 
+type GlpiFormData = {
+  glpi_url: string;
+  app_token: string;
+  username: string;
+  password: string;
+  verify_ssl: boolean;
+  min_priority: string;
+  poll_interval_minutes: string;
+  lookback_hours: string;
+  type_1: boolean;
+  type_2: boolean;
+  type_3: boolean;
+  type_4: boolean;
+};
+
 function GlpiIntegrationCard() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -1122,11 +1137,7 @@ function GlpiIntegrationCard() {
     queryFn: glpiApi.getIntegration,
   });
 
-  const { register, handleSubmit, reset, watch, setValue, formState: { isSubmitting } } = useForm<{
-    glpi_url: string; app_token: string; username: string; password: string;
-    verify_ssl: boolean; min_priority: string; poll_interval_minutes: string; lookback_hours: string;
-    type_1: boolean; type_2: boolean; type_3: boolean; type_4: boolean;
-  }>({
+  const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<GlpiFormData>({
     defaultValues: {
       glpi_url: "", app_token: "", username: "", password: "",
       verify_ssl: true, min_priority: "3", poll_interval_minutes: "5", lookback_hours: "24",
@@ -1153,21 +1164,21 @@ function GlpiIntegrationCard() {
   }, [open, existing]);
 
   const saveMut = useMutation({
-    mutationFn: async (fd: Parameters<typeof handleSubmit>[0] extends (data: infer D) => unknown ? D : never) => {
-      const types = [1, 2, 3, 4].filter((n) => (fd as Record<string, unknown>)[`type_${n}`]);
+    mutationFn: async (fd: GlpiFormData) => {
+      const types = ([1, 2, 3, 4] as const).filter((n) => fd[`type_${n}`]);
       const payload = {
-        glpi_url:              (fd as Record<string, string>).glpi_url,
-        app_token:             (fd as Record<string, string>).app_token,
-        username:              (fd as Record<string, string>).username,
-        verify_ssl:            (fd as Record<string, boolean>).verify_ssl,
-        min_priority:          parseInt((fd as Record<string, string>).min_priority) || 3,
+        glpi_url:              fd.glpi_url,
+        app_token:             fd.app_token,
+        username:              fd.username,
+        verify_ssl:            fd.verify_ssl,
+        min_priority:          parseInt(fd.min_priority) || 3,
         trigger_types:         types,
-        poll_interval_minutes: parseInt((fd as Record<string, string>).poll_interval_minutes) || 5,
-        lookback_hours:        parseInt((fd as Record<string, string>).lookback_hours) || 24,
-        ...(((fd as Record<string, string>).password) ? { password: (fd as Record<string, string>).password } : {}),
+        poll_interval_minutes: parseInt(fd.poll_interval_minutes) || 5,
+        lookback_hours:        parseInt(fd.lookback_hours) || 24,
+        ...(fd.password ? { password: fd.password } : {}),
       };
       if (existing) return glpiApi.updateIntegration(existing.id, payload);
-      return glpiApi.createIntegration({ ...payload, password: (fd as Record<string, string>).password });
+      return glpiApi.createIntegration({ ...payload, password: fd.password });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["glpi-integration"] }); setOpen(false); setTestResult(null); },
   });
@@ -1215,7 +1226,7 @@ function GlpiIntegrationCard() {
 
       {open && (
         <form
-          onSubmit={handleSubmit((d) => saveMut.mutate(d as Parameters<typeof saveMut.mutate>[0]))}
+          onSubmit={handleSubmit((d) => saveMut.mutate(d))}
           className="space-y-3 pt-2 border-t border-gray-100"
         >
           {[
