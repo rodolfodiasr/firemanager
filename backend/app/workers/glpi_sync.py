@@ -101,6 +101,12 @@ async def _sync_integration(integration) -> dict:
 
     stats = {"analysed": 0, "skipped": 0, "errors": 0}
 
+    trigger_types = integration.trigger_types or []
+    # Types 1/2 are GLPI Ticket types; 3=Problem module; 4=Change module
+    ticket_types  = [t for t in trigger_types if t in (1, 2)] or None
+    fetch_problems = 3 in trigger_types
+    fetch_changes  = 4 in trigger_types
+
     creds = decrypt_credentials(integration.encrypted_password)
     password = creds.get("password", "")
 
@@ -112,26 +118,38 @@ async def _sync_integration(integration) -> dict:
             password=password,
             verify_ssl=integration.verify_ssl,
         ) as client:
-            tickets = await client.get_open_tickets(
-                min_priority=integration.min_priority,
-                trigger_types=integration.trigger_types or None,
-                trigger_categories=integration.trigger_categories or None,
-                lookback_hours=integration.lookback_hours,
-            )
+            items: list[tuple[dict, str]] = []  # (item_data, glpi_itemtype)
 
-            log.info("glpi_tickets_fetched tenant=%s count=%d", integration.tenant_id, len(tickets))
+            # Tickets (Incident / Request)
+            if ticket_types or not trigger_types:
+                tickets = await client.get_open_tickets(
+                    min_priority=integration.min_priority,
+                    trigger_types=ticket_types,
+                    trigger_categories=integration.trigger_categories or None,
+                    lookback_hours=integration.lookback_hours,
+                )
+                items += [(t, "Ticket") for t in tickets]
+                log.info("glpi_tickets_fetched tenant=%s count=%d", integration.tenant_id, len(tickets))
 
-            for ticket in tickets:
+            # Problems
+            if fetch_problems:
+                problems = await client.get_open_problems(lookback_hours=integration.lookback_hours)
+                items += [(p, "Problem") for p in problems]
+                log.info("glpi_problems_fetched tenant=%s count=%d", integration.tenant_id, len(problems))
+
+            log.info("glpi_items_total tenant=%s count=%d", integration.tenant_id, len(items))
+
+            for item_data, itemtype in items:
                 try:
-                    result = await _process_ticket(integration, ticket, client)
+                    result = await _process_ticket(integration, item_data, client, itemtype=itemtype)
                     if result == "analysed":
                         stats["analysed"] += 1
                     else:
                         stats["skipped"] += 1
                 except Exception as exc:
                     stats["errors"] += 1
-                    ticket_id = ticket.get("2", "?")
-                    log.warning("ticket_process_failed ticket=%s error=%s", ticket_id, exc)
+                    item_id = item_data.get("2", "?")
+                    log.warning("item_process_failed item=%s type=%s error=%s", item_id, itemtype, exc)
     except Exception as exc:
         log.error("glpi_client_failed url=%s error=%s", integration.glpi_url, exc)
         stats["errors"] += 1
@@ -139,8 +157,8 @@ async def _sync_integration(integration) -> dict:
     return stats
 
 
-async def _process_ticket(integration, ticket_data: dict, client) -> str:
-    """Analyse a single ticket. Returns 'analysed' or 'skipped'."""
+async def _process_ticket(integration, ticket_data: dict, client, itemtype: str = "Ticket") -> str:
+    """Analyse a single ticket/problem/change. Returns 'analysed' or 'skipped'."""
     from app.database import AsyncSessionLocal
     from app.models.glpi_ticket_analysis import GlpiTicketAnalysis, GlpiAnalysisStatus
     from sqlalchemy import select
@@ -185,6 +203,7 @@ async def _process_ticket(integration, ticket_data: dict, client) -> str:
         await db.flush()
         await db.refresh(analysis)
         analysis_id = analysis.id
+        await db.commit()
 
     # Call Claude outside the DB session (long IO)
     try:
@@ -203,7 +222,7 @@ async def _process_ticket(integration, ticket_data: dict, client) -> str:
     followup_id = None
     try:
         followup_text = _build_followup(ai_result, is_recurrent, recurrence_count)
-        followup_id   = await client.add_followup(glpi_ticket_id, followup_text)
+        followup_id   = await client.add_followup(glpi_ticket_id, followup_text, itemtype=itemtype)
     except Exception as exc:
         log.warning("glpi_followup_failed ticket=%d error=%s", glpi_ticket_id, exc)
 
