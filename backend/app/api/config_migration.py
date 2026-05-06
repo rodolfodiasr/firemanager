@@ -47,12 +47,15 @@ async def create_migration(
     db.add(migration)
     await db.flush()
     await db.refresh(migration)
+    migration_id = str(migration.id)
 
-    # Dispatch Celery task
-    from app.workers.migration_worker import analyze_config_migration
-    analyze_config_migration.delay(str(migration.id))
-
+    # Commit first so the worker can find the record in the DB
     await db.commit()
+
+    # Dispatch Celery task only after commit
+    from app.workers.migration_worker import analyze_config_migration
+    analyze_config_migration.delay(migration_id)
+
     await db.refresh(migration)
     return MigrationRead.model_validate(migration)
 
