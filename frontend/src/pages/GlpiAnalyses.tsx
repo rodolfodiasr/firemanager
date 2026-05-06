@@ -22,17 +22,19 @@ import type { GlpiAnalysisStatus, GlpiAnalysisListItem, GlpiTicketAnalysis } fro
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const STATUS_LABEL: Record<GlpiAnalysisStatus, string> = {
-  pending:   "Pendente",
-  analyzing: "Analisando",
-  completed: "Concluído",
-  failed:    "Falhou",
+  pending:        "Pendente",
+  pending_manual: "Aguarda análise",
+  analyzing:      "Analisando",
+  completed:      "Concluído",
+  failed:         "Falhou",
 };
 
 const STATUS_STYLE: Record<GlpiAnalysisStatus, string> = {
-  pending:   "bg-gray-100 text-gray-600",
-  analyzing: "bg-blue-100 text-blue-700",
-  completed: "bg-green-100 text-green-700",
-  failed:    "bg-red-100 text-red-700",
+  pending:        "bg-gray-100 text-gray-600",
+  pending_manual: "bg-amber-100 text-amber-700",
+  analyzing:      "bg-blue-100 text-blue-700",
+  completed:      "bg-green-100 text-green-700",
+  failed:         "bg-red-100 text-red-700",
 };
 
 const ITEMTYPE_LABEL: Record<string, string> = {
@@ -346,6 +348,9 @@ export function GlpiAnalyses() {
         </FilterPill>
         <FilterPill active={statusFilter === "analyzing"} onClick={() => setStatusFilter(statusFilter === "analyzing" ? "" : "analyzing")}>
           <Clock size={11} /> Analisando
+        </FilterPill>
+        <FilterPill active={statusFilter === "pending_manual"} onClick={() => setStatusFilter(statusFilter === "pending_manual" ? "" : "pending_manual")}>
+          <Clock size={11} /> Aguarda análise
         </FilterPill>
         <FilterPill active={statusFilter === "failed"} onClick={() => setStatusFilter(statusFilter === "failed" ? "" : "failed")}>
           <XCircle size={11} /> Falhou
