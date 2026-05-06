@@ -573,6 +573,8 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
         if exec_result is not None:
             if exec_result.success:
                 operation.status = OperationStatus.completed
+                if exec_result.already_existed:
+                    operation.action_plan = {**(operation.action_plan or {}), "already_existed": True}
                 # Save config snapshot
                 try:
                     config_data = await connector.get_config_snapshot()

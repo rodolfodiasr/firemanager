@@ -149,7 +149,11 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
           };
         } else if (intent === "create_rule" || intent === "edit_rule") {
           const ruleSpec = ap?.rule_spec as Record<string, unknown> | undefined;
-          summary = intent === "create_rule" ? "Regra criada com sucesso:" : "Regra editada com sucesso:";
+          if (intent === "create_rule" && ap?.already_existed) {
+            summary = "Regra já existia no dispositivo — nenhuma alteração necessária:";
+          } else {
+            summary = intent === "create_rule" ? "Regra criada com sucesso:" : "Regra editada com sucesso:";
+          }
           if (ruleSpec) {
             tableData = {
               columns: [

@@ -49,6 +49,7 @@ class ExecutionResult:
     rule_id: str | None = None
     raw_response: dict | None = None
     error: str | None = None
+    already_existed: bool = False
 
 
 @dataclass
