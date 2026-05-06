@@ -176,11 +176,11 @@ function AnalysisSlideOver({
               {/* Analysis sections */}
               {data.status === "completed" ? (
                 <div className="space-y-5 divide-y divide-gray-100">
-                  <Section title="Diagnóstico"           content={data.diagnostico} />
-                  <div className="pt-5"><Section title="Ações imediatas"    content={data.acoes_imediatas} /></div>
-                  <div className="pt-5"><Section title="Causa raiz"         content={data.causa_raiz} /></div>
-                  <div className="pt-5"><Section title="Plano de remediação" content={data.plano_remediacao} /></div>
-                  <div className="pt-5"><Section title="Prevenção"          content={data.prevencao} /></div>
+                  <Section title="📋 Diagnóstico"                    content={data.diagnostico} />
+                  <div className="pt-5"><Section title="⚡ Ação imediata — faça agora"      content={data.acoes_imediatas} /></div>
+                  <div className="pt-5"><Section title="🔧 Ação definitiva — médio prazo"  content={data.plano_remediacao} /></div>
+                  <div className="pt-5"><Section title="🔍 Causa raiz"                     content={data.causa_raiz} /></div>
+                  <div className="pt-5"><Section title="🛡 Prevenção"                      content={data.prevencao} /></div>
                 </div>
               ) : data.status === "failed" ? (
                 <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-sm text-red-700">

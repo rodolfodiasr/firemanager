@@ -24,25 +24,30 @@ log = logging.getLogger(__name__)
 _RECURRENCE_THRESHOLD = 2   # similar solved tickets needed to flag as recurrent
 _MAX_CONTENT_CHARS    = 4000  # truncate ticket content sent to Claude
 
-_SYSTEM_PROMPT = """Você é um assistente especialista em TI e segurança da informação integrado ao FireManager, plataforma MSSP.
-Analise o ticket de suporte fornecido e responda SOMENTE com JSON válido, sem texto adicional, no seguinte formato:
+_SYSTEM_PROMPT = """Você é um especialista em TI integrado ao FireManager. Sua análise será lida por analistas de helpdesk — seja direto, prático e escaneável.
+
+Responda SOMENTE com JSON válido, sem texto adicional:
 
 {
-  "diagnostico": "Diagnóstico técnico claro e objetivo em português",
-  "acoes_imediatas": "Ações imediatas que o técnico deve executar agora",
-  "plano_remediacao": "Plano de remediação completo passo a passo",
-  "causa_raiz": "Causa raiz mais provável do problema",
-  "prevencao": "Como prevenir recorrência deste problema",
+  "diagnostico": "O que está acontecendo em até 2 frases. Direto ao ponto.",
+  "acoes_imediatas": "O que fazer AGORA para estabilizar. Máximo 3 passos numerados.",
+  "plano_remediacao": "Resolução definitiva para não voltar. Máximo 4 passos numerados, priorizados.",
+  "causa_raiz": "Causa raiz mais provável em 1 frase.",
+  "prevencao": "Uma medida preventiva objetiva.",
   "confianca": 0.85,
   "is_security_incident": false,
   "is_recurrent": false
 }
 
 Regras:
-- confianca: número entre 0.0 e 1.0 representando sua confiança na análise
-- is_security_incident: true se o ticket envolve incidente de segurança (ataque, vazamento, comprometimento)
-- is_recurrent: true se o problema parece ter ocorrido antes ou é estrutural
-- Seja preciso e técnico. Se não houver informações suficientes, diga isso no diagnóstico."""
+- diagnostico: máximo 2 frases, sem jargão desnecessário
+- acoes_imediatas: apenas o essencial para estabilizar agora, numere os passos
+- plano_remediacao: resolução definitiva de médio prazo, numere e priorize os passos
+- causa_raiz: 1 frase objetiva
+- confianca: 0.0 a 1.0
+- is_security_incident: true se envolver ataque, vazamento, acesso não autorizado ou comprometimento
+- is_recurrent: true se o problema parece estrutural ou já ocorreu antes
+- Se as informações forem insuficientes, diga isso no diagnóstico e sugira o que coletar"""
 
 
 @celery_app.task(
@@ -222,7 +227,7 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
     # Post followup to GLPI
     followup_id = None
     try:
-        followup_text = _build_followup(ai_result, is_recurrent, recurrence_count)
+        followup_text = _build_followup(ai_result, is_recurrent, recurrence_count, related_ids=related_ids)
         followup_id   = await client.add_followup(glpi_ticket_id, followup_text, itemtype=itemtype)
     except Exception as exc:
         log.warning("glpi_followup_failed ticket=%d error=%s", glpi_ticket_id, exc)
@@ -301,35 +306,56 @@ def _parse_json(raw: str) -> dict:
     return {}
 
 
-def _build_followup(ai_result: dict, is_recurrent: bool, recurrence_count: int) -> str:
-    """Build the followup note text posted to GLPI."""
+def _build_followup(ai_result: dict, is_recurrent: bool, recurrence_count: int, related_ids: list | None = None) -> str:
+    """Build the followup note posted to GLPI — compact, analyst-friendly format."""
     confianca = float(ai_result.get("confianca", 0.0))
     pct       = round(confianca * 100)
     security  = ai_result.get("is_security_incident", False)
 
-    header_flags = []
+    lines: list[str] = []
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    badges: list[str] = []
     if security:
-        header_flags.append("⚠️ INCIDENTE DE SEGURANÇA")
+        badges.append("⚠️ <b>INCIDENTE DE SEGURANÇA</b>")
     if is_recurrent:
-        header_flags.append(f"🔁 RECORRENTE ({recurrence_count} tickets similares)")
+        badges.append(f"🔁 <b>RECORRENTE</b> ({recurrence_count} chamados similares)")
 
-    lines = ["<b>🤖 Análise automática FireManager</b>"]
-    if header_flags:
-        lines.append(" | ".join(header_flags))
+    lines.append("<b>🤖 Análise FireManager</b>" + (f" &nbsp;|&nbsp; {' &nbsp;|&nbsp; '.join(badges)}" if badges else ""))
     lines.append(f"<i>Confiança da análise: {pct}%</i>")
-    lines.append("")
+    lines.append("<hr/>")
 
-    def section(title: str, text: str | None) -> None:
-        if text:
-            lines.append(f"<b>{title}</b>")
-            lines.append(text)
-            lines.append("")
+    # ── Diagnóstico ───────────────────────────────────────────────────────────
+    if diagnostico := ai_result.get("diagnostico"):
+        lines.append(f"<b>📋 Diagnóstico</b>")
+        lines.append(diagnostico)
+        lines.append("")
 
-    section("Diagnóstico",        ai_result.get("diagnostico"))
-    section("Ações imediatas",    ai_result.get("acoes_imediatas"))
-    section("Causa raiz",         ai_result.get("causa_raiz"))
-    section("Plano de remediação", ai_result.get("plano_remediacao"))
-    section("Prevenção",          ai_result.get("prevencao"))
+    # ── Ação imediata ─────────────────────────────────────────────────────────
+    if acao_imediata := ai_result.get("acoes_imediatas"):
+        lines.append("<b>⚡ Ação imediata — faça agora</b>")
+        lines.append(acao_imediata)
+        lines.append("")
+
+    # ── Ação definitiva ───────────────────────────────────────────────────────
+    if acao_definitiva := ai_result.get("plano_remediacao"):
+        lines.append("<b>🔧 Ação definitiva — médio prazo</b>")
+        lines.append(acao_definitiva)
+        lines.append("")
+
+    # ── Recorrência com links ──────────────────────────────────────────────────
+    if is_recurrent and recurrence_count:
+        lines.append("<b>🔁 Recorrência</b>")
+        ref_part = ""
+        if related_ids:
+            ids_str = ", ".join(f"#{i}" for i in related_ids[:5])
+            ref_part = f" — chamados anteriores: {ids_str}"
+        lines.append(f"Sim, {recurrence_count} chamados similares resolvidos anteriormente{ref_part}.")
+        lines.append("")
+
+    # ── Causa raiz (compacta) ─────────────────────────────────────────────────
+    if causa := ai_result.get("causa_raiz"):
+        lines.append(f"<b>🔍 Causa raiz:</b> {causa}")
 
     return "\n".join(lines)
 
