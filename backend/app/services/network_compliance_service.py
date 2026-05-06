@@ -69,8 +69,10 @@ async def _collect_fortinet(device: Device) -> list[dict]:
     controls: list[dict] = []
 
     import httpx
+    protocol = "https" if device.use_ssl else "http"
+    base_url = f"{protocol}://{device.host}:{device.port}"
     async with httpx.AsyncClient(
-        base_url=device.host.rstrip("/"),
+        base_url=base_url,
         headers={"Authorization": f"Bearer {token}"},
         verify=False,
         timeout=20.0,
@@ -878,6 +880,96 @@ async def _collect_sonicwall(device: Device) -> list[dict]:
 
 # ── Generic SSH fallback ──────────────────────────────────────────────────────
 
+async def _collect_dell_n(device: Device) -> list[dict]:
+    """Collect compliance data via SSH show commands on Dell N-Series (DNOS6)."""
+    from app.connectors.factory import get_ssh_connector
+
+    conn = get_ssh_connector(device)
+    controls: list[dict] = []
+
+    try:
+        result = await conn.execute_show_commands(["show running-config"])
+        raw = result.output
+    except Exception as exc:
+        logger.warning("Dell N SSH collection failed: %s", exc)
+        return [_na(f"DN-{i:02d}", f"Check {i}", "medium", f"SSH collection failed: {exc}") for i in range(1, 7)]
+
+    lines_lower = raw.lower()
+
+    # ── DN-01: SNMP default communities ───────────────────────────────────────
+    snmp_lines = [l for l in raw.splitlines() if "snmp-server community" in l.lower()]
+    dangerous_snmp = [l for l in snmp_lines if re.search(r"\bpublic\b|\bprivate\b", l, re.I)]
+    if not snmp_lines:
+        controls.append(_pass("DN-01", "SNMP sem communities padrão inseguras", "critical",
+            "Nenhuma community SNMP configurada"))
+    elif dangerous_snmp:
+        controls.append(_fail("DN-01", "SNMP sem communities padrão inseguras", "critical",
+            f"Communities inseguras detectadas: {dangerous_snmp[:3]}",
+            "no snmp-server community public\nno snmp-server community private"))
+    else:
+        controls.append(_pass("DN-01", "SNMP sem communities padrão inseguras", "critical",
+            f"{len(snmp_lines)} community(ies) configuradas, nenhuma é 'public'/'private'"))
+
+    # ── DN-02: SSH v2 ─────────────────────────────────────────────────────────
+    if re.search(r"ip ssh version 2", lines_lower):
+        controls.append(_pass("DN-02", "SSH versão 2 configurado", "high", "ip ssh version 2 encontrado"))
+    elif re.search(r"ip ssh", lines_lower):
+        controls.append(_fail("DN-02", "SSH versão 2 configurado", "high",
+            "SSH habilitado mas versão 2 não forçada",
+            "ip ssh version 2"))
+    else:
+        controls.append(_fail("DN-02", "SSH versão 2 configurado", "high",
+            "SSH não configurado",
+            "crypto key generate rsa\nip ssh version 2"))
+
+    # ── DN-03: NTP/SNTP configurado ───────────────────────────────────────────
+    if re.search(r"sntp server|ntp server", lines_lower):
+        controls.append(_pass("DN-03", "NTP/SNTP configurado para sincronização de tempo", "medium",
+            "Servidor NTP/SNTP encontrado na configuração"))
+    else:
+        controls.append(_fail("DN-03", "NTP/SNTP configurado para sincronização de tempo", "medium",
+            "Nenhum servidor NTP/SNTP configurado",
+            "sntp server <IP_NTP>"))
+
+    # ── DN-04: Syslog remoto configurado ─────────────────────────────────────
+    syslog_match = re.search(r"^logging \d", raw, re.MULTILINE) or re.search(r"logging server|logging host", lines_lower)
+    if syslog_match:
+        controls.append(_pass("DN-04", "Syslog enviado para servidor remoto", "high",
+            "Destino de logging remoto detectado"))
+    else:
+        controls.append(_fail("DN-04", "Syslog enviado para servidor remoto", "high",
+            "Nenhum destino syslog remoto configurado",
+            "logging <IP_SYSLOG>"))
+
+    # ── DN-05: Telnet desabilitado nas VTYs ──────────────────────────────────
+    vty_ssh_only = re.search(r"transport input ssh", lines_lower)
+    telnet_on    = re.search(r"transport input.*(telnet|all)\b", lines_lower)
+    if vty_ssh_only and not telnet_on:
+        controls.append(_pass("DN-05", "Telnet desabilitado nas linhas VTY", "high",
+            "transport input ssh configurado"))
+    elif telnet_on:
+        controls.append(_fail("DN-05", "Telnet desabilitado nas linhas VTY", "high",
+            "Telnet habilitado nas VTYs — acesso inseguro exposto",
+            "line vty\n  transport input ssh"))
+    else:
+        controls.append(_na("DN-05", "Telnet desabilitado nas linhas VTY", "high",
+            "Configuração de transport input não detectada"))
+
+    # ── DN-06: Senha de enable criptografada ─────────────────────────────────
+    if re.search(r"enable password 7\b|enable secret", lines_lower):
+        controls.append(_pass("DN-06", "Senha de enable criptografada", "critical",
+            "Senha de enable armazenada de forma cifrada"))
+    elif re.search(r"enable password 0\b|enable password [^7\n]", lines_lower):
+        controls.append(_fail("DN-06", "Senha de enable criptografada", "critical",
+            "Senha de enable em texto claro detectada",
+            "enable password encrypted <hash>"))
+    else:
+        controls.append(_na("DN-06", "Senha de enable criptografada", "critical",
+            "Configuração de enable não detectada no running-config"))
+
+    return controls
+
+
 async def _collect_generic_ssh(device: Device) -> list[dict]:
     """Generic SSH-based compliance for Juniper, Aruba, other vendors."""
     from app.connectors.factory import get_ssh_connector
@@ -940,6 +1032,11 @@ async def collect_device_compliance(device: Device) -> tuple[str, list[dict]]:
     elif vendor == VendorEnum.hp_comware:
         controls = await _collect_hp_comware(device)
         policy_name = "CIS HP Comware Benchmark"
+        return policy_name, controls
+
+    elif vendor == VendorEnum.dell_n:
+        controls = await _collect_dell_n(device)
+        policy_name = "CIS Dell N-Series Benchmark"
         return policy_name, controls
 
     elif vendor in (VendorEnum.sonicwall,):
