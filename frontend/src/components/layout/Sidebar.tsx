@@ -16,6 +16,7 @@ import {
   HardDrive,
   ShieldCheck,
   ClipboardCheck,
+  ArrowRightLeft,
   BarChart3,
   MessageSquare,
 } from "lucide-react";
@@ -43,10 +44,11 @@ const navSections: NavSection[] = [
   {
     title: "Firewall & Rede",
     items: [
-      { to: "/agent",       icon: Bot,     label: "Agente IA"    },
-      { to: "/direct-mode", icon: Terminal,label: "Modo Técnico" },
-      { to: "/inspector",   icon: Radar,   label: "Inspetor"     },
-      { to: "/devices",     icon: Server,  label: "Dispositivos" },
+      { to: "/agent",       icon: Bot,            label: "Agente IA"    },
+      { to: "/direct-mode", icon: Terminal,        label: "Modo Técnico" },
+      { to: "/inspector",   icon: Radar,           label: "Inspetor"     },
+      { to: "/devices",     icon: Server,          label: "Dispositivos" },
+      { to: "/migrations",  icon: ArrowRightLeft,  label: "Migração"     },
     ],
   },
   {
@@ -64,7 +66,7 @@ const navSections: NavSection[] = [
     title: "Plataforma",
     items: [
         { to: "/audit",    icon: Shield,        label: "Auditoria"     },
-      { to: "/glpi",     icon: MessageSquare, label: "Tickets IA"    },
+      { to: "/glpi",       icon: MessageSquare,  label: "Tickets IA"    },
       { to: "/settings", icon: Settings,      label: "Configurações" },
     ],
   },

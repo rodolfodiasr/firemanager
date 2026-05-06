@@ -1,4 +1,5 @@
 from app.models.analysis_session import AnalysisSession
+from app.models.config_migration import ConfigMigration, MigrationStatus
 from app.models.audit_log import AuditLog
 from app.models.glpi_integration import GlpiIntegration
 from app.models.glpi_ticket_analysis import GlpiTicketAnalysis, GlpiAnalysisStatus
@@ -26,6 +27,8 @@ from app.models.variable import TenantVariable, DeviceVariable
 
 __all__ = [
     "AnalysisSession",
+    "ConfigMigration",
+    "MigrationStatus",
     "GlpiIntegration",
     "GlpiTicketAnalysis",
     "GlpiAnalysisStatus",
