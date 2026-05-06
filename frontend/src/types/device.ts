@@ -33,6 +33,10 @@ export interface Device {
   status: DeviceStatus;
   last_seen: string | null;
   notes: string | null;
+  bookstack_page_id: number | null;
+  bookstack_fm_page_id: number | null;
+  bookstack_doc_page_id: number | null;
+  bookstack_snapshot_page_id: number | null;
   created_at: string;
   updated_at: string;
 }
