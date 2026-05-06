@@ -92,6 +92,78 @@ function typeColor(type: string) {
   return TYPE_COLORS[key] ?? { pill: "bg-gray-100 text-gray-600 border-gray-200", badge: "bg-gray-50 text-gray-600", header: "bg-gray-50 border-gray-200" };
 }
 
+interface SecurityDetails {
+  protocols:        string[] | null;
+  prevention_group: string | null;
+  detection_group:  string | null;
+  exclusion_group:  string | null;
+  raw:              string | null;
+}
+
+function SecurityDetailsCard({ details }: { details: SecurityDetails }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const hasGroups = details.prevention_group || details.detection_group || details.exclusion_group;
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {details.protocols && details.protocols.length > 0 && (
+          <div className="bg-blue-50 rounded-lg p-3">
+            <p className="text-xs font-semibold text-blue-700 mb-2">Protocolos Inspecionados</p>
+            <div className="flex flex-wrap gap-1.5">
+              {details.protocols.map((p) => (
+                <span key={p} className="inline-block px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded font-mono uppercase">
+                  {p}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {hasGroups && (
+          <div className="bg-purple-50 rounded-lg p-3">
+            <p className="text-xs font-semibold text-purple-700 mb-2">Grupos de Política</p>
+            <div className="space-y-1.5">
+              {details.prevention_group && (
+                <div className="flex items-start gap-2">
+                  <span className="text-xs text-purple-500 font-medium shrink-0 w-20">Prevenção</span>
+                  <span className="text-xs font-mono text-purple-900 break-all">{details.prevention_group}</span>
+                </div>
+              )}
+              {details.detection_group && (
+                <div className="flex items-start gap-2">
+                  <span className="text-xs text-purple-500 font-medium shrink-0 w-20">Detecção</span>
+                  <span className="text-xs font-mono text-purple-900 break-all">{details.detection_group}</span>
+                </div>
+              )}
+              {details.exclusion_group && (
+                <div className="flex items-start gap-2">
+                  <span className="text-xs text-purple-500 font-medium shrink-0 w-20">Exclusão</span>
+                  <span className="text-xs font-mono text-purple-900 break-all">{details.exclusion_group}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      {details.raw && (
+        <div>
+          <button
+            onClick={() => setShowRaw((v) => !v)}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <ChevronRight size={12} className={`transition-transform ${showRaw ? "rotate-90" : ""}`} />
+            Output CLI bruto
+          </button>
+          {showRaw && (
+            <pre className="mt-2 text-xs bg-gray-900 text-green-300 border border-gray-700 rounded-lg p-3 overflow-auto max-h-48 whitespace-pre-wrap font-mono">
+              {details.raw}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const GROUPED_RESOURCES: Resource[] = ["content_filter", "app_rules"];
 
 function EnabledBadge({ value }: { value: unknown }) {
@@ -257,7 +329,9 @@ export function Inspector() {
         <div className="px-6 py-4 space-y-4">
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dados completos</p>
-            {item.details ? (
+            {resource === "security" && item.details && typeof item.details === "object" && !Array.isArray(item.details) ? (
+              <SecurityDetailsCard details={item.details as SecurityDetails} />
+            ) : item.details ? (
               <pre className="text-xs bg-gray-900 text-green-300 border border-gray-700 rounded-lg p-3 overflow-auto max-h-48 whitespace-pre-wrap font-mono">
                 {String(item.details)}
               </pre>

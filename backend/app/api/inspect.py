@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import TenantContext, get_tenant_context
 from app.connectors.factory import get_connector, get_ssh_connector
 from app.database import get_db
-from app.models.device import Device
+from app.models.device import Device, VendorEnum
 from app.services.device_service import DeviceNotFoundError, get_device
 
 router = APIRouter()
@@ -28,6 +28,36 @@ _SECURITY_COMMANDS = [
 ]
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _parse_sonicwall_security_section(raw: str) -> dict:
+    """Parse one SonicWall security service configure sub-mode output into structured dict."""
+    clean = _ANSI_RE.sub("", raw).replace("\r", "")
+
+    no_m = re.search(r"^\s+no\s+enable\b", clean, re.MULTILINE)
+    yes_m = re.search(r"^\s+enable\b", clean, re.MULTILINE)
+    if no_m and yes_m:
+        enabled: bool | None = yes_m.start() < no_m.start()
+    elif yes_m:
+        enabled = True
+    elif no_m:
+        enabled = False
+    else:
+        enabled = None
+
+    protocols  = re.findall(r"^\s+protocol\s+(\S+)", clean, re.MULTILINE)
+    prev_m     = re.search(r"^\s+prevention-group\s+(.+)", clean, re.MULTILINE)
+    det_m      = re.search(r"^\s+detection-group\s+(.+)", clean, re.MULTILINE)
+    excl_m     = re.search(r"^\s+exclusion\s+(?:address-object\s+)?group\s+(.+)", clean, re.MULTILINE)
+
+    return {
+        "enabled":          enabled,
+        "protocols":        protocols or None,
+        "prevention_group": prev_m.group(1).strip() if prev_m else None,
+        "detection_group":  det_m.group(1).strip()  if det_m  else None,
+        "exclusion_group":  excl_m.group(1).strip() if excl_m else None,
+        "raw":              clean.strip(),
+    }
 
 
 def _parse_named_blocks(output: str, block_keywords: list[str]) -> list[dict]:
@@ -87,6 +117,23 @@ async def inspect_device(
         # ── SSH-based resources ───────────────────────────────────────────────
         if resource == "security":
             ssh = get_ssh_connector(device)
+
+            if device.vendor == VendorEnum.sonicwall:
+                # Sub-mode collector returns richer structured output per service
+                raw_data = await ssh.collect_security_services()
+                _SW_LABELS = {
+                    "gateway_antivirus":   "Gateway Anti-Virus",
+                    "anti_spyware":        "Anti-Spyware",
+                    "intrusion_prevention": "Intrusion Prevention (IPS)",
+                }
+                items = []
+                for key, label in _SW_LABELS.items():
+                    parsed = _parse_sonicwall_security_section(raw_data.get(key, ""))
+                    enabled = parsed.pop("enabled")
+                    items.append({"service": label, "enabled": enabled, "details": parsed})
+                return {"resource": resource, "items": items}
+
+            # Fallback for other vendors
             ssh_result = await ssh.execute_show_commands(_SECURITY_COMMANDS)
             if not ssh_result.success:
                 raise HTTPException(status_code=502, detail=f"Falha na conexão SSH: {ssh_result.error}")
