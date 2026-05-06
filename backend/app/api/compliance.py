@@ -54,6 +54,43 @@ async def generate_report(
     return ComplianceReportRead.model_validate(report)
 
 
+# ── Network device compliance (firewall / switch) ─────────────────────────────
+# IMPORTANT: /network routes must come BEFORE /{report_id} to avoid FastAPI
+# matching "network" as a UUID path parameter and returning 422.
+
+@router.post("/network", response_model=ComplianceReportRead, status_code=201)
+async def generate_network_report(
+    data: NetworkComplianceGenerateRequest,
+    ctx:  Annotated[TenantContext, Depends(_require_compliance)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> ComplianceReportRead:
+    try:
+        report = await network_compliance_service.generate_report(
+            db=db,
+            tenant_id=ctx.tenant.id,
+            device_id=data.device_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar relatório: {exc}")
+    return ComplianceReportRead.model_validate(report)
+
+
+@router.get("/network", response_model=list[ComplianceReportSummary])
+async def list_network_reports(
+    ctx:         Annotated[TenantContext, Depends(get_tenant_context)],
+    db:          Annotated[AsyncSession, Depends(get_db)],
+    device_type: str | None = Query(default=None),
+) -> list[ComplianceReportSummary]:
+    reports = await network_compliance_service.list_reports(
+        db, tenant_id=ctx.tenant.id, device_type=device_type
+    )
+    return [ComplianceReportSummary.model_validate(r) for r in reports]
+
+
+# ── CIS Benchmark reports (server) ────────────────────────────────────────────
+
 @router.get("", response_model=list[ComplianceReportSummary])
 async def list_reports(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
@@ -113,39 +150,6 @@ async def delete_report(
         raise HTTPException(status_code=404, detail="Relatório não encontrado")
     await db.delete(report)
     await db.flush()
-
-
-# ── Network device compliance (firewall / switch) ─────────────────────────────
-
-@router.post("/network", response_model=ComplianceReportRead, status_code=201)
-async def generate_network_report(
-    data: NetworkComplianceGenerateRequest,
-    ctx:  Annotated[TenantContext, Depends(_require_compliance)],
-    db:   Annotated[AsyncSession, Depends(get_db)],
-) -> ComplianceReportRead:
-    try:
-        report = await network_compliance_service.generate_report(
-            db=db,
-            tenant_id=ctx.tenant.id,
-            device_id=data.device_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Erro ao gerar relatório: {exc}")
-    return ComplianceReportRead.model_validate(report)
-
-
-@router.get("/network", response_model=list[ComplianceReportSummary])
-async def list_network_reports(
-    ctx:         Annotated[TenantContext, Depends(get_tenant_context)],
-    db:          Annotated[AsyncSession, Depends(get_db)],
-    device_type: str | None = Query(default=None),
-) -> list[ComplianceReportSummary]:
-    reports = await network_compliance_service.list_reports(
-        db, tenant_id=ctx.tenant.id, device_type=device_type
-    )
-    return [ComplianceReportSummary.model_validate(r) for r in reports]
 
 
 @router.get("/{report_id}/export-pdf")

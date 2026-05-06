@@ -706,7 +706,7 @@ async def _collect_sonicwall(device: Device) -> list[dict]:
     host = device.host.replace("https://", "").replace("http://", "").split("/")[0]
     username = ssh_creds.get("username") or creds.get("username", "admin")
     password = ssh_creds.get("password") or creds.get("password", "")
-    ssh_port = int(ssh_creds.get("ssh_port") or creds.get("ssh_port") or device.ssh_port or 22)
+    ssh_port = int(ssh_creds.get("ssh_port") or creds.get("ssh_port") or 22)
 
     connector = SonicWallSSHConnector(
         host=host,
