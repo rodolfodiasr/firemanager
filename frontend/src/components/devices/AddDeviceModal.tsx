@@ -22,7 +22,7 @@ interface VendorConfig {
   passwordLabel?: string;
   defaultPort: number;
   hint: string;
-  extraFields?: "vdom" | "os_version" | "cmdline_password";
+  extraFields?: "vdom" | "os_version" | "cmdline_password" | "enable_password";
 }
 
 const VENDOR_CONFIG: Record<VendorEnum, VendorConfig> = {
@@ -130,14 +130,25 @@ const VENDOR_CONFIG: Record<VendorEnum, VendorConfig> = {
     hint: "Aruba OS-CX / AOS-Switch (HPE ProCurve) · SSH habilitado",
   },
   ubiquiti: {
-    label: "Ubiquiti EdgeOS / EdgeSwitch",
+    label: "Ubiquiti EdgeOS (EdgeRouter)",
     authType: "user_pass",
     connProtocol: "ssh",
     usernameLabel: "Usuário",
-    usernamePlaceholder: "admin",
+    usernamePlaceholder: "ubnt",
     passwordLabel: "Senha",
     defaultPort: 22,
-    hint: "EdgeOS / EdgeSwitch · SSH habilitado",
+    hint: "EdgeOS — EdgeRouter · SSH habilitado",
+  },
+  edgeswitch: {
+    label: "Ubiquiti EdgeSwitch",
+    authType: "user_pass",
+    connProtocol: "ssh",
+    usernameLabel: "Usuário",
+    usernamePlaceholder: "ubnt",
+    passwordLabel: "Senha",
+    defaultPort: 22,
+    extraFields: "enable_password",
+    hint: "EdgeSwitch 1.9.x / 2.x · SSH habilitado · requer senha de enable",
   },
   dell: {
     label: "DELL PowerSwitch (OS10)",
@@ -183,8 +194,8 @@ const CATEGORY_LABELS: Record<DeviceCategory, string> = {
 const CATEGORY_VENDORS: Record<DeviceCategory, VendorEnum[]> = {
   firewall:  ["fortinet", "sonicwall", "pfsense", "opnsense", "mikrotik", "endian"],
   router:    ["cisco_ios", "juniper", "mikrotik", "ubiquiti"],
-  switch:    ["cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n", "hp_comware", "ubiquiti"],
-  l3_switch: ["cisco_ios", "cisco_nxos", "juniper", "aruba", "dell", "dell_n", "hp_comware"],
+  switch:    ["cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n", "hp_comware", "ubiquiti", "edgeswitch"],
+  l3_switch: ["cisco_ios", "cisco_nxos", "juniper", "aruba", "dell", "dell_n", "hp_comware", "edgeswitch"],
   routing:   ["cisco_ios", "cisco_nxos", "juniper", "mikrotik", "ubiquiti"],
 };
 
@@ -382,6 +393,25 @@ export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProp
                 <option value={7}>SonicOS 7.x (padrão)</option>
                 <option value={6}>SonicOS 6.x</option>
               </select>
+            </div>
+          )}
+
+          {/* EdgeSwitch extra: enable password */}
+          {cfg.extraFields === "enable_password" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Senha de enable{" "}
+                <span className="text-red-500 font-normal">(obrigatória — necessária para todas as operações)</span>
+              </label>
+              <input
+                {...register("credentials.enable_password")}
+                type="password"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+                placeholder="Senha do modo privilegiado"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Usada no comando <code className="bg-gray-100 px-1 rounded">enable</code> antes de entrar em configure
+              </p>
             </div>
           )}
 

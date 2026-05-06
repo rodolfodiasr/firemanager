@@ -14,6 +14,7 @@ export type VendorEnum =
   | "juniper"
   | "aruba"
   | "ubiquiti"
+  | "edgeswitch"
   | "dell"
   | "dell_n"
   | "hp_comware";
@@ -52,6 +53,7 @@ export interface DeviceCredentials {
   vdom?: string;
   os_version?: number;
   cmdline_password?: string;
+  enable_password?: string;
 }
 
 export interface DeviceCreate {

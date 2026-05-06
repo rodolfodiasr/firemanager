@@ -165,6 +165,23 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
                       </p>
                     </div>
                   )}
+                  {device.vendor === "edgeswitch" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Senha de enable{" "}
+                        <span className="text-red-500 font-normal">(obrigatória)</span>
+                      </label>
+                      <input
+                        {...register("credentials.enable_password")}
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                        placeholder="Senha do modo privilegiado"
+                        type="password"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Usada no comando <code className="bg-gray-100 px-1 rounded">enable</code> antes de entrar em configure
+                      </p>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>

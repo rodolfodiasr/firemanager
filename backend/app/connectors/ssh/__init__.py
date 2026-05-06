@@ -6,6 +6,7 @@ from app.connectors.ssh.dell import DellOS10Connector
 from app.connectors.ssh.dell_n import DellNConnector
 from app.connectors.ssh.hp_comware import HPComwareConnector
 from app.connectors.ssh.juniper import JuniperConnector
+from app.connectors.ssh.edgeswitch import EdgeSwitchConnector
 from app.connectors.ssh.ubiquiti import UbiquitiConnector
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "DellNConnector",
     "HPComwareConnector",
     "UbiquitiConnector",
+    "EdgeSwitchConnector",
 ]

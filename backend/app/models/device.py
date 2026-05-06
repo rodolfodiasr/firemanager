@@ -28,6 +28,7 @@ class VendorEnum(str, enum.Enum):
     juniper    = "juniper"
     aruba      = "aruba"
     ubiquiti   = "ubiquiti"
+    edgeswitch = "edgeswitch"  # Ubiquiti EdgeSwitch (EdgeMax 1.x/2.x — needs enable password)
     dell       = "dell"
     dell_n     = "dell_n"    # Dell EMC Networking N-Series (DNOS6: N1524P, N1548P, N2000, N3000)
     hp_comware = "hp_comware"  # HP / H3C Comware (V1910, V3600, V5800, A-Series)

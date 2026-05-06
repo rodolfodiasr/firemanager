@@ -14,6 +14,7 @@ from app.connectors.ssh import (
     CiscoNXOSConnector,
     DellNConnector,
     DellOS10Connector,
+    EdgeSwitchConnector,
     HPComwareConnector,
     JuniperConnector,
     UbiquitiConnector,
@@ -31,17 +32,19 @@ CLI_VENDORS = frozenset({
     VendorEnum.dell_n,
     VendorEnum.hp_comware,
     VendorEnum.ubiquiti,
+    VendorEnum.edgeswitch,
 })
 
 _SSH_CONNECTOR_MAP: dict[VendorEnum, type[BaseSSHConnector]] = {
-    VendorEnum.cisco_ios:  CiscoIOSConnector,
-    VendorEnum.cisco_nxos: CiscoNXOSConnector,
-    VendorEnum.juniper:    JuniperConnector,
-    VendorEnum.aruba:      ArubaConnector,
-    VendorEnum.dell:       DellOS10Connector,
-    VendorEnum.dell_n:     DellNConnector,
-    VendorEnum.hp_comware: HPComwareConnector,
-    VendorEnum.ubiquiti:   UbiquitiConnector,
+    VendorEnum.cisco_ios:   CiscoIOSConnector,
+    VendorEnum.cisco_nxos:  CiscoNXOSConnector,
+    VendorEnum.juniper:     JuniperConnector,
+    VendorEnum.aruba:       ArubaConnector,
+    VendorEnum.dell:        DellOS10Connector,
+    VendorEnum.dell_n:      DellNConnector,
+    VendorEnum.hp_comware:  HPComwareConnector,
+    VendorEnum.ubiquiti:    UbiquitiConnector,
+    VendorEnum.edgeswitch:  EdgeSwitchConnector,
 }
 
 
