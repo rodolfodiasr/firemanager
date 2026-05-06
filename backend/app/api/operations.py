@@ -83,6 +83,7 @@ async def chat_with_agent(
         device_id=data.device_id,
         user_message=resolved_input,
         parent_operation_id=data.parent_operation_id,
+        use_bookstack_context=data.use_bookstack_context,
     )
     return await _chat_response(db, ctx, operation, agent_response)
 

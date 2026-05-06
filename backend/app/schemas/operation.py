@@ -10,6 +10,7 @@ class OperationCreate(BaseModel):
     device_id: UUID
     natural_language_input: str
     parent_operation_id: UUID | None = None
+    use_bookstack_context: bool = True
 
 
 class ChatMessage(BaseModel):

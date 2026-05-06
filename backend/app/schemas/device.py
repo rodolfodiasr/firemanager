@@ -76,3 +76,11 @@ class DeviceBookstackLink(BaseModel):
 class DocDraftResult(BaseModel):
     page_url: str
     message: str
+
+
+class BookstackPageInfo(BaseModel):
+    valid: bool
+    page_id: int | None = None
+    title: str | None = None
+    preview: str | None = None
+    error: str | None = None

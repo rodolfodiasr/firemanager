@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Pencil, Layers, Square, CheckSquare, AlertCircle, Loader2 } from "lucide-react";
+import { Pencil, Layers, Square, CheckSquare, AlertCircle, Loader2, BookOpen } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { ChatWindow } from "../components/agent/ChatWindow";
 import { useDevices } from "../hooks/useDevices";
@@ -154,6 +154,7 @@ export function Agent() {
   const { devices } = useDevices();
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(deviceParam ?? null);
   const [bulkMode, setBulkMode] = useState(false);
+  const [useBookstackContext, setUseBookstackContext] = useState(true);
 
   const { data: editOp } = useQuery({
     queryKey: ["operation", editId],
@@ -163,7 +164,7 @@ export function Agent() {
   });
 
   const { messages, readyToExecute, requiresApproval, loading, send, execute, submitForReview, reset } =
-    useAgent(selectedDeviceId, editOp?.id ?? null);
+    useAgent(selectedDeviceId, editOp?.id ?? null, useBookstackContext);
 
   useEffect(() => {
     if (!editOp) return;
@@ -257,10 +258,24 @@ export function Agent() {
                 </div>
               )}
               {!editOp && selectedDevice ? (
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+                <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-gray-500">Operando em:</span>
                   <span className="text-sm font-medium">{selectedDevice.name}</span>
                   <span className="text-xs text-gray-400">({selectedDevice.vendor})</span>
+                  {selectedDevice.bookstack_page_id && (
+                    <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={useBookstackContext}
+                        onChange={(e) => setUseBookstackContext(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-brand-600"
+                      />
+                      <BookOpen size={12} className={useBookstackContext ? "text-brand-600" : "text-gray-400"} />
+                      <span className={`text-xs font-medium ${useBookstackContext ? "text-brand-700" : "text-gray-400"}`}>
+                        Contexto BookStack
+                      </span>
+                    </label>
+                  )}
                 </div>
               ) : !editOp ? (
                 <div className="px-4 py-3 border-b border-gray-100 bg-yellow-50">

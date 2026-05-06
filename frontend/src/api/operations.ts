@@ -2,12 +2,13 @@ import type { ChatResponse, Operation } from "../types/operation";
 import apiClient from "./client";
 
 export const operationsApi = {
-  startChat: (deviceId: string, message: string, parentOperationId?: string) =>
+  startChat: (deviceId: string, message: string, parentOperationId?: string, useBookstackContext: boolean = true) =>
     apiClient
       .post<ChatResponse>("/operations", {
         device_id: deviceId,
         natural_language_input: message,
         parent_operation_id: parentOperationId ?? null,
+        use_bookstack_context: useBookstackContext,
       })
       .then((r) => r.data),
 

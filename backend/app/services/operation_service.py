@@ -181,6 +181,7 @@ _sessions: dict[UUID, AgentSession] = {}
 async def start_or_continue_operation(
     db: AsyncSession, user_id: UUID, operation_id: UUID | None, device_id: UUID, user_message: str,
     parent_operation_id: UUID | None = None,
+    use_bookstack_context: bool = True,
 ) -> tuple[Operation, str]:
     device = await get_device(db, device_id)
 
@@ -195,7 +196,10 @@ async def start_or_continue_operation(
         db.add(operation)
         await db.flush()
         await db.refresh(operation)
-        bookstack_context = await fetch_bookstack_context(db, device, query=user_message)
+        if use_bookstack_context:
+            bookstack_context = await fetch_bookstack_context(db, device, query=user_message)
+        else:
+            bookstack_context = ""
         session = AgentSession(device, bookstack_context=bookstack_context)
         _sessions[operation.id] = session
     else:

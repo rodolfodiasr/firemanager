@@ -278,8 +278,13 @@ async def publish_device_snapshot(db: AsyncSession, device: Device) -> None:
     """Capture current device state and overwrite the BookStack snapshot page.
 
     Safe for any device — silently returns if BookStack is not configured.
+    Skips the BookStack write when content is unchanged (hash comparison).
     Designed to be called by the Celery beat task and the manual API endpoint.
     """
+    import hashlib
+    from sqlalchemy import select as sa_select
+    from app.models.snapshot import Snapshot
+
     config = await resolve_integration(db, IntegrationType.bookstack, device.tenant_id)
     if not config:
         return
@@ -303,6 +308,19 @@ async def publish_device_snapshot(db: AsyncSession, device: Device) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     page_name = f"[FIREMANAGER SNAPSHOT] {device.name} — Estado Atual"
     snapshot_md = _build_snapshot_md(device, live_data, recent_ops, now)
+
+    # ── Hash check: skip BookStack write if content unchanged ─────────────────
+    snapshot_hash = hashlib.sha256(snapshot_md.encode()).hexdigest()
+    last_snap_result = await db.execute(
+        sa_select(Snapshot)
+        .where(Snapshot.device_id == device.id, Snapshot.label == "bookstack_snapshot")
+        .order_by(Snapshot.created_at.desc())
+        .limit(1)
+    )
+    last_snap = last_snap_result.scalar_one_or_none()
+    if last_snap and last_snap.config_hash == snapshot_hash:
+        log.info("snapshot_unchanged_skip", device=device.name)
+        return
 
     try:
         from app.connectors.bookstack import connector_from_config
@@ -336,8 +354,34 @@ async def publish_device_snapshot(db: AsyncSession, device: Device) -> None:
             device.bookstack_snapshot_page_id = new_page.id
             await db.flush()
 
+        # Persist snapshot hash so next run can skip if content unchanged
+        db.add(Snapshot(
+            device_id=device.id,
+            config_data=snapshot_md[:50000],
+            config_hash=snapshot_hash,
+            label="bookstack_snapshot",
+        ))
+        log.info("snapshot_published", device=device.name, hash=snapshot_hash[:8])
+
     except Exception:
         pass  # snapshot failure is non-critical
+
+
+_CLI_CONFIG_COMMAND: dict = {}  # populated lazily below
+
+
+def _cli_config_command(vendor: "VendorEnum") -> str:
+    from app.models.device import VendorEnum as VE
+    return {
+        VE.hp_comware:  "display current-configuration",
+        VE.cisco_ios:   "show running-config",
+        VE.cisco_nxos:  "show running-config",
+        VE.dell_n:      "show running-config",
+        VE.dell:        "show running-config",
+        VE.aruba:       "show running-config",
+        VE.ubiquiti:    "show configuration",
+        VE.juniper:     "show configuration",
+    }.get(vendor, "show running-config")
 
 
 async def _collect_live_data(device: Device) -> dict:
@@ -349,6 +393,19 @@ async def _collect_live_data(device: Device) -> dict:
         return {"status": device.status.value}
 
     if device.vendor in CLI_VENDORS:
+        try:
+            from app.connectors.factory import get_ssh_connector
+            ssh = get_ssh_connector(device)
+            cmd = _cli_config_command(device.vendor)
+            result = await ssh.execute_show_commands([cmd])
+            if result.success and result.output.strip():
+                raw = result.output
+                lines = raw.splitlines()
+                if len(lines) > 200:
+                    raw = "\n".join(lines[:200]) + f"\n\n... [+{len(lines) - 200} linhas omitidas]"
+                return {"status": "online", "cli_vendor": True, "cli_running_config": raw}
+        except Exception as exc:
+            log.warning("cli_snapshot_ssh_failed", device=device.name, error=str(exc))
         return {"status": "online", "cli_vendor": True}
 
     data: dict = {"status": "online"}
@@ -442,10 +499,20 @@ def _build_snapshot_md(device: Device, live_data: dict, recent_ops: list, timest
     ]
 
     if live_data.get("cli_vendor"):
-        lines += [
-            "_Vendor CLI — coleta estruturada não realizada no snapshot periódico._",
-            "_Consulte o histórico de operações para ver as alterações realizadas via FireManager._",
-        ]
+        cli_config = live_data.get("cli_running_config")
+        if cli_config:
+            lines += [
+                "### Running-config atual",
+                "",
+                "```",
+                cli_config.strip(),
+                "```",
+            ]
+        else:
+            lines += [
+                "_Vendor CLI — coleta de running-config falhou ou dispositivo offline._",
+                "_Consulte o histórico de operações para ver as alterações realizadas via FireManager._",
+            ]
     elif "rules" in live_data:
         rules = live_data["rules"]
         nats = live_data.get("nats", [])
@@ -619,6 +686,23 @@ def _build_snapshot_md(device: Device, live_data: dict, recent_ops: list, timest
         lines.append("_Nenhuma operação registrada._")
 
     return "\n".join(lines)
+
+
+async def _fetch_page_info(db: AsyncSession, tenant_id, page_id: int):
+    """Validate that a BookStack page exists and return basic info. Never raises."""
+    from app.schemas.device import BookstackPageInfo
+    config = await resolve_integration(db, IntegrationType.bookstack, tenant_id)
+    if not config:
+        return BookstackPageInfo(valid=False, error="Integração BookStack não configurada para este tenant")
+    try:
+        from app.connectors.bookstack import connector_from_config
+        connector = connector_from_config(config)
+        page = await connector.get_page(page_id)
+        content = page.markdown or _strip_html(page.html)
+        preview = content.strip()[:300].replace("\n", " ") if content.strip() else None
+        return BookstackPageInfo(valid=True, page_id=page_id, title=page.name, preview=preview)
+    except Exception as exc:
+        return BookstackPageInfo(valid=False, page_id=page_id, error=str(exc))
 
 
 def _strip_html(html: str) -> str:

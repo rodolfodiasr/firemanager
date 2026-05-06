@@ -3,7 +3,7 @@ import toast from "react-hot-toast";
 import { operationsApi } from "../api/operations";
 import { useAgentStore, type TableData } from "../store/agentStore";
 
-export function useAgent(deviceId: string | null, parentOperationId?: string | null) {
+export function useAgent(deviceId: string | null, parentOperationId?: string | null, useBookstackContext: boolean = true) {
   const {
     messages,
     currentOperationId,
@@ -33,7 +33,7 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
       try {
         let response;
         if (!currentOperationId) {
-          response = await operationsApi.startChat(deviceId, content, parentOperationId ?? undefined);
+          response = await operationsApi.startChat(deviceId, content, parentOperationId ?? undefined, useBookstackContext);
           setOperationId(response.operation_id);
         } else {
           response = await operationsApi.continueChat(currentOperationId, content);
@@ -50,7 +50,7 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
         setLoading(false);
       }
     },
-    [deviceId, parentOperationId, currentOperationId, addMessage, setOperationId, setReadyToExecute, setRequiresApproval, setIntent, setLoading]
+    [deviceId, parentOperationId, useBookstackContext, currentOperationId, addMessage, setOperationId, setReadyToExecute, setRequiresApproval, setIntent, setLoading]
   );
 
   const execute = useCallback(async () => {

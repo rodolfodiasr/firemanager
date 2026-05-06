@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TenantContext, get_tenant_context, require_tenant_admin
 from app.database import get_db
-from app.schemas.device import DeviceBookstackLink, DeviceCreate, DeviceRead, DeviceUpdate, DocDraftResult
+from app.schemas.device import BookstackPageInfo, DeviceBookstackLink, DeviceCreate, DeviceRead, DeviceUpdate, DocDraftResult
 from app.services.device_service import (
     create_device,
     delete_device,
@@ -80,6 +80,19 @@ async def run_health_check(
     return DeviceRead.model_validate(device)
 
 
+@router.get("/{device_id}/bookstack/validate-page", response_model=BookstackPageInfo)
+async def validate_bookstack_page(
+    device_id: UUID,
+    page_id: int = Query(...),
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)] = None,
+    db:  Annotated[AsyncSession, Depends(get_db)] = None,
+) -> BookstackPageInfo:
+    """Validate that a BookStack page_id exists and return its title/preview (admin only)."""
+    from app.services.bookstack_service import _fetch_page_info
+    await get_device(db, device_id, tenant_id=ctx.tenant.id)
+    return await _fetch_page_info(db, ctx.tenant.id, page_id)
+
+
 @router.patch("/{device_id}/bookstack", response_model=DeviceRead)
 async def link_device_bookstack(
     device_id: UUID,
@@ -87,10 +100,19 @@ async def link_device_bookstack(
     ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> DeviceRead:
-    """Set BookStack page IDs for a device (admin only)."""
+    """Set BookStack page IDs for a device. Validates bookstack_page_id existence before saving (admin only)."""
+    from app.services.bookstack_service import _fetch_page_info
     device = await get_device(db, device_id, tenant_id=ctx.tenant.id)
+
     if data.bookstack_page_id is not None:
+        info = await _fetch_page_info(db, ctx.tenant.id, data.bookstack_page_id)
+        if not info.valid:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Página BookStack #{data.bookstack_page_id} não encontrada: {info.error}",
+            )
         device.bookstack_page_id = data.bookstack_page_id
+
     if data.bookstack_fm_page_id is not None:
         device.bookstack_fm_page_id = data.bookstack_fm_page_id
     if data.bookstack_doc_page_id is not None:
