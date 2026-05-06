@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   ClipboardCheck,
   BarChart3,
+  MessageSquare,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -62,8 +63,9 @@ const navSections: NavSection[] = [
   {
     title: "Plataforma",
     items: [
-      { to: "/audit",    icon: Shield,   label: "Auditoria"     },
-      { to: "/settings", icon: Settings, label: "Configurações" },
+        { to: "/audit",    icon: Shield,        label: "Auditoria"     },
+      { to: "/glpi",     icon: MessageSquare, label: "Tickets IA"    },
+      { to: "/settings", icon: Settings,      label: "Configurações" },
     ],
   },
 ];

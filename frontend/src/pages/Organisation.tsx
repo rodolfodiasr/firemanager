@@ -1,4 +1,5 @@
 import { Fragment, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Building2, Plus, UserPlus, Trash2, Edit2, Check, X,
@@ -13,6 +14,7 @@ import { tenantsApi } from "../api/tenants";
 import { inviteApi } from "../api/invite";
 import { permissionsApi, type DeviceCategory, type FunctionalModule } from "../api/permissions";
 import { integrationsApi } from "../api/integrations";
+import { glpiApi } from "../api/glpi";
 import { auditApi } from "../api/audit";
 import { AUDIT_INTENTS, type AuditPolicy, type UserForPolicy } from "../types/audit";
 import type { Integration, IntegrationType } from "../types/integration";
@@ -1098,6 +1100,234 @@ function IntegrationCard({ type, existing, tenantId, isSuperAdmin }: {
   );
 }
 
+// ── GLPI Integration Card ─────────────────────────────────────────────────────
+
+const PRIORITY_LABELS: Record<number, string> = {
+  1: "Muito Baixa", 2: "Baixa", 3: "Média", 4: "Alta", 5: "Muito Alta", 6: "Crítica",
+};
+
+const TICKET_TYPE_LABELS: Record<number, string> = {
+  1: "Incidente", 2: "Requisição", 3: "Problema", 4: "Mudança",
+};
+
+function GlpiIntegrationCard() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency_ms?: number | null } | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  const { data: existing } = useQuery({
+    queryKey: ["glpi-integration"],
+    queryFn: glpiApi.getIntegration,
+  });
+
+  const { register, handleSubmit, reset, watch, setValue, formState: { isSubmitting } } = useForm<{
+    glpi_url: string; app_token: string; username: string; password: string;
+    verify_ssl: boolean; min_priority: string; poll_interval_minutes: string; lookback_hours: string;
+    type_1: boolean; type_2: boolean; type_3: boolean; type_4: boolean;
+  }>({
+    defaultValues: {
+      glpi_url: "", app_token: "", username: "", password: "",
+      verify_ssl: true, min_priority: "3", poll_interval_minutes: "5", lookback_hours: "24",
+      type_1: true, type_2: true, type_3: false, type_4: false,
+    },
+  });
+
+  useEffect(() => {
+    if (!open || !existing) return;
+    reset({
+      glpi_url: existing.glpi_url,
+      app_token: existing.app_token,
+      username: existing.username,
+      password: "",
+      verify_ssl: existing.verify_ssl,
+      min_priority: String(existing.min_priority),
+      poll_interval_minutes: String(existing.poll_interval_minutes),
+      lookback_hours: String(existing.lookback_hours),
+      type_1: existing.trigger_types.includes(1),
+      type_2: existing.trigger_types.includes(2),
+      type_3: existing.trigger_types.includes(3),
+      type_4: existing.trigger_types.includes(4),
+    });
+  }, [open, existing]);
+
+  const saveMut = useMutation({
+    mutationFn: async (fd: Parameters<typeof handleSubmit>[0] extends (data: infer D) => unknown ? D : never) => {
+      const types = [1, 2, 3, 4].filter((n) => (fd as Record<string, unknown>)[`type_${n}`]);
+      const payload = {
+        glpi_url:              (fd as Record<string, string>).glpi_url,
+        app_token:             (fd as Record<string, string>).app_token,
+        username:              (fd as Record<string, string>).username,
+        verify_ssl:            (fd as Record<string, boolean>).verify_ssl,
+        min_priority:          parseInt((fd as Record<string, string>).min_priority) || 3,
+        trigger_types:         types,
+        poll_interval_minutes: parseInt((fd as Record<string, string>).poll_interval_minutes) || 5,
+        lookback_hours:        parseInt((fd as Record<string, string>).lookback_hours) || 24,
+        ...(((fd as Record<string, string>).password) ? { password: (fd as Record<string, string>).password } : {}),
+      };
+      if (existing) return glpiApi.updateIntegration(existing.id, payload);
+      return glpiApi.createIntegration({ ...payload, password: (fd as Record<string, string>).password });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["glpi-integration"] }); setOpen(false); setTestResult(null); },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => glpiApi.deleteIntegration(existing!.id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["glpi-integration"] }); setTestResult(null); },
+  });
+
+  const handleTest = async () => {
+    if (!existing) return;
+    setTesting(true); setTestResult(null);
+    try {
+      setTestResult(await glpiApi.testIntegration(existing.id));
+    } catch {
+      setTestResult({ success: false, message: "Erro ao testar conexão" });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className={`bg-white rounded-xl border ${existing?.is_active ? "border-gray-200" : "border-gray-100 opacity-60"} p-5 flex flex-col gap-3`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">GLPI</span>
+            <span className="flex items-center gap-1 text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full">
+              <Building2 size={10} />Tenant
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">Help desk — análise automática de tickets com IA.</p>
+        </div>
+        {existing
+          ? <CheckCircle2 size={18} className="text-green-500 shrink-0" />
+          : <XCircle    size={18} className="text-gray-300 shrink-0" />}
+      </div>
+
+      {testResult && (
+        <div className={`text-xs rounded-lg px-3 py-2 ${testResult.success ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
+          {testResult.success ? "✓" : "✗"} {testResult.message}
+          {testResult.latency_ms != null && <span className="ml-2 text-gray-400">{testResult.latency_ms.toFixed(0)}ms</span>}
+        </div>
+      )}
+
+      {open && (
+        <form
+          onSubmit={handleSubmit((d) => saveMut.mutate(d as Parameters<typeof saveMut.mutate>[0]))}
+          className="space-y-3 pt-2 border-t border-gray-100"
+        >
+          {[
+            { key: "glpi_url",   label: "URL do GLPI",   placeholder: "https://glpi.empresa.com" },
+            { key: "app_token",  label: "App-Token",      placeholder: "Token da aplicação API" },
+            { key: "username",   label: "Usuário",        placeholder: "glpi_api" },
+          ].map(({ key, label, placeholder }) => (
+            <div key={key}>
+              <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+              <input
+                {...register(key as "glpi_url" | "app_token" | "username")}
+                placeholder={placeholder}
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+          ))}
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Senha {existing && <span className="text-gray-400 font-normal">(deixe vazio para manter a atual)</span>}
+            </label>
+            <input
+              type="password" {...register("password")}
+              placeholder={existing ? "••••••••" : "Senha do usuário GLPI"}
+              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Prioridade mínima</label>
+            <select {...register("min_priority")} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+              {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Tipos de ticket</label>
+            <div className="flex flex-wrap gap-3">
+              {([1, 2, 3, 4] as const).map((n) => (
+                <label key={n} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                  <input type="checkbox" {...register(`type_${n}` as "type_1" | "type_2" | "type_3" | "type_4")} className="rounded" />
+                  {TICKET_TYPE_LABELS[n]}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Poll (minutos)</label>
+              <input type="number" min="1" max="60" {...register("poll_interval_minutes")} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Lookback (horas)</label>
+              <input type="number" min="1" max="168" {...register("lookback_hours")} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" {...register("verify_ssl")} className="rounded" />
+            Verificar certificado SSL
+          </label>
+
+          {saveMut.isError && (
+            <p className="text-xs text-red-600">
+              {(saveMut.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao salvar"}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button type="submit" disabled={isSubmitting || saveMut.isPending}
+              className="flex-1 bg-brand-600 text-white text-xs font-medium py-1.5 rounded-lg hover:bg-brand-700 disabled:opacity-50">
+              {saveMut.isPending ? "Salvando..." : "Salvar"}
+            </button>
+            <button type="button" onClick={() => setOpen(false)}
+              className="flex-1 border border-gray-300 text-gray-600 text-xs font-medium py-1.5 rounded-lg hover:bg-gray-50">
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="flex gap-2 pt-1 flex-wrap">
+        <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors">
+          {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          {existing ? "Editar" : "Configurar"}
+        </button>
+        {existing && (
+          <>
+            <button onClick={handleTest} disabled={testing}
+              className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50">
+              {testing ? <Loader2 size={12} className="animate-spin" /> : null}
+              Testar
+            </button>
+            <button onClick={() => navigate("/glpi")}
+              className="flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors">
+              Ver análises →
+            </button>
+            <button
+              onClick={() => { if (confirm("Remover integração GLPI?")) deleteMut.mutate(); }}
+              className="ml-auto text-gray-300 hover:text-red-500 transition-colors"
+            >
+              <Trash2 size={13} />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function IntegracoesTab() {
   const { user, tenant } = useAuth();
   const isSuperAdmin = user?.is_super_admin ?? false;
@@ -1132,6 +1362,7 @@ function IntegracoesTab() {
               />
             );
           })}
+          <GlpiIntegrationCard />
         </div>
       )}
     </div>

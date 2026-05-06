@@ -17,6 +17,7 @@ import { ServerAnalysis } from "./pages/ServerAnalysis";
 import { Remediation } from "./pages/Remediation";
 import { Compliance } from "./pages/Compliance";
 import { Governance } from "./pages/Governance";
+import { GlpiAnalyses } from "./pages/GlpiAnalyses";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -64,6 +65,7 @@ export function AppRouter() {
       <Route path="/remediation" element={<ProtectedLayout><Remediation /></ProtectedLayout>} />
       <Route path="/compliance" element={<ProtectedLayout><Compliance /></ProtectedLayout>} />
       <Route path="/governance" element={<ProtectedLayout><Governance /></ProtectedLayout>} />
+      <Route path="/glpi"       element={<ProtectedLayout><GlpiAnalyses /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
