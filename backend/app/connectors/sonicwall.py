@@ -426,7 +426,9 @@ class SonicWallConnector(BaseConnector):
                 return ExecutionResult(success=True, raw_response=resp.json())
             try:
                 body = resp.json()
-                codes = [i.get("code", "") for i in (body.get("info") or [])]
+                status_block = body.get("status") or {}
+                info_list = status_block.get("info") or body.get("info") or []
+                codes = [i.get("code", "") for i in info_list]
                 if "E_EXISTS" in codes:
                     return ExecutionResult(success=True, raw_response=body, already_existed=True)
             except Exception:
