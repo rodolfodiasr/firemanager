@@ -424,6 +424,13 @@ class SonicWallConnector(BaseConnector):
             await self._commit(client)
             if resp.status_code in (200, 201):
                 return ExecutionResult(success=True, raw_response=resp.json())
+            try:
+                body = resp.json()
+                codes = [i.get("code", "") for i in (body.get("info") or [])]
+                if "E_EXISTS" in codes:
+                    return ExecutionResult(success=True, raw_response=body)
+            except Exception:
+                pass
             return ExecutionResult(success=False, error=resp.text)
 
     async def create_group(self, spec: GroupSpec) -> ExecutionResult:
