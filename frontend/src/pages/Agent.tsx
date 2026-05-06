@@ -262,20 +262,42 @@ export function Agent() {
                   <span className="text-xs text-gray-500">Operando em:</span>
                   <span className="text-sm font-medium">{selectedDevice.name}</span>
                   <span className="text-xs text-gray-400">({selectedDevice.vendor})</span>
-                  {selectedDevice.bookstack_page_id && (
-                    <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={useBookstackContext}
-                        onChange={(e) => setUseBookstackContext(e.target.checked)}
-                        className="w-3.5 h-3.5 accent-brand-600"
-                      />
-                      <BookOpen size={12} className={useBookstackContext ? "text-brand-600" : "text-gray-400"} />
-                      <span className={`text-xs font-medium ${useBookstackContext ? "text-brand-700" : "text-gray-400"}`}>
-                        Contexto BookStack
-                      </span>
-                    </label>
-                  )}
+                  <label
+                    className="ml-auto flex items-center gap-1.5 select-none"
+                    title={
+                      selectedDevice.bookstack_page_id
+                        ? "Documentação BookStack vinculada — clique para incluir/excluir como contexto da IA"
+                        : "Sem página BookStack vinculada a este dispositivo"
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={useBookstackContext && !!selectedDevice.bookstack_page_id}
+                      onChange={(e) => setUseBookstackContext(e.target.checked)}
+                      disabled={!selectedDevice.bookstack_page_id}
+                      className="w-3.5 h-3.5 accent-brand-600 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                    />
+                    <BookOpen
+                      size={12}
+                      className={
+                        selectedDevice.bookstack_page_id && useBookstackContext
+                          ? "text-brand-600"
+                          : "text-gray-300"
+                      }
+                    />
+                    <span
+                      className={`text-xs font-medium ${
+                        selectedDevice.bookstack_page_id && useBookstackContext
+                          ? "text-brand-700"
+                          : "text-gray-400"
+                      }`}
+                    >
+                      Contexto BookStack
+                      {!selectedDevice.bookstack_page_id && (
+                        <span className="ml-1 font-normal text-gray-400">(não vinculado)</span>
+                      )}
+                    </span>
+                  </label>
                 </div>
               ) : !editOp ? (
                 <div className="px-4 py-3 border-b border-gray-100 bg-yellow-50">
