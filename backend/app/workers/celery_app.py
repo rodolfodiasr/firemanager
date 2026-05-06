@@ -15,6 +15,7 @@ celery_app = Celery(
         "app.workers.bookstack_index",
         "app.workers.compliance_scan",
         "app.workers.glpi_sync",
+        "app.workers.migration_worker",
     ],
 )
 
