@@ -200,9 +200,19 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
                 cmds.append(" port trunk permit vlan all")
             elif tagged:
                 cmds.append(f" port trunk permit vlan {_space_vlans(tagged)}")
+            else:
+                warns.append(
+                    f"Porta '{src}' modo trunk sem VLANs tagged — adicione manualmente: "
+                    f"port trunk permit vlan <IDs>"
+                )
         else:
             if pvid:
                 cmds.append(f" port access vlan {pvid}")
+            else:
+                warns.append(
+                    f"Porta '{src}' sem VLAN de acesso — adicione manualmente: "
+                    f"port access vlan <ID>"
+                )
         cmds += ["quit", ""]
 
     return {"commands": cmds, "warnings": warns}
