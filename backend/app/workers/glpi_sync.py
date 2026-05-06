@@ -192,6 +192,7 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
             tenant_id           = integration.tenant_id,
             glpi_integration_id = integration.id,
             glpi_ticket_id      = glpi_ticket_id,
+            glpi_itemtype       = itemtype,
             glpi_ticket_title   = title[:500],
             glpi_ticket_content = content[:_MAX_CONTENT_CHARS],
             status              = GlpiAnalysisStatus.analyzing,

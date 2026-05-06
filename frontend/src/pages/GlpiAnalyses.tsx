@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  ExternalLink,
   Loader2,
   MessageSquare,
   RefreshCw,
@@ -33,6 +34,27 @@ const STATUS_STYLE: Record<GlpiAnalysisStatus, string> = {
   completed: "bg-green-100 text-green-700",
   failed:    "bg-red-100 text-red-700",
 };
+
+const ITEMTYPE_LABEL: Record<string, string> = {
+  Ticket:  "Ticket",
+  Problem: "Problema",
+  Change:  "Mudança",
+};
+
+const ITEMTYPE_STYLE: Record<string, string> = {
+  Ticket:  "bg-blue-50 text-blue-700",
+  Problem: "bg-red-50 text-red-700",
+  Change:  "bg-purple-50 text-purple-700",
+};
+
+function glpiItemUrl(baseUrl: string, itemtype: string, id: number): string {
+  const paths: Record<string, string> = {
+    Ticket:  "ticket",
+    Problem: "problem",
+    Change:  "change",
+  };
+  return `${baseUrl}/front/${paths[itemtype] ?? "ticket"}.form.php?id=${id}`;
+}
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
@@ -72,6 +94,10 @@ function AnalysisSlideOver({
     );
   }
 
+  const glpiLink = data?.glpi_url
+    ? glpiItemUrl(data.glpi_url, data.glpi_itemtype, data.glpi_ticket_id)
+    : null;
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
@@ -81,15 +107,37 @@ function AnalysisSlideOver({
           <div className="flex items-center gap-2 min-w-0">
             <MessageSquare size={18} className="text-brand-600 shrink-0" />
             <div className="min-w-0">
-              <p className="text-xs text-gray-400">Ticket #{data?.glpi_ticket_id}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-400">#{data?.glpi_ticket_id}</p>
+                {data?.glpi_itemtype && (
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${ITEMTYPE_STYLE[data.glpi_itemtype] ?? "bg-gray-100 text-gray-600"}`}>
+                    {ITEMTYPE_LABEL[data.glpi_itemtype] ?? data.glpi_itemtype}
+                  </span>
+                )}
+              </div>
               <h2 className="text-sm font-semibold text-gray-900 truncate">
                 {data?.glpi_ticket_title ?? "Carregando..."}
               </h2>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 shrink-0 ml-3">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2 shrink-0 ml-3">
+            {glpiLink && (
+              <a
+                href={glpiLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 font-medium"
+                title="Abrir no GLPI"
+              >
+                <ExternalLink size={13} />
+                GLPI
+              </a>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
@@ -128,11 +176,11 @@ function AnalysisSlideOver({
               {/* Analysis sections */}
               {data.status === "completed" ? (
                 <div className="space-y-5 divide-y divide-gray-100">
-                  <Section title="Diagnóstico"          content={data.diagnostico} />
-                  <div className="pt-5"><Section title="Ações imediatas"   content={data.acoes_imediatas} /></div>
-                  <div className="pt-5"><Section title="Causa raiz"        content={data.causa_raiz} /></div>
+                  <Section title="Diagnóstico"           content={data.diagnostico} />
+                  <div className="pt-5"><Section title="Ações imediatas"    content={data.acoes_imediatas} /></div>
+                  <div className="pt-5"><Section title="Causa raiz"         content={data.causa_raiz} /></div>
                   <div className="pt-5"><Section title="Plano de remediação" content={data.plano_remediacao} /></div>
-                  <div className="pt-5"><Section title="Prevenção"         content={data.prevencao} /></div>
+                  <div className="pt-5"><Section title="Prevenção"          content={data.prevencao} /></div>
                 </div>
               ) : data.status === "failed" ? (
                 <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-sm text-red-700">
@@ -157,10 +205,23 @@ function AnalysisSlideOver({
               )}
 
               {/* Meta */}
-              <div className="text-xs text-gray-400 pt-2 border-t border-gray-100">
-                Analisado em {fmtDate(data.created_at)}
+              <div className="flex items-center gap-3 text-xs text-gray-400 pt-2 border-t border-gray-100 flex-wrap">
+                <span>Analisado em {fmtDate(data.created_at)}</span>
                 {data.glpi_followup_id && (
-                  <span className="ml-3 text-green-600">✓ Nota postada no GLPI (#{data.glpi_followup_id})</span>
+                  glpiLink ? (
+                    <a
+                      href={glpiLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-green-600 hover:text-green-700 font-medium"
+                    >
+                      <CheckCircle2 size={11} />
+                      Nota postada no GLPI (#{data.glpi_followup_id})
+                      <ExternalLink size={10} />
+                    </a>
+                  ) : (
+                    <span className="text-green-600">✓ Nota postada no GLPI (#{data.glpi_followup_id})</span>
+                  )
                 )}
               </div>
             </div>
@@ -200,10 +261,11 @@ function FilterPill({
 
 export function GlpiAnalyses() {
   const qc = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<GlpiAnalysisStatus | "">("");
-  const [securityOnly, setSecurityOnly] = useState(false);
+  const [statusFilter, setStatusFilter]   = useState<GlpiAnalysisStatus | "">("");
+  const [itemtypeFilter, setItemtypeFilter] = useState<string>("");
+  const [securityOnly, setSecurityOnly]   = useState(false);
   const [recurrentOnly, setRecurrentOnly] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId]       = useState<string | null>(null);
 
   const { data: integration } = useQuery({
     queryKey: ["glpi-integration"],
@@ -211,11 +273,12 @@ export function GlpiAnalyses() {
   });
 
   const { data: analyses = [], isLoading, refetch } = useQuery({
-    queryKey: ["glpi-analyses", statusFilter, securityOnly, recurrentOnly],
+    queryKey: ["glpi-analyses", statusFilter, itemtypeFilter, securityOnly, recurrentOnly],
     queryFn: () =>
       glpiApi.listAnalyses({
-        status: statusFilter || undefined,
-        security_only: securityOnly || undefined,
+        status:         statusFilter || undefined,
+        itemtype:       itemtypeFilter || undefined,
+        security_only:  securityOnly || undefined,
         recurrent_only: recurrentOnly || undefined,
         limit: 200,
       }),
@@ -233,6 +296,12 @@ export function GlpiAnalyses() {
   const securityCount  = analyses.filter((a) => a.is_security_incident).length;
   const recurrentCount = analyses.filter((a) => a.is_recurrent).length;
 
+  // Count by itemtype for badges
+  const countByType = analyses.reduce<Record<string, number>>((acc, a) => {
+    acc[a.glpi_itemtype] = (acc[a.glpi_itemtype] ?? 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <PageWrapper title="Tickets IA">
       {/* Header */}
@@ -241,7 +310,7 @@ export function GlpiAnalyses() {
           <h1 className="text-xl font-semibold text-gray-900">Tickets IA</h1>
           {analyses.length > 0 && (
             <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium">
-              {analyses.length} tickets
+              {analyses.length} {analyses.length === 1 ? "item" : "itens"}
             </span>
           )}
         </div>
@@ -267,8 +336,8 @@ export function GlpiAnalyses() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      {/* Status filters */}
+      <div className="flex flex-wrap gap-2 mb-2">
         <FilterPill active={statusFilter === ""} onClick={() => setStatusFilter("")}>
           Todos
         </FilterPill>
@@ -291,6 +360,27 @@ export function GlpiAnalyses() {
         </FilterPill>
       </div>
 
+      {/* Type filters */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <FilterPill active={itemtypeFilter === ""} onClick={() => setItemtypeFilter("")}>
+          Todos os tipos
+        </FilterPill>
+        {(["Ticket", "Problem", "Change"] as const).map((t) => (
+          <FilterPill
+            key={t}
+            active={itemtypeFilter === t}
+            onClick={() => setItemtypeFilter(itemtypeFilter === t ? "" : t)}
+          >
+            {ITEMTYPE_LABEL[t]}
+            {countByType[t] != null && (
+              <span className="bg-white/30 text-current rounded-full px-1 text-[10px] font-bold">
+                {countByType[t]}
+              </span>
+            )}
+          </FilterPill>
+        ))}
+      </div>
+
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {isLoading ? (
@@ -304,7 +394,7 @@ export function GlpiAnalyses() {
             <p className="text-sm">Nenhuma análise encontrada</p>
             {integration && (
               <p className="text-xs text-gray-300">
-                O worker processa novos tickets a cada {integration.poll_interval_minutes} minutos
+                O worker processa novos itens a cada {integration.poll_interval_minutes} minutos
               </p>
             )}
           </div>
@@ -313,6 +403,7 @@ export function GlpiAnalyses() {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">#</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Tipo</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Título</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Status</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">Seg.</th>
@@ -330,6 +421,11 @@ export function GlpiAnalyses() {
                   className="hover:bg-gray-50 cursor-pointer transition-colors"
                 >
                   <td className="px-4 py-3 text-gray-400 font-mono text-xs">{a.glpi_ticket_id}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${ITEMTYPE_STYLE[a.glpi_itemtype] ?? "bg-gray-100 text-gray-600"}`}>
+                      {ITEMTYPE_LABEL[a.glpi_itemtype] ?? a.glpi_itemtype}
+                    </span>
+                  </td>
                   <td className="px-4 py-3">
                     <p className="text-gray-800 font-medium truncate max-w-xs">{a.glpi_ticket_title || "—"}</p>
                   </td>

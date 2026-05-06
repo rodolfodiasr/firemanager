@@ -33,6 +33,7 @@ export const glpiApi = {
     status?: string;
     security_only?: boolean;
     recurrent_only?: boolean;
+    itemtype?: string;
     skip?: number;
     limit?: number;
   }) =>

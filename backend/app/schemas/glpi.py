@@ -82,6 +82,7 @@ class GlpiTestResult(BaseModel):
 class GlpiAnalysisListItem(BaseModel):
     id: UUID
     glpi_ticket_id: int
+    glpi_itemtype: str
     glpi_ticket_title: str
     status: GlpiAnalysisStatus
     confianca: float | None
@@ -89,6 +90,7 @@ class GlpiAnalysisListItem(BaseModel):
     is_recurrent: bool | None
     recurrence_count: int | None
     created_at: datetime
+    glpi_url: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -98,6 +100,7 @@ class GlpiTicketAnalysisRead(BaseModel):
     tenant_id: UUID
     glpi_integration_id: UUID
     glpi_ticket_id: int
+    glpi_itemtype: str
     glpi_ticket_title: str
     glpi_ticket_content: str | None
     status: GlpiAnalysisStatus
@@ -115,5 +118,6 @@ class GlpiTicketAnalysisRead(BaseModel):
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+    glpi_url: str | None = None
 
     model_config = {"from_attributes": True}

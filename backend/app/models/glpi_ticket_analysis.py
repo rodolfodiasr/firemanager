@@ -28,6 +28,7 @@ class GlpiTicketAnalysis(Base):
     glpi_integration_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
 
     glpi_ticket_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    glpi_itemtype: Mapped[str] = mapped_column(String(50), nullable=False, default="Ticket", index=True)
     glpi_ticket_title: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     glpi_ticket_content: Mapped[str | None] = mapped_column(Text, nullable=True)
 

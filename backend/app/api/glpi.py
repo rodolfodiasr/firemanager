@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TenantContext, get_current_user, require_tenant_admin, User
 from app.database import get_db
+from sqlalchemy.orm import joinedload
 from app.models.glpi_integration import GlpiIntegration
 from app.models.glpi_ticket_analysis import GlpiTicketAnalysis, GlpiAnalysisStatus
 from app.schemas.glpi import (
@@ -219,10 +220,12 @@ async def list_glpi_analyses(
     status: GlpiAnalysisStatus | None = Query(None),
     security_only: bool = Query(False),
     recurrent_only: bool = Query(False),
+    itemtype: str | None = Query(None),
 ) -> list[GlpiAnalysisListItem]:
     """List ticket analyses for the current tenant, newest first."""
     stmt = (
-        select(GlpiTicketAnalysis)
+        select(GlpiTicketAnalysis, GlpiIntegration.glpi_url)
+        .join(GlpiIntegration, GlpiTicketAnalysis.glpi_integration_id == GlpiIntegration.id)
         .where(GlpiTicketAnalysis.tenant_id == ctx.tenant.id)
         .order_by(GlpiTicketAnalysis.created_at.desc())
         .offset(skip)
@@ -234,10 +237,15 @@ async def list_glpi_analyses(
         stmt = stmt.where(GlpiTicketAnalysis.is_security_incident == True)
     if recurrent_only:
         stmt = stmt.where(GlpiTicketAnalysis.is_recurrent == True)
+    if itemtype:
+        stmt = stmt.where(GlpiTicketAnalysis.glpi_itemtype == itemtype)
 
     result = await db.execute(stmt)
-    rows = result.scalars().all()
-    return [GlpiAnalysisListItem.model_validate(r) for r in rows]
+    rows = result.all()
+    return [
+        GlpiAnalysisListItem(**GlpiAnalysisListItem.model_validate(row[0]).model_dump(), glpi_url=row[1])
+        for row in rows
+    ]
 
 
 @router.get("/analyses/{analysis_id}", response_model=GlpiTicketAnalysisRead)
@@ -247,11 +255,14 @@ async def get_glpi_analysis(
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> GlpiTicketAnalysisRead:
     result = await db.execute(
-        select(GlpiTicketAnalysis).where(GlpiTicketAnalysis.id == analysis_id)
+        select(GlpiTicketAnalysis, GlpiIntegration.glpi_url)
+        .join(GlpiIntegration, GlpiTicketAnalysis.glpi_integration_id == GlpiIntegration.id)
+        .where(GlpiTicketAnalysis.id == analysis_id)
     )
-    analysis = result.scalar_one_or_none()
-    if not analysis:
+    row = result.one_or_none()
+    if not row:
         raise HTTPException(status_code=404, detail="Análise não encontrada")
+    analysis, glpi_url = row
     if analysis.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=403, detail="Sem acesso a esta análise")
-    return GlpiTicketAnalysisRead.model_validate(analysis)
+    return GlpiTicketAnalysisRead(**GlpiTicketAnalysisRead.model_validate(analysis).model_dump(), glpi_url=glpi_url)

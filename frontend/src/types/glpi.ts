@@ -54,6 +54,7 @@ export interface GlpiTestResult {
 export interface GlpiAnalysisListItem {
   id: string;
   glpi_ticket_id: number;
+  glpi_itemtype: string;
   glpi_ticket_title: string;
   status: GlpiAnalysisStatus;
   confianca: number | null;
@@ -61,6 +62,7 @@ export interface GlpiAnalysisListItem {
   is_recurrent: boolean | null;
   recurrence_count: number | null;
   created_at: string;
+  glpi_url: string | null;
 }
 
 export interface GlpiTicketAnalysis extends GlpiAnalysisListItem {
@@ -76,4 +78,5 @@ export interface GlpiTicketAnalysis extends GlpiAnalysisListItem {
   glpi_followup_id: number | null;
   error_message: string | null;
   updated_at: string;
+  glpi_url: string | null;
 }
