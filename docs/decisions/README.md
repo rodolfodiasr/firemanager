@@ -12,6 +12,8 @@ Decisões técnicas importantes do FireManager, com contexto e anti-patterns doc
 | [ADR-006](ADR-006-windows-linux-workflow.md) | Workflow Windows → Linux VM | Infra de desenvolvimento |
 | [ADR-007](ADR-007-sqlalchemy-missinggreenlet.md) | SQLAlchemy — refresh obrigatório após flush() | Todos os services async |
 | [ADR-008](ADR-008-structlog-obrigatorio.md) | Logging — usar structlog, não logging padrão | Todos os módulos backend |
+| [ADR-009](ADR-009-sonicwall-e-exists-idempotente.md) | SonicWall — E_EXISTS tratado como sucesso idempotente | sonicwall.py, operation_service |
+| [ADR-010](ADR-010-bookstack-snapshot-incremental.md) | BookStack — snapshot incremental com hash SHA-256 | bookstack_service, Snapshot model |
 
 ## Como usar estes ADRs
 
