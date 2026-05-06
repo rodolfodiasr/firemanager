@@ -39,6 +39,17 @@ class GlpiIntegration(Base):
     poll_interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     lookback_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=24)
 
+    # Analysis mode & enrichment sources (Opção 3 + 4)
+    auto_analysis_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    enrich_zabbix: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    enrich_wazuh: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    enrich_device_logs: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    device_logs_timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    auto_correlate_devices: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    unmatched_to_manual_queue: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    force_analysis_on_security: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    force_analysis_on_recurrent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

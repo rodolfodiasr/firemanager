@@ -1,4 +1,4 @@
-export type GlpiAnalysisStatus = "pending" | "analyzing" | "completed" | "failed";
+export type GlpiAnalysisStatus = "pending" | "pending_manual" | "analyzing" | "completed" | "failed";
 
 export interface GlpiIntegration {
   id: string;
@@ -14,6 +14,16 @@ export interface GlpiIntegration {
   tag_analyzed: string;
   poll_interval_minutes: number;
   lookback_hours: number;
+  // Analysis mode & enrichment sources
+  auto_analysis_enabled: boolean;
+  enrich_zabbix: boolean;
+  enrich_wazuh: boolean;
+  enrich_device_logs: boolean;
+  device_logs_timeout_seconds: number;
+  auto_correlate_devices: boolean;
+  unmatched_to_manual_queue: boolean;
+  force_analysis_on_security: boolean;
+  force_analysis_on_recurrent: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -30,6 +40,16 @@ export interface GlpiIntegrationCreate {
   tag_analyzed?: string;
   poll_interval_minutes?: number;
   lookback_hours?: number;
+  // Analysis mode & enrichment sources
+  auto_analysis_enabled?: boolean;
+  enrich_zabbix?: boolean;
+  enrich_wazuh?: boolean;
+  enrich_device_logs?: boolean;
+  device_logs_timeout_seconds?: number;
+  auto_correlate_devices?: boolean;
+  unmatched_to_manual_queue?: boolean;
+  force_analysis_on_security?: boolean;
+  force_analysis_on_recurrent?: boolean;
 }
 
 export interface GlpiIntegrationUpdate {
@@ -43,6 +63,16 @@ export interface GlpiIntegrationUpdate {
   trigger_types?: number[];
   poll_interval_minutes?: number;
   lookback_hours?: number;
+  // Analysis mode & enrichment sources
+  auto_analysis_enabled?: boolean;
+  enrich_zabbix?: boolean;
+  enrich_wazuh?: boolean;
+  enrich_device_logs?: boolean;
+  device_logs_timeout_seconds?: number;
+  auto_correlate_devices?: boolean;
+  unmatched_to_manual_queue?: boolean;
+  force_analysis_on_security?: boolean;
+  force_analysis_on_recurrent?: boolean;
 }
 
 export interface GlpiTestResult {

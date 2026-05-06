@@ -18,6 +18,16 @@ class GlpiIntegrationCreate(BaseModel):
     tag_analyzed: str = "fm-analyzed"
     poll_interval_minutes: int = 5
     lookback_hours: int = 24
+    # Analysis mode & enrichment sources
+    auto_analysis_enabled: bool = True
+    enrich_zabbix: bool = False
+    enrich_wazuh: bool = False
+    enrich_device_logs: bool = False
+    device_logs_timeout_seconds: int = 30
+    auto_correlate_devices: bool = True
+    unmatched_to_manual_queue: bool = True
+    force_analysis_on_security: bool = True
+    force_analysis_on_recurrent: bool = False
 
     @field_validator("glpi_url")
     @classmethod
@@ -29,6 +39,13 @@ class GlpiIntegrationCreate(BaseModel):
     def validate_priority(cls, v: int) -> int:
         if not 1 <= v <= 6:
             raise ValueError("min_priority deve estar entre 1 e 6")
+        return v
+
+    @field_validator("device_logs_timeout_seconds")
+    @classmethod
+    def validate_timeout(cls, v: int) -> int:
+        if not 5 <= v <= 300:
+            raise ValueError("device_logs_timeout_seconds deve estar entre 5 e 300")
         return v
 
 
@@ -45,6 +62,16 @@ class GlpiIntegrationUpdate(BaseModel):
     tag_analyzed: str | None = None
     poll_interval_minutes: int | None = None
     lookback_hours: int | None = None
+    # Analysis mode & enrichment sources
+    auto_analysis_enabled: bool | None = None
+    enrich_zabbix: bool | None = None
+    enrich_wazuh: bool | None = None
+    enrich_device_logs: bool | None = None
+    device_logs_timeout_seconds: int | None = None
+    auto_correlate_devices: bool | None = None
+    unmatched_to_manual_queue: bool | None = None
+    force_analysis_on_security: bool | None = None
+    force_analysis_on_recurrent: bool | None = None
 
     @field_validator("glpi_url")
     @classmethod
@@ -66,6 +93,16 @@ class GlpiIntegrationRead(BaseModel):
     tag_analyzed: str
     poll_interval_minutes: int
     lookback_hours: int
+    # Analysis mode & enrichment sources
+    auto_analysis_enabled: bool
+    enrich_zabbix: bool
+    enrich_wazuh: bool
+    enrich_device_logs: bool
+    device_logs_timeout_seconds: int
+    auto_correlate_devices: bool
+    unmatched_to_manual_queue: bool
+    force_analysis_on_security: bool
+    force_analysis_on_recurrent: bool
     created_at: datetime
     updated_at: datetime
 

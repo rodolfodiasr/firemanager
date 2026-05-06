@@ -4,25 +4,32 @@ For each active GlpiIntegration (per tenant):
   1. Fetch open tickets within lookback_hours matching priority/type filters
   2. Skip tickets already tracked in glpi_ticket_analyses
   3. Detect recurrence by searching similar closed tickets
-  4. Call Claude to produce structured diagnostic analysis
-  5. Post the analysis as a followup note in GLPI
-  6. Persist the result in glpi_ticket_analyses
+  4. Correlate ticket to FireManager devices (IP/hostname extraction)
+  5. Collect enrichment data from Zabbix/Wazuh/device SSH (if configured)
+  6. Call Claude to produce structured diagnostic analysis (if auto_analysis_enabled)
+  7. Post the analysis as a followup note in GLPI
+  8. Persist the result in glpi_ticket_analyses
 
 Design decisions:
   - Per-ticket isolation: one ticket failure does not block the rest
   - Idempotency: unique constraint (tenant_id, glpi_ticket_id) prevents duplicates
-  - Recurrence threshold: ≥ 2 similar solved tickets marks a ticket as recurrent
+  - Recurrence threshold: >= 2 similar solved tickets marks a ticket as recurrent
+  - Analysis mode: controlled per-integration via auto_analysis_enabled flag
+  - Enrichment: Zabbix/Wazuh/device logs collected only when explicitly enabled
+  - Manual queue: tickets without device correlation go to pending_manual when configured
 """
 import asyncio
 import json
 import logging
+import re
 
 from app.workers.celery_app import celery_app
 
 log = logging.getLogger(__name__)
 
-_RECURRENCE_THRESHOLD = 2   # similar solved tickets needed to flag as recurrent
+_RECURRENCE_THRESHOLD = 2    # similar solved tickets needed to flag as recurrent
 _MAX_CONTENT_CHARS    = 4000  # truncate ticket content sent to Claude
+_MAX_ENRICHMENT_CHARS = 2000  # max chars per enrichment source
 
 _SYSTEM_PROMPT = """Você é um especialista em TI integrado ao FireManager. Sua análise será lida por analistas de helpdesk — seja direto, prático e escaneável.
 
@@ -44,9 +51,10 @@ Regras:
 - acoes_imediatas: apenas o essencial para estabilizar agora, numere os passos
 - plano_remediacao: resolução definitiva de médio prazo, numere e priorize os passos
 - causa_raiz: 1 frase objetiva
-- confianca: 0.0 a 1.0
+- confianca: 0.0 a 1.0 — reduza se os dados forem insuficientes
 - is_security_incident: true se envolver ataque, vazamento, acesso não autorizado ou comprometimento
 - is_recurrent: true se o problema parece estrutural ou já ocorreu antes
+- Se dados de monitoramento (Zabbix/Wazuh/logs) estiverem disponíveis, use-os para enriquecer a análise
 - Se as informações forem insuficientes, diga isso no diagnóstico e sugira o que coletar"""
 
 
@@ -67,10 +75,11 @@ async def _async_glpi_sync() -> dict:
     from sqlalchemy import select
 
     summary = {
-        "integrations": 0,
+        "integrations":     0,
         "tickets_analysed": 0,
-        "tickets_skipped": 0,
-        "errors": 0,
+        "tickets_queued":   0,   # pending_manual
+        "tickets_skipped":  0,
+        "errors":           0,
     }
 
     async with AsyncSessionLocal() as db:
@@ -84,17 +93,18 @@ async def _async_glpi_sync() -> dict:
     for integration in integrations:
         try:
             stats = await _sync_integration(integration)
-            summary["integrations"]      += 1
-            summary["tickets_analysed"]  += stats["analysed"]
-            summary["tickets_skipped"]   += stats["skipped"]
-            summary["errors"]            += stats["errors"]
+            summary["integrations"]     += 1
+            summary["tickets_analysed"] += stats["analysed"]
+            summary["tickets_queued"]   += stats["queued"]
+            summary["tickets_skipped"]  += stats["skipped"]
+            summary["errors"]           += stats["errors"]
         except Exception as exc:
             summary["errors"] += 1
             log.error("glpi_sync_integration_failed tenant=%s error=%s", integration.tenant_id, exc)
 
     log.info(
-        "glpi_sync_done integrations=%d analysed=%d skipped=%d errors=%d",
-        summary["integrations"], summary["tickets_analysed"],
+        "glpi_sync_done integrations=%d analysed=%d queued=%d skipped=%d errors=%d",
+        summary["integrations"], summary["tickets_analysed"], summary["tickets_queued"],
         summary["tickets_skipped"], summary["errors"],
     )
     return summary
@@ -104,15 +114,14 @@ async def _sync_integration(integration) -> dict:
     from app.services.glpi_service import GlpiClient
     from app.utils.crypto import decrypt_credentials
 
-    stats = {"analysed": 0, "skipped": 0, "errors": 0}
+    stats = {"analysed": 0, "queued": 0, "skipped": 0, "errors": 0}
 
-    trigger_types = integration.trigger_types or []
-    # Types 1/2 are GLPI Ticket types; 3=Problem module; 4=Change module
-    ticket_types  = [t for t in trigger_types if t in (1, 2)] or None
+    trigger_types  = integration.trigger_types or []
+    ticket_types   = [t for t in trigger_types if t in (1, 2)] or None
     fetch_problems = 3 in trigger_types
     fetch_changes  = 4 in trigger_types
 
-    creds = decrypt_credentials(integration.encrypted_password)
+    creds    = decrypt_credentials(integration.encrypted_password)
     password = creds.get("password", "")
 
     try:
@@ -123,9 +132,8 @@ async def _sync_integration(integration) -> dict:
             password=password,
             verify_ssl=integration.verify_ssl,
         ) as client:
-            items: list[tuple[dict, str]] = []  # (item_data, glpi_itemtype)
+            items: list[tuple[dict, str]] = []
 
-            # Tickets (Incident / Request)
             if ticket_types or not trigger_types:
                 tickets = await client.get_open_tickets(
                     min_priority=integration.min_priority,
@@ -136,7 +144,6 @@ async def _sync_integration(integration) -> dict:
                 items += [(t, "Ticket") for t in tickets]
                 log.info("glpi_tickets_fetched tenant=%s count=%d", integration.tenant_id, len(tickets))
 
-            # Problems
             if fetch_problems:
                 problems = await client.get_open_problems(lookback_hours=integration.lookback_hours)
                 items += [(p, "Problem") for p in problems]
@@ -149,6 +156,8 @@ async def _sync_integration(integration) -> dict:
                     result = await _process_ticket(integration, item_data, client, itemtype=itemtype)
                     if result == "analysed":
                         stats["analysed"] += 1
+                    elif result == "queued":
+                        stats["queued"] += 1
                     else:
                         stats["skipped"] += 1
                 except Exception as exc:
@@ -163,7 +172,7 @@ async def _sync_integration(integration) -> dict:
 
 
 async def _process_ticket(integration, ticket_data: dict, client, itemtype: str = "Ticket") -> str:
-    """Analyse a single ticket/problem/change. Returns 'analysed' or 'skipped'."""
+    """Analyse a single ticket/problem/change. Returns 'analysed', 'queued', or 'skipped'."""
     from app.database import AsyncSessionLocal
     from app.models.glpi_ticket_analysis import GlpiTicketAnalysis, GlpiAnalysisStatus
     from sqlalchemy import select
@@ -176,34 +185,61 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
     content = GlpiClient_strip_html(ticket_data.get("21", ""))
 
     async with AsyncSessionLocal() as db:
-        # Idempotency check — skip if already tracked
+        # Idempotency — skip if already tracked
         existing = await db.execute(
             select(GlpiTicketAnalysis.id).where(
-                GlpiTicketAnalysis.tenant_id     == integration.tenant_id,
+                GlpiTicketAnalysis.tenant_id      == integration.tenant_id,
                 GlpiTicketAnalysis.glpi_ticket_id == glpi_ticket_id,
             )
         )
         if existing.scalar():
             return "skipped"
 
-        # Detect recurrence via similar closed tickets
-        similar = await client.get_similar_tickets(title, limit=10)
-        is_recurrent    = len(similar) >= _RECURRENCE_THRESHOLD
+        # Recurrence detection via similar closed tickets
+        similar          = await client.get_similar_tickets(title, limit=10)
+        is_recurrent     = len(similar) >= _RECURRENCE_THRESHOLD
         recurrence_count = len(similar)
         related_ids      = [int(t.get("2", 0)) for t in similar if t.get("2")]
 
-        # Create tracking record (pending)
+        # ── Device correlation ────────────────────────────────────────────────
+        correlated_device_ids: list = []
+        if integration.auto_correlate_devices:
+            correlated_device_ids = await _correlate_devices(
+                db, integration.tenant_id, title, content
+            )
+
+        # ── Decide analysis mode ──────────────────────────────────────────────
+        # Tickets go to manual queue when:
+        #   - auto_analysis_enabled is False, OR
+        #   - unmatched_to_manual_queue is True AND no device was correlated
+        #     (unless force overrides apply)
+        needs_force = (
+            (integration.force_analysis_on_security and _looks_like_security(title, content))
+            or (integration.force_analysis_on_recurrent and is_recurrent)
+        )
+
+        go_to_manual_queue = (
+            not integration.auto_analysis_enabled
+            or (
+                integration.unmatched_to_manual_queue
+                and not correlated_device_ids
+                and not needs_force
+            )
+        )
+
+        initial_status = GlpiAnalysisStatus.pending_manual if go_to_manual_queue else GlpiAnalysisStatus.analyzing
+
         analysis = GlpiTicketAnalysis(
-            tenant_id           = integration.tenant_id,
-            glpi_integration_id = integration.id,
-            glpi_ticket_id      = glpi_ticket_id,
-            glpi_itemtype       = itemtype,
-            glpi_ticket_title   = title[:500],
-            glpi_ticket_content = content[:_MAX_CONTENT_CHARS],
-            status              = GlpiAnalysisStatus.analyzing,
-            is_recurrent        = is_recurrent,
-            recurrence_count    = recurrence_count,
-            related_ticket_ids  = related_ids or None,
+            tenant_id            = integration.tenant_id,
+            glpi_integration_id  = integration.id,
+            glpi_ticket_id       = glpi_ticket_id,
+            glpi_itemtype        = itemtype,
+            glpi_ticket_title    = title[:500],
+            glpi_ticket_content  = content[:_MAX_CONTENT_CHARS],
+            status               = initial_status,
+            is_recurrent         = is_recurrent,
+            recurrence_count     = recurrence_count,
+            related_ticket_ids   = related_ids or None,
         )
         db.add(analysis)
         await db.flush()
@@ -211,9 +247,26 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
         analysis_id = analysis.id
         await db.commit()
 
-    # Call Claude outside the DB session (long IO)
+    if go_to_manual_queue:
+        log.info(
+            "ticket_queued_manual ticket=%d tenant=%s reason=%s",
+            glpi_ticket_id,
+            integration.tenant_id,
+            "auto_disabled" if not integration.auto_analysis_enabled else "no_device_match",
+        )
+        return "queued"
+
+    # ── Collect enrichment data ───────────────────────────────────────────────
+    enrichment: dict[str, str] = {}
+
+    if correlated_device_ids:
+        enrichment = await _collect_enrichment(
+            integration, correlated_device_ids
+        )
+
+    # ── Call Claude ───────────────────────────────────────────────────────────
     try:
-        ai_result = await _call_claude(title, content, is_recurrent, recurrence_count)
+        ai_result = await _call_claude(title, content, is_recurrent, recurrence_count, enrichment)
     except Exception as exc:
         async with AsyncSessionLocal() as db:
             rec = await db.get(GlpiTicketAnalysis, analysis_id)
@@ -224,45 +277,244 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
         log.warning("claude_analysis_failed ticket=%d error=%s", glpi_ticket_id, exc)
         return "skipped"
 
-    # Post followup to GLPI
+    # ── Post followup to GLPI ─────────────────────────────────────────────────
     followup_id = None
     try:
-        followup_text = _build_followup(ai_result, is_recurrent, recurrence_count, related_ids=related_ids)
-        followup_id   = await client.add_followup(glpi_ticket_id, followup_text, itemtype=itemtype)
+        followup_text = _build_followup(
+            ai_result, is_recurrent, recurrence_count,
+            related_ids=related_ids, enrichment_sources=list(enrichment.keys()),
+        )
+        followup_id = await client.add_followup(glpi_ticket_id, followup_text, itemtype=itemtype)
     except Exception as exc:
         log.warning("glpi_followup_failed ticket=%d error=%s", glpi_ticket_id, exc)
 
-    # Persist completed analysis
+    # ── Persist completed analysis ────────────────────────────────────────────
     async with AsyncSessionLocal() as db:
         rec = await db.get(GlpiTicketAnalysis, analysis_id)
         if rec:
-            rec.status              = GlpiAnalysisStatus.completed
-            rec.diagnostico         = ai_result.get("diagnostico")
-            rec.acoes_imediatas     = ai_result.get("acoes_imediatas")
-            rec.plano_remediacao    = ai_result.get("plano_remediacao")
-            rec.causa_raiz          = ai_result.get("causa_raiz")
-            rec.prevencao           = ai_result.get("prevencao")
-            rec.confianca           = float(ai_result.get("confianca", 0.0))
+            rec.status               = GlpiAnalysisStatus.completed
+            rec.diagnostico          = ai_result.get("diagnostico")
+            rec.acoes_imediatas      = ai_result.get("acoes_imediatas")
+            rec.plano_remediacao     = ai_result.get("plano_remediacao")
+            rec.causa_raiz           = ai_result.get("causa_raiz")
+            rec.prevencao            = ai_result.get("prevencao")
+            rec.confianca            = float(ai_result.get("confianca", 0.0))
             rec.is_security_incident = bool(ai_result.get("is_security_incident", False))
-            rec.is_recurrent        = is_recurrent or bool(ai_result.get("is_recurrent", False))
-            rec.glpi_followup_id    = followup_id
+            rec.is_recurrent         = is_recurrent or bool(ai_result.get("is_recurrent", False))
+            rec.glpi_followup_id     = followup_id
             await db.commit()
 
     log.info(
-        "ticket_analysed ticket=%d security=%s recurrent=%s confidence=%.2f",
+        "ticket_analysed ticket=%d security=%s recurrent=%s confidence=%.2f enriched=%s",
         glpi_ticket_id,
         ai_result.get("is_security_incident"),
         rec.is_recurrent if rec else is_recurrent,
         float(ai_result.get("confianca", 0.0)),
+        list(enrichment.keys()),
     )
     return "analysed"
 
+
+# ── Device correlation ────────────────────────────────────────────────────────
+
+_IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+
+
+async def _correlate_devices(db, tenant_id, title: str, content: str) -> list:
+    """Extract IPs and hostnames from ticket text and match to FireManager devices."""
+    from app.models.device import Device
+    from sqlalchemy import select, or_
+
+    text = f"{title} {content}".lower()
+    ips  = set(_IP_RE.findall(f"{title} {content}"))
+
+    # Load tenant devices once
+    result  = await db.execute(select(Device).where(Device.tenant_id == tenant_id))
+    devices = list(result.scalars().all())
+
+    matched: list = []
+    for device in devices:
+        # IP match (exact)
+        if device.host and device.host in ips:
+            matched.append(str(device.id))
+            continue
+        # Hostname match (device name appears in ticket text, case-insensitive)
+        if device.name and device.name.lower() in text:
+            matched.append(str(device.id))
+
+    return matched
+
+
+def _looks_like_security(title: str, content: str) -> bool:
+    """Quick heuristic: does this ticket look like a security incident?"""
+    keywords = (
+        "ataque", "attack", "breach", "vazamento", "intrusion", "malware",
+        "ransomware", "acesso não autorizado", "unauthorized", "comprometimento",
+        "exploit", "vulnerabilidade", "brute force", "ddos",
+    )
+    text = f"{title} {content}".lower()
+    return any(k in text for k in keywords)
+
+
+# ── Enrichment data collection ────────────────────────────────────────────────
+
+async def _collect_enrichment(integration, device_ids: list) -> dict[str, str]:
+    """Collect Zabbix, Wazuh, and/or device SSH logs for correlated devices."""
+    enrichment: dict[str, str] = {}
+
+    if integration.enrich_zabbix:
+        try:
+            data = await _fetch_zabbix_data(integration.tenant_id, device_ids)
+            if data:
+                enrichment["zabbix"] = data
+        except Exception as exc:
+            log.warning("enrichment_zabbix_failed tenant=%s error=%s", integration.tenant_id, exc)
+
+    if integration.enrich_wazuh:
+        try:
+            data = await _fetch_wazuh_data(integration.tenant_id, device_ids)
+            if data:
+                enrichment["wazuh"] = data
+        except Exception as exc:
+            log.warning("enrichment_wazuh_failed tenant=%s error=%s", integration.tenant_id, exc)
+
+    if integration.enrich_device_logs:
+        try:
+            data = await _fetch_device_logs(
+                integration.tenant_id, device_ids,
+                timeout=integration.device_logs_timeout_seconds,
+            )
+            if data:
+                enrichment["device_logs"] = data
+        except Exception as exc:
+            log.warning("enrichment_device_logs_failed tenant=%s error=%s", integration.tenant_id, exc)
+
+    return enrichment
+
+
+async def _fetch_zabbix_data(tenant_id, device_ids: list) -> str | None:
+    """Fetch recent triggers and metrics from Zabbix for the correlated devices."""
+    from app.database import AsyncSessionLocal
+    from app.models.device import Device
+    from app.services import zabbix_service
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as db:
+        result  = await db.execute(select(Device).where(Device.id.in_(device_ids)))
+        devices = list(result.scalars().all())
+
+    if not devices:
+        return None
+
+    parts: list[str] = []
+    for device in devices:
+        try:
+            # Use device.host (IP) as the Zabbix host identifier
+            # Falls back to zabbix_host_name field if set (future field)
+            host_id = getattr(device, "zabbix_host_name", None) or device.host
+            summary = await zabbix_service.get_host_recent_summary(
+                tenant_id=tenant_id,
+                host_identifier=host_id,
+                hours=24,
+            )
+            if summary:
+                parts.append(f"[{device.name} / {device.host}]\n{summary}")
+        except Exception as exc:
+            log.debug("zabbix_host_failed device=%s error=%s", device.id, exc)
+
+    return "\n\n".join(parts)[:_MAX_ENRICHMENT_CHARS] if parts else None
+
+
+async def _fetch_wazuh_data(tenant_id, device_ids: list) -> str | None:
+    """Fetch recent security events from Wazuh for the correlated devices."""
+    from app.database import AsyncSessionLocal
+    from app.models.device import Device
+    from app.services import wazuh_service
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as db:
+        result  = await db.execute(select(Device).where(Device.id.in_(device_ids)))
+        devices = list(result.scalars().all())
+
+    if not devices:
+        return None
+
+    parts: list[str] = []
+    for device in devices:
+        try:
+            agent_id = getattr(device, "wazuh_agent_name", None) or device.host
+            summary  = await wazuh_service.get_agent_recent_alerts(
+                tenant_id=tenant_id,
+                agent_identifier=agent_id,
+                hours=24,
+            )
+            if summary:
+                parts.append(f"[{device.name} / {device.host}]\n{summary}")
+        except Exception as exc:
+            log.debug("wazuh_agent_failed device=%s error=%s", device.id, exc)
+
+    return "\n\n".join(parts)[:_MAX_ENRICHMENT_CHARS] if parts else None
+
+
+async def _fetch_device_logs(tenant_id, device_ids: list, timeout: int = 30) -> str | None:
+    """Fetch recent logs directly from devices via SSH/REST connectors."""
+    from app.database import AsyncSessionLocal
+    from app.models.device import Device
+    from app.connectors.factory import CLI_VENDORS, get_connector, get_ssh_connector
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as db:
+        result  = await db.execute(select(Device).where(Device.id.in_(device_ids)))
+        devices = list(result.scalars().all())
+
+    if not devices:
+        return None
+
+    parts: list[str] = []
+    for device in devices:
+        try:
+            logs = await asyncio.wait_for(
+                _get_device_log_snippet(device),
+                timeout=timeout,
+            )
+            if logs:
+                parts.append(f"[{device.name} / {device.host}]\n{logs}")
+        except asyncio.TimeoutError:
+            log.warning("device_logs_timeout device=%s timeout=%ds", device.id, timeout)
+        except Exception as exc:
+            log.debug("device_logs_failed device=%s error=%s", device.id, exc)
+
+    return "\n\n".join(parts)[:_MAX_ENRICHMENT_CHARS] if parts else None
+
+
+async def _get_device_log_snippet(device) -> str | None:
+    """Run vendor-appropriate log commands on a single device."""
+    from app.connectors.factory import CLI_VENDORS, get_ssh_connector
+    from app.models.device import VendorEnum
+
+    # Only attempt on SSH-capable devices
+    if device.vendor not in CLI_VENDORS:
+        return None
+
+    connector = get_ssh_connector(device)
+    # Generic "show log" command — each vendor connector maps this appropriately
+    result = await asyncio.to_thread(connector.execute_commands, ["show log"])
+    if result and result.get("output"):
+        output = str(result["output"])
+        # Return last 50 lines at most
+        lines = output.strip().splitlines()
+        return "\n".join(lines[-50:])
+    return None
+
+
+# ── Claude call ───────────────────────────────────────────────────────────────
 
 async def _call_claude(
     title: str,
     content: str,
     is_recurrent: bool,
     recurrence_count: int,
+    enrichment: dict[str, str] | None = None,
 ) -> dict:
     from anthropic import AsyncAnthropic
     from app.config import settings
@@ -273,14 +525,28 @@ async def _call_claude(
         if is_recurrent else ""
     )
 
+    enrichment_block = ""
+    if enrichment:
+        sections: list[str] = []
+        label_map = {
+            "zabbix":      "DADOS ZABBIX (últimas 24h — métricas e triggers)",
+            "wazuh":       "DADOS WAZUH (últimas 24h — alertas de segurança)",
+            "device_logs": "LOGS DO DISPOSITIVO (via SSH)",
+        }
+        for key, data in enrichment.items():
+            label = label_map.get(key, key.upper())
+            sections.append(f"\n\n--- {label} ---\n{data}")
+        enrichment_block = "".join(sections)
+
     user_prompt = (
         f"Título do ticket: {title}\n\n"
         f"Descrição:\n{content[:_MAX_CONTENT_CHARS]}"
         f"{recurrence_note}"
+        f"{enrichment_block}"
     )
 
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
-    msg = await client.messages.create(
+    msg    = await client.messages.create(
         model=settings.anthropic_model,
         max_tokens=2048,
         system=_SYSTEM_PROMPT,
@@ -291,11 +557,12 @@ async def _call_claude(
     return _parse_json(raw)
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
 def _parse_json(raw: str) -> dict:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # Try to extract JSON block from markdown code fences
         start = raw.find("{")
         end   = raw.rfind("}")
         if start != -1 and end > start:
@@ -307,7 +574,6 @@ def _parse_json(raw: str) -> dict:
 
 
 def _steps_to_html(text: str) -> str:
-    """Convert numbered-step plain text (1. ... 2. ...) to an HTML ordered list."""
     import re
     items = re.split(r"\n?\s*\d+\.\s+", text.strip())
     items = [i.strip() for i in items if i.strip()]
@@ -316,8 +582,13 @@ def _steps_to_html(text: str) -> str:
     return "<ol>" + "".join(f"<li>{i}</li>" for i in items) + "</ol>"
 
 
-def _build_followup(ai_result: dict, is_recurrent: bool, recurrence_count: int, related_ids: list | None = None) -> str:
-    """Build the followup note posted to GLPI — compact, analyst-friendly HTML format."""
+def _build_followup(
+    ai_result: dict,
+    is_recurrent: bool,
+    recurrence_count: int,
+    related_ids: list | None = None,
+    enrichment_sources: list[str] | None = None,
+) -> str:
     confianca = float(ai_result.get("confianca", 0.0))
     pct       = round(confianca * 100)
     security  = ai_result.get("is_security_incident", False)
@@ -331,40 +602,43 @@ def _build_followup(ai_result: dict, is_recurrent: bool, recurrence_count: int, 
     if is_recurrent:
         badges.append(f"🔁 <b>RECORRENTE</b> ({recurrence_count} chamados similares)")
 
+    sources_label = ""
+    if enrichment_sources:
+        label_map = {"zabbix": "Zabbix", "wazuh": "Wazuh", "device_logs": "Logs SSH"}
+        names = [label_map.get(s, s) for s in enrichment_sources]
+        sources_label = f"<br><i>Fontes: GLPI + {' + '.join(names)}</i>"
+
     header = "<b>🤖 Análise FireManager</b>"
     if badges:
         header += f" &nbsp;|&nbsp; {' &nbsp;|&nbsp; '.join(badges)}"
-    parts.append(f"<p>{header}<br><i>Confiança da análise: {pct}%</i></p>")
+    parts.append(f"<p>{header}<br><i>Confiança da análise: {pct}%</i>{sources_label}</p>")
     parts.append("<hr/>")
 
-    # ── Diagnóstico ───────────────────────────────────────────────────────────
     if diagnostico := ai_result.get("diagnostico"):
         parts.append(f"<p><b>📋 Diagnóstico</b><br>{diagnostico}</p>")
 
-    # ── Ação imediata ─────────────────────────────────────────────────────────
     if acao_imediata := ai_result.get("acoes_imediatas"):
         parts.append(f"<p><b>⚡ Ação imediata — faça agora</b></p>{_steps_to_html(acao_imediata)}")
 
-    # ── Ação definitiva ───────────────────────────────────────────────────────
     if acao_definitiva := ai_result.get("plano_remediacao"):
         parts.append(f"<p><b>🔧 Ação definitiva — médio prazo</b></p>{_steps_to_html(acao_definitiva)}")
 
-    # ── Recorrência com links ─────────────────────────────────────────────────
     if is_recurrent and recurrence_count:
         ref_part = ""
         if related_ids:
-            ids_str = ", ".join(f"#{i}" for i in related_ids[:5])
+            ids_str  = ", ".join(f"#{i}" for i in related_ids[:5])
             ref_part = f" — chamados anteriores: {ids_str}"
-        parts.append(f"<p><b>🔁 Recorrência</b><br>Sim, {recurrence_count} chamados similares resolvidos anteriormente{ref_part}.</p>")
+        parts.append(
+            f"<p><b>🔁 Recorrência</b><br>"
+            f"Sim, {recurrence_count} chamados similares resolvidos anteriormente{ref_part}.</p>"
+        )
 
-    # ── Causa raiz (compacta) ─────────────────────────────────────────────────
     if causa := ai_result.get("causa_raiz"):
         parts.append(f"<p><b>🔍 Causa raiz:</b> {causa}</p>")
 
     return "\n".join(parts)
 
 
-# Local alias so _process_ticket can call strip_html without circular import
 def GlpiClient_strip_html(html: str | None) -> str:
     from app.services.glpi_service import GlpiClient
     return GlpiClient.strip_html(html)

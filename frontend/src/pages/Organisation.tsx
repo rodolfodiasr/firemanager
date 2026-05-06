@@ -1123,6 +1123,16 @@ type GlpiFormData = {
   type_2: boolean;
   type_3: boolean;
   type_4: boolean;
+  // Analysis mode & enrichment sources
+  auto_analysis_enabled: boolean;
+  enrich_zabbix: boolean;
+  enrich_wazuh: boolean;
+  enrich_device_logs: boolean;
+  device_logs_timeout_seconds: string;
+  auto_correlate_devices: boolean;
+  unmatched_to_manual_queue: boolean;
+  force_analysis_on_security: boolean;
+  force_analysis_on_recurrent: boolean;
 };
 
 function GlpiIntegrationCard() {
@@ -1137,13 +1147,21 @@ function GlpiIntegrationCard() {
     queryFn: glpiApi.getIntegration,
   });
 
-  const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<GlpiFormData>({
+  const { register, handleSubmit, reset, watch, formState: { isSubmitting } } = useForm<GlpiFormData>({
     defaultValues: {
       glpi_url: "", app_token: "", username: "", password: "",
       verify_ssl: true, min_priority: "3", poll_interval_minutes: "5", lookback_hours: "24",
       type_1: true, type_2: true, type_3: false, type_4: false,
+      auto_analysis_enabled: true,
+      enrich_zabbix: false, enrich_wazuh: false, enrich_device_logs: false,
+      device_logs_timeout_seconds: "30",
+      auto_correlate_devices: true, unmatched_to_manual_queue: true,
+      force_analysis_on_security: true, force_analysis_on_recurrent: false,
     },
   });
+
+  const autoAnalysis = watch("auto_analysis_enabled");
+  const enrichDeviceLogs = watch("enrich_device_logs");
 
   useEffect(() => {
     if (!open || !existing) return;
@@ -1160,6 +1178,15 @@ function GlpiIntegrationCard() {
       type_2: existing.trigger_types.includes(2),
       type_3: existing.trigger_types.includes(3),
       type_4: existing.trigger_types.includes(4),
+      auto_analysis_enabled: existing.auto_analysis_enabled ?? true,
+      enrich_zabbix: existing.enrich_zabbix ?? false,
+      enrich_wazuh: existing.enrich_wazuh ?? false,
+      enrich_device_logs: existing.enrich_device_logs ?? false,
+      device_logs_timeout_seconds: String(existing.device_logs_timeout_seconds ?? 30),
+      auto_correlate_devices: existing.auto_correlate_devices ?? true,
+      unmatched_to_manual_queue: existing.unmatched_to_manual_queue ?? true,
+      force_analysis_on_security: existing.force_analysis_on_security ?? true,
+      force_analysis_on_recurrent: existing.force_analysis_on_recurrent ?? false,
     });
   }, [open, existing]);
 
@@ -1175,6 +1202,15 @@ function GlpiIntegrationCard() {
         trigger_types:         types,
         poll_interval_minutes: parseInt(fd.poll_interval_minutes) || 5,
         lookback_hours:        parseInt(fd.lookback_hours) || 24,
+        auto_analysis_enabled:        fd.auto_analysis_enabled,
+        enrich_zabbix:                fd.enrich_zabbix,
+        enrich_wazuh:                 fd.enrich_wazuh,
+        enrich_device_logs:           fd.enrich_device_logs,
+        device_logs_timeout_seconds:  parseInt(fd.device_logs_timeout_seconds) || 30,
+        auto_correlate_devices:       fd.auto_correlate_devices,
+        unmatched_to_manual_queue:    fd.unmatched_to_manual_queue,
+        force_analysis_on_security:   fd.force_analysis_on_security,
+        force_analysis_on_recurrent:  fd.force_analysis_on_recurrent,
         ...(fd.password ? { password: fd.password } : {}),
       };
       if (existing) return glpiApi.updateIntegration(existing.id, payload);
@@ -1229,6 +1265,7 @@ function GlpiIntegrationCard() {
           onSubmit={handleSubmit((d) => saveMut.mutate(d))}
           className="space-y-3 pt-2 border-t border-gray-100"
         >
+          {/* ── Conexão ──────────────────────────────────────────────────── */}
           {[
             { key: "glpi_url",   label: "URL do GLPI",   placeholder: "https://glpi.empresa.com" },
             { key: "app_token",  label: "App-Token",      placeholder: "Token da aplicação API" },
@@ -1255,6 +1292,7 @@ function GlpiIntegrationCard() {
             />
           </div>
 
+          {/* ── Filtros ───────────────────────────────────────────────────── */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Prioridade mínima</label>
             <select {...register("min_priority")} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
@@ -1291,6 +1329,75 @@ function GlpiIntegrationCard() {
             <input type="checkbox" {...register("verify_ssl")} className="rounded" />
             Verificar certificado SSL
           </label>
+
+          {/* ── Análise automática ────────────────────────────────────────── */}
+          <div className="pt-2 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-700 mb-2">Análise automática</p>
+
+            <label className="flex items-center gap-2 text-xs cursor-pointer mb-3">
+              <input type="checkbox" {...register("auto_analysis_enabled")} className="rounded" />
+              <span className="font-medium">Análise automática ativada</span>
+              <span className="text-gray-400">(Claude analisa cada ticket novo)</span>
+            </label>
+
+            {autoAnalysis && (
+              <div className="space-y-2 pl-4 border-l-2 border-brand-100">
+                {/* Fontes de enriquecimento */}
+                <p className="text-xs font-medium text-gray-600 mb-1">Fontes de contexto</p>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" {...register("enrich_zabbix")} className="rounded" />
+                  Zabbix — métricas e triggers das últimas 24h
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" {...register("enrich_wazuh")} className="rounded" />
+                  Wazuh — alertas de segurança das últimas 24h
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" {...register("enrich_device_logs")} className="rounded" />
+                  Logs do dispositivo via SSH
+                </label>
+
+                {enrichDeviceLogs && (
+                  <div className="flex items-center gap-2 pl-5">
+                    <label className="text-xs text-gray-600 whitespace-nowrap">Timeout SSH (seg):</label>
+                    <input
+                      type="number" min="5" max="300"
+                      {...register("device_logs_timeout_seconds")}
+                      className="w-20 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                )}
+
+                {/* Correlação de dispositivos */}
+                <p className="text-xs font-medium text-gray-600 mt-3 mb-1">Correlação de dispositivos</p>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" {...register("auto_correlate_devices")} className="rounded" />
+                  Correlacionar automaticamente (IP/hostname no texto)
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" {...register("unmatched_to_manual_queue")} className="rounded" />
+                  Sem correlação → fila manual (não consome tokens)
+                </label>
+
+                {/* Overrides de filtro */}
+                <p className="text-xs font-medium text-gray-600 mt-3 mb-1">Ignorar filtro de prioridade para</p>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" {...register("force_analysis_on_security")} className="rounded" />
+                  Incidentes de segurança (sempre analisar)
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" {...register("force_analysis_on_recurrent")} className="rounded" />
+                  Tickets recorrentes (sempre analisar)
+                </label>
+              </div>
+            )}
+
+            {!autoAnalysis && (
+              <p className="text-xs text-gray-400 pl-4 border-l-2 border-gray-100">
+                Tickets serão capturados e exibidos no FireManager, mas a análise precisará ser acionada manualmente.
+              </p>
+            )}
+          </div>
 
           {saveMut.isError && (
             <p className="text-xs text-red-600">

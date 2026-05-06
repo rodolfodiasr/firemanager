@@ -11,10 +11,11 @@ from app.database import Base
 
 
 class GlpiAnalysisStatus(str, enum.Enum):
-    pending   = "pending"
-    analyzing = "analyzing"
-    completed = "completed"
-    failed    = "failed"
+    pending         = "pending"
+    pending_manual  = "pending_manual"   # captured, awaiting user-triggered analysis
+    analyzing       = "analyzing"
+    completed       = "completed"
+    failed          = "failed"
 
 
 class GlpiTicketAnalysis(Base):
