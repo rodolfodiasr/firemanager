@@ -560,6 +560,45 @@ async def _collect_hp_comware(device: Device) -> list[dict]:
         controls.append(_na("HPC-07", "Servidor Telnet desabilitado", "high",
             "Status do Telnet server não determinado"))
 
+    # ── HPC-08: Super password cifrada (CIS-06 equiv) ─────────────────────────
+    # Comware uses 'super password level 3 cipher' for privileged access
+    if re.search(r"super\s+password\s+level\s+\d+\s+cipher", lines_lower):
+        controls.append(_pass("HPC-08", "Senha de acesso privilegiado (super) cifrada", "critical",
+            "super password com cipher detectado — senha de nível privilegiado está cifrada"))
+    elif re.search(r"super\s+password\s+level\s+\d+\s+simple", lines_lower):
+        controls.append(_fail("HPC-08", "Senha de acesso privilegiado (super) cifrada", "critical",
+            "super password configurada como 'simple' (texto claro)",
+            "super password level 3 cipher <senha_forte>"))
+    elif re.search(r"super\s+password", lines_lower):
+        controls.append(_pass("HPC-08", "Senha de acesso privilegiado (super) cifrada", "critical",
+            "super password detectada (tipo não determinado)"))
+    else:
+        controls.append(_fail("HPC-08", "Senha de acesso privilegiado (super) cifrada", "critical",
+            "super password não configurada — acesso privilegiado desprotegido",
+            "super password level 3 cipher <senha_forte>"))
+
+    # ── HPC-09: Login banner (CIS-08 equiv) ──────────────────────────────────
+    if re.search(r"header\s+(login|shell|incoming)", lines_lower):
+        controls.append(_pass("HPC-09", "Banner de aviso legal configurado", "low",
+            "header de login detectado na configuração"))
+    else:
+        controls.append(_fail("HPC-09", "Banner de aviso legal configurado", "low",
+            "header login não configurado — sem aviso legal antes do acesso administrativo",
+            "header login information \"Acesso restrito. Uso nao autorizado sujeito a penalidades legais.\""))
+
+    # ── HPC-10: LLDP gerenciado (CIS-10 equiv — Comware usa LLDP, não CDP) ───
+    # Check if LLDP is globally disabled or restricted (disable if not needed)
+    if re.search(r"undo lldp enable", lines_lower):
+        controls.append(_pass("HPC-10", "LLDP desabilitado globalmente", "medium",
+            "undo lldp enable presente — topologia da rede não exposta via LLDP"))
+    elif re.search(r"lldp enable", lines_lower):
+        controls.append(_fail("HPC-10", "LLDP desabilitado globalmente", "medium",
+            "LLDP habilitado — expõe informações de topologia, modelo e versão do dispositivo",
+            "undo lldp enable"))
+    else:
+        controls.append(_na("HPC-10", "LLDP desabilitado globalmente", "medium",
+            "Status do LLDP não determinado no output coletado"))
+
     return controls
 
 
@@ -966,6 +1005,53 @@ async def _collect_dell_n(device: Device) -> list[dict]:
     else:
         controls.append(_na("DN-06", "Senha de enable criptografada", "critical",
             "Configuração de enable não detectada no running-config"))
+
+    # ── DN-07: Service password-encryption (CIS-03 equiv) ────────────────────
+    if re.search(r"service password-encryption", lines_lower):
+        controls.append(_pass("DN-07", "Criptografia global de senhas habilitada (service password-encryption)", "high",
+            "service password-encryption presente — senhas cifradas no running-config"))
+    else:
+        controls.append(_fail("DN-07", "Criptografia global de senhas habilitada (service password-encryption)", "high",
+            "service password-encryption ausente — senhas de usuários em texto claro no running-config",
+            "service password-encryption"))
+
+    # ── DN-08: Timeout de VTY ≤ 15 min (CIS-05 equiv) ────────────────────────
+    timeout_m = re.search(r"exec-timeout\s+(\d+)\s+(\d+)", raw, re.I)
+    if timeout_m:
+        minutes = int(timeout_m.group(1))
+        if minutes == 0:
+            controls.append(_fail("DN-08", "Timeout de VTY ≤ 15 min", "high",
+                "exec-timeout 0 0 — sessões VTY nunca expiram",
+                "line vty\n  exec-timeout 15 0"))
+        elif minutes <= 15:
+            controls.append(_pass("DN-08", "Timeout de VTY ≤ 15 min", "high",
+                f"exec-timeout={minutes} min"))
+        else:
+            controls.append(_fail("DN-08", "Timeout de VTY ≤ 15 min", "high",
+                f"exec-timeout={minutes} min (deve ser ≤ 15)",
+                "line vty\n  exec-timeout 15 0"))
+    else:
+        controls.append(_fail("DN-08", "Timeout de VTY ≤ 15 min", "high",
+            "exec-timeout não configurado nas VTYs — sessões admin não expiram",
+            "line vty\n  exec-timeout 15 0"))
+
+    # ── DN-09: Login banner (CIS-08 equiv) ───────────────────────────────────
+    if re.search(r"banner\s+(motd|login|exec)", lines_lower):
+        controls.append(_pass("DN-09", "Banner de aviso legal configurado", "low",
+            "Banner de login detectado na configuração"))
+    else:
+        controls.append(_fail("DN-09", "Banner de aviso legal configurado", "low",
+            "Banner de login não configurado — sem aviso legal antes do acesso",
+            "banner motd ^\nAcesso restrito. Uso não autorizado sujeito a penalidades legais.\n^"))
+
+    # ── DN-10: CDP desabilitado (CIS-10 equiv) ────────────────────────────────
+    if re.search(r"no cdp run|no cdp advertise", lines_lower):
+        controls.append(_pass("DN-10", "CDP desabilitado globalmente", "medium",
+            "CDP desabilitado — topologia da rede não exposta"))
+    else:
+        controls.append(_fail("DN-10", "CDP desabilitado globalmente", "medium",
+            "CDP provavelmente habilitado — expõe informações de topologia e versão",
+            "no cdp run"))
 
     return controls
 
