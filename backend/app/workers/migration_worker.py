@@ -9,20 +9,28 @@ from app.workers.celery_app import celery_app
 log = logging.getLogger(__name__)
 
 _CLAUDE_SYSTEM = """Você é especialista em migração de configurações de switches de rede.
-Recebe comandos CLI gerados automaticamente para um switch de destino.
-Revise e retorne SOMENTE JSON válido, sem texto adicional:
 
+Receberá:
+1. Config bruto do switch de ORIGEM (saída do show running-config ou equivalente)
+2. IR (Intermediate Representation) extraído pelo parser automático — pode estar incompleto
+3. Comandos CLI gerados automaticamente para o switch de DESTINO
+
+Sua tarefa:
+- Compare o config de origem com o IR e os comandos gerados
+- Preencha VLANs, modos de porta, PVIDs e LAGs que o parser não conseguiu extrair
+- Corrija sintaxe incorreta para o vendor alvo
+- Adicione comandos obrigatórios ausentes (ex: undo shutdown, return, save force para Comware; write memory para IOS/Dell)
+- Remova duplicatas ou comandos conflitantes
+- Para LAGs/port-channels: recrie manualmente com os membros corretos se conseguir identificá-los no config de origem
+- Se não conseguir traduzir algo, explique em warnings
+
+Retorne SOMENTE JSON válido, sem texto adicional:
 {
   "commands_revised": ["cmd1", "cmd2", ...],
   "warnings": ["aviso 1", "aviso 2"]
 }
 
-Regras:
-- Corrija sintaxe incorreta para o vendor alvo
-- Adicione comandos faltantes obrigatórios (ex: no shutdown, write memory, end)
-- Remova duplicatas ou comandos conflitantes
-- Se não conseguir traduzir algo, liste em warnings
-- Se os comandos estiverem corretos, retorne sem alteração"""
+Se os comandos já estiverem completos e corretos, retorne-os sem alteração."""
 
 _SHOW_CONFIG_CMD = {
     "edgeswitch": "show running-config",
@@ -104,9 +112,15 @@ async def _async_analyze(migration_id: str) -> dict:
             cmds = rendered["commands"]
             warns = list(ir.get("warnings", [])) + rendered["warnings"]
 
-            # Claude review
+            # Claude review — passes full context so it can fill parser gaps
             try:
-                revised, claude_warns = await _claude_review(target_vendor, cmds)
+                revised, claude_warns = await _claude_review(
+                    source_vendor=src_dev.vendor.value,
+                    source_config=source_config,
+                    ir=ir,
+                    target_vendor=target_vendor,
+                    commands=cmds,
+                )
                 cmds = revised
                 warns.extend(claude_warns)
             except Exception as exc:
@@ -176,25 +190,40 @@ async def _async_apply(migration_id: str) -> dict:
             return {"error": str(exc)}
 
 
-async def _claude_review(target_vendor: str, commands: list[str]) -> tuple[list[str], list[str]]:
+async def _claude_review(
+    source_vendor: str,
+    source_config: str,
+    ir: dict,
+    target_vendor: str,
+    commands: list[str],
+) -> tuple[list[str], list[str]]:
     from anthropic import AsyncAnthropic
     from app.config import settings
 
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+
     commands_text = "\n".join(c for c in commands if c.strip())
+    ir_text = json.dumps(ir, ensure_ascii=False, indent=2)
+
+    # Truncate source config to avoid exceeding context limits (keep first 6000 chars)
+    source_preview = source_config[:6000]
+    if len(source_config) > 6000:
+        source_preview += f"\n... (truncado — {len(source_config) - 6000} chars restantes)"
+
+    user_content = (
+        f"## Config de origem ({source_vendor})\n```\n{source_preview}\n```\n\n"
+        f"## IR extraído pelo parser\n```json\n{ir_text}\n```\n\n"
+        f"## Comandos gerados para o destino ({target_vendor})\n```\n{commands_text}\n```"
+    )
 
     msg = await client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4096,
+        max_tokens=8192,
         system=_CLAUDE_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": f"Vendor alvo: {target_vendor}\n\nComandos gerados:\n```\n{commands_text}\n```",
-        }],
+        messages=[{"role": "user", "content": user_content}],
     )
 
     raw = msg.content[0].text.strip()
-    # Strip markdown fences if present
     if raw.startswith("```"):
         parts = raw.split("```")
         raw = parts[1] if len(parts) >= 2 else raw
