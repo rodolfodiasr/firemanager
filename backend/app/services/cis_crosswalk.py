@@ -214,6 +214,24 @@ _NETWORK_CTRL_NIST: dict[str, NistFunction] = {
     "GEN-01": "protect",   # SNMP default communities removed
     "GEN-02": "identify",  # NTP configured
     "GEN-03": "detect",    # Syslog remote configured
+    # SonicWall — Gateway Anti-Virus
+    "SW-GAV-01": "protect",  # GAV enabled
+    "SW-GAV-02": "protect",  # HTTP inbound inspection
+    "SW-GAV-03": "protect",  # SMTP inbound inspection
+    "SW-GAV-04": "protect",  # Outbound inspection active
+    "SW-GAV-05": "protect",  # Detection-only mode disabled
+    "SW-GAV-06": "protect",  # MS Office macros blocked
+    "SW-GAV-07": "protect",  # Password-protected ZIP blocked
+    "SW-GAV-08": "protect",  # Cloud AV database enabled
+    # SonicWall — Anti-Spyware
+    "SW-SPY-01": "protect",  # Anti-Spyware enabled
+    "SW-SPY-02": "protect",  # High-danger prevention active
+    "SW-SPY-03": "protect",  # Medium-danger prevention active
+    "SW-SPY-04": "detect",   # Outbound spyware inspection
+    # SonicWall — Intrusion Prevention
+    "SW-IPS-01": "detect",   # IPS enabled
+    "SW-IPS-02": "detect",   # High-priority prevention active
+    "SW-IPS-03": "detect",   # Medium-priority prevention active
 }
 
 _NETWORK_CTRL_ISO: dict[str, IsoDomain] = {
@@ -252,6 +270,24 @@ _NETWORK_CTRL_ISO: dict[str, IsoDomain] = {
     "GEN-01": "A.8_network",      # SNMP communities → Network Security
     "GEN-02": "A.8_logging",      # NTP → Logging (accurate timestamps)
     "GEN-03": "A.8_logging",      # Syslog → Logging and Monitoring
+    # SonicWall — Gateway Anti-Virus
+    "SW-GAV-01": "A.8_vuln",       # GAV enabled → Vulnerability Mgmt
+    "SW-GAV-02": "A.8_network",    # HTTP inbound → Network Security
+    "SW-GAV-03": "A.8_network",    # SMTP inbound → Network Security
+    "SW-GAV-04": "A.8_network",    # Outbound inspection → Network Security
+    "SW-GAV-05": "A.8_vuln",       # Detection-only disabled → Vuln Mgmt (blocking active)
+    "SW-GAV-06": "A.8_config",     # MS macros blocked → Configuration Mgmt
+    "SW-GAV-07": "A.8_config",     # ZIP password blocked → Configuration Mgmt
+    "SW-GAV-08": "A.8_vuln",       # Cloud AV → Vulnerability Mgmt
+    # SonicWall — Anti-Spyware
+    "SW-SPY-01": "A.8_vuln",       # Anti-Spyware enabled → Vulnerability Mgmt
+    "SW-SPY-02": "A.8_vuln",       # High-danger prevention → Vulnerability Mgmt
+    "SW-SPY-03": "A.8_vuln",       # Medium-danger prevention → Vulnerability Mgmt
+    "SW-SPY-04": "A.8_logging",    # Outbound inspection → Logging/Monitoring
+    # SonicWall — Intrusion Prevention
+    "SW-IPS-01": "A.8_network",    # IPS enabled → Network Security
+    "SW-IPS-02": "A.8_network",    # High-priority prevention → Network Security
+    "SW-IPS-03": "A.8_network",    # Medium-priority prevention → Network Security
 }
 
 

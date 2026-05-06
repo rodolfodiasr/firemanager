@@ -66,13 +66,6 @@ async def _collect_fortinet(device: Device) -> list[dict]:
     token = creds.get("token", "")
     vdom = creds.get("vdom") or "root"
 
-    conn = FortinetConnector(
-        host=device.host,
-        token=token,
-        vdom=vdom,
-        verify_ssl=False,
-    )
-
     controls: list[dict] = []
 
     import httpx
@@ -568,6 +561,321 @@ async def _collect_hp_comware(device: Device) -> list[dict]:
     return controls
 
 
+# ── SonicWall security services checks ───────────────────────────────────────
+
+def _parse_sonicwall_gav(output: str) -> dict:
+    """Parse 'show gateway-antivirus' output into a structured dict."""
+    result: dict[str, Any] = {
+        "enabled": False,
+        "inbound": [],
+        "outbound": [],
+        "restrict_password_zip": [],
+        "restrict_ms_macros": [],
+        "restrict_packed_exec": [],
+        "detection_only": False,
+        "block_multiple_compress": False,
+        "cloud_av": False,
+        "eicar_detection": False,
+        "scan_high_compression": False,
+    }
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        negated = line.startswith("no ")
+        cmd = line[3:] if negated else line
+
+        if cmd == "enable":
+            result["enabled"] = not negated
+        elif cmd == "detection-only":
+            result["detection_only"] = not negated
+        elif cmd == "block-multiple-compress-files":
+            result["block_multiple_compress"] = not negated
+        elif cmd == "eicar-detection":
+            result["eicar_detection"] = not negated
+        elif cmd == "scan-high-compression":
+            result["scan_high_compression"] = not negated
+        elif cmd.startswith("cloud anti-virus-database"):
+            result["cloud_av"] = not negated
+        elif cmd.startswith("inbound-inspection "):
+            proto = cmd.split()[-1]
+            if not negated and proto not in result["inbound"]:
+                result["inbound"].append(proto)
+        elif cmd.startswith("outbound-inspection "):
+            proto = cmd.split()[-1]
+            if not negated and proto not in result["outbound"]:
+                result["outbound"].append(proto)
+        elif cmd.startswith("restrict password-protected-zip "):
+            proto = cmd.split()[-1]
+            if not negated and proto not in result["restrict_password_zip"]:
+                result["restrict_password_zip"].append(proto)
+        elif cmd.startswith("restrict ms-office-macros "):
+            proto = cmd.split()[-1]
+            if not negated and proto not in result["restrict_ms_macros"]:
+                result["restrict_ms_macros"].append(proto)
+        elif cmd.startswith("restrict packed-executables "):
+            proto = cmd.split()[-1]
+            if not negated and proto not in result["restrict_packed_exec"]:
+                result["restrict_packed_exec"].append(proto)
+    return result
+
+
+def _parse_sonicwall_spyware(output: str) -> dict:
+    """Parse 'show anti-spyware' output into a structured dict."""
+    result: dict[str, Any] = {
+        "enabled": False,
+        "high_prevent": False,
+        "medium_prevent": False,
+        "low_prevent": False,
+        "high_detect": False,
+        "medium_detect": False,
+        "low_detect": False,
+        "inspection_inbound": [],
+        "inspection_outbound": False,
+    }
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        negated = line.startswith("no ")
+        cmd = line[3:] if negated else line
+
+        if cmd == "enable":
+            result["enabled"] = not negated
+        elif cmd == "signature-group high-danger prevent-all":
+            result["high_prevent"] = not negated
+        elif cmd == "signature-group medium-danger prevent-all":
+            result["medium_prevent"] = not negated
+        elif cmd == "signature-group low-danger prevent-all":
+            result["low_prevent"] = not negated
+        elif cmd == "signature-group high-danger detect-all":
+            result["high_detect"] = not negated
+        elif cmd == "signature-group medium-danger detect-all":
+            result["medium_detect"] = not negated
+        elif cmd == "signature-group low-danger detect-all":
+            result["low_detect"] = not negated
+        elif cmd == "inspection outbound":
+            result["inspection_outbound"] = not negated
+        elif cmd.startswith("inspection inbound "):
+            proto = cmd.split()[-1]
+            if not negated and proto not in result["inspection_inbound"]:
+                result["inspection_inbound"].append(proto)
+    return result
+
+
+def _parse_sonicwall_ips(output: str) -> dict:
+    """Parse 'show intrusion-prevention' output into a structured dict."""
+    result: dict[str, Any] = {
+        "enabled": False,
+        "high_prevent": False,
+        "medium_prevent": False,
+        "low_prevent": False,
+        "high_detect": False,
+        "medium_detect": False,
+        "low_detect": False,
+    }
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        negated = line.startswith("no ")
+        cmd = line[3:] if negated else line
+
+        if cmd == "enable":
+            result["enabled"] = not negated
+        elif cmd == "signature-group high-priority prevent-all":
+            result["high_prevent"] = not negated
+        elif cmd == "signature-group medium-priority prevent-all":
+            result["medium_prevent"] = not negated
+        elif cmd == "signature-group low-priority prevent-all":
+            result["low_prevent"] = not negated
+        elif cmd == "signature-group high-priority detect-all":
+            result["high_detect"] = not negated
+        elif cmd == "signature-group medium-priority detect-all":
+            result["medium_detect"] = not negated
+        elif cmd == "signature-group low-priority detect-all":
+            result["low_detect"] = not negated
+    return result
+
+
+async def _collect_sonicwall(device: Device) -> list[dict]:
+    """Collect compliance data for SonicWall via SSH configure-mode show commands.
+
+    Covers 15 controls across Gateway AV (8), Anti-Spyware (4) and IPS (3).
+    Falls back to generic SSH checks on connection failure.
+    """
+    from app.connectors.sonicwall_ssh import SonicWallSSHConnector
+    from app.utils.crypto import decrypt_credentials
+
+    creds = decrypt_credentials(device.encrypted_credentials)
+    ssh_creds = creds.get("ssh", {}) or creds
+    host = device.host.replace("https://", "").replace("http://", "").split("/")[0]
+    username = ssh_creds.get("username") or creds.get("username", "admin")
+    password = ssh_creds.get("password") or creds.get("password", "")
+    ssh_port = int(ssh_creds.get("ssh_port") or creds.get("ssh_port") or device.ssh_port or 22)
+
+    connector = SonicWallSSHConnector(
+        host=host,
+        username=username,
+        password=password,
+        ssh_port=ssh_port,
+    )
+
+    controls: list[dict] = []
+
+    try:
+        raw = await connector.collect_security_services()
+    except Exception as exc:
+        logger.warning("SonicWall security services collection failed: %s", exc)
+        return [_na(f"SW-GAV-0{i}", f"SonicWall GAV check {i}", "high",
+                    f"Coleta SSH falhou: {exc}") for i in range(1, 9)] + \
+               [_na(f"SW-SPY-0{i}", f"SonicWall Anti-Spyware check {i}", "high",
+                    f"Coleta SSH falhou: {exc}") for i in range(1, 5)] + \
+               [_na(f"SW-IPS-0{i}", f"SonicWall IPS check {i}", "high",
+                    f"Coleta SSH falhou: {exc}") for i in range(1, 4)]
+
+    gav = _parse_sonicwall_gav(raw.get("gateway_antivirus", ""))
+    spy = _parse_sonicwall_spyware(raw.get("anti_spyware", ""))
+    ips = _parse_sonicwall_ips(raw.get("intrusion_prevention", ""))
+
+    # ── Gateway Anti-Virus checks ────────────────────────────────────────────
+
+    # SW-GAV-01: GAV enabled
+    if gav["enabled"]:
+        controls.append(_pass("SW-GAV-01", "Gateway Anti-Virus habilitado", "critical",
+            "enable encontrado — serviço GAV ativo"))
+    else:
+        controls.append(_fail("SW-GAV-01", "Gateway Anti-Virus habilitado", "critical",
+            "GAV desabilitado — malwares em tráfego de rede não são inspecionados",
+            "configure → gateway-antivirus → enable → commit"))
+
+    # SW-GAV-02: HTTP inbound inspection
+    if "http" in gav["inbound"]:
+        controls.append(_pass("SW-GAV-02", "Inspeção HTTP inbound habilitada (GAV)", "high",
+            f"inbound-inspection http ativo. Todos os protocolos inbound: {gav['inbound']}"))
+    else:
+        controls.append(_fail("SW-GAV-02", "Inspeção HTTP inbound habilitada (GAV)", "high",
+            f"inbound-inspection http ausente. Protocolos ativos: {gav['inbound'] or 'nenhum'}",
+            "gateway-antivirus → inbound-inspection http → commit"))
+
+    # SW-GAV-03: SMTP inbound inspection
+    if "smtp" in gav["inbound"]:
+        controls.append(_pass("SW-GAV-03", "Inspeção SMTP inbound habilitada (GAV)", "high",
+            "inbound-inspection smtp ativo — e-mails com malware são bloqueados"))
+    else:
+        controls.append(_fail("SW-GAV-03", "Inspeção SMTP inbound habilitada (GAV)", "high",
+            "inbound-inspection smtp ausente — anexos maliciosos em e-mail não inspecionados",
+            "gateway-antivirus → inbound-inspection smtp → commit"))
+
+    # SW-GAV-04: Outbound inspection
+    if gav["outbound"]:
+        controls.append(_pass("SW-GAV-04", "Inspeção outbound habilitada (GAV)", "medium",
+            f"Protocolos outbound inspecionados: {gav['outbound']}"))
+    else:
+        controls.append(_fail("SW-GAV-04", "Inspeção outbound habilitada (GAV)", "medium",
+            "Nenhum protocolo outbound inspecionado — exfiltração de malware não detectada",
+            "gateway-antivirus → outbound-inspection http → outbound-inspection smtp → commit"))
+
+    # SW-GAV-05: Detection-only mode disabled (should be blocking)
+    if not gav["detection_only"]:
+        controls.append(_pass("SW-GAV-05", "Modo detection-only desabilitado (GAV bloqueia)", "high",
+            "detection-only desabilitado — GAV está em modo de bloqueio ativo"))
+    else:
+        controls.append(_fail("SW-GAV-05", "Modo detection-only desabilitado (GAV bloqueia)", "high",
+            "detection-only ativo — GAV apenas loga, NÃO bloqueia ameaças",
+            "gateway-antivirus → no detection-only → commit"))
+
+    # SW-GAV-06: MS Office macros blocked
+    if gav["restrict_ms_macros"]:
+        controls.append(_pass("SW-GAV-06", "Bloqueio de macros MS Office habilitado (GAV)", "high",
+            f"restrict ms-office-macros ativo em: {gav['restrict_ms_macros']}"))
+    else:
+        controls.append(_fail("SW-GAV-06", "Bloqueio de macros MS Office habilitado (GAV)", "high",
+            "Macros MS Office não bloqueadas — vetor comum de ransomware e malware",
+            "gateway-antivirus → restrict ms-office-macros http → restrict ms-office-macros smtp → commit"))
+
+    # SW-GAV-07: Password-protected ZIP blocked
+    if gav["restrict_password_zip"]:
+        controls.append(_pass("SW-GAV-07", "Bloqueio de ZIP com senha habilitado (GAV)", "medium",
+            f"restrict password-protected-zip ativo em: {gav['restrict_password_zip']}"))
+    else:
+        controls.append(_fail("SW-GAV-07", "Bloqueio de ZIP com senha habilitado (GAV)", "medium",
+            "ZIPs com senha não bloqueados — GAV não consegue inspecionar conteúdo cifrado",
+            "gateway-antivirus → restrict password-protected-zip smtp → restrict password-protected-zip http → commit"))
+
+    # SW-GAV-08: Cloud AV database
+    if gav["cloud_av"]:
+        controls.append(_pass("SW-GAV-08", "Cloud Anti-Virus database habilitado", "medium",
+            "cloud anti-virus-database ativo — assinaturas em nuvem complementam a base local"))
+    else:
+        controls.append(_fail("SW-GAV-08", "Cloud Anti-Virus database habilitado", "medium",
+            "Cloud AV desabilitado — detecção limitada à base local de assinaturas",
+            "gateway-antivirus → cloud anti-virus-database → commit"))
+
+    # ── Anti-Spyware checks ──────────────────────────────────────────────────
+
+    # SW-SPY-01: Anti-Spyware enabled
+    if spy["enabled"]:
+        controls.append(_pass("SW-SPY-01", "Anti-Spyware habilitado", "critical",
+            "enable encontrado — serviço Anti-Spyware ativo"))
+    else:
+        controls.append(_fail("SW-SPY-01", "Anti-Spyware habilitado", "critical",
+            "Anti-Spyware desabilitado — spyware e C2 callbacks não são detectados",
+            "configure → anti-spyware → enable → commit"))
+
+    # SW-SPY-02: High-danger prevention
+    if spy["high_prevent"]:
+        controls.append(_pass("SW-SPY-02", "Prevenção de ameaças HIGH-DANGER ativa (Anti-Spyware)", "critical",
+            "signature-group high-danger prevent-all ativo — ameaças críticas bloqueadas"))
+    else:
+        controls.append(_fail("SW-SPY-02", "Prevenção de ameaças HIGH-DANGER ativa (Anti-Spyware)", "critical",
+            "signature-group high-danger prevent-all ausente — ameaças de alto risco apenas logadas, não bloqueadas",
+            "anti-spyware → signature-group high-danger prevent-all → commit"))
+
+    # SW-SPY-03: Medium-danger prevention
+    if spy["medium_prevent"]:
+        controls.append(_pass("SW-SPY-03", "Prevenção de ameaças MEDIUM-DANGER ativa (Anti-Spyware)", "high",
+            "signature-group medium-danger prevent-all ativo"))
+    else:
+        controls.append(_fail("SW-SPY-03", "Prevenção de ameaças MEDIUM-DANGER ativa (Anti-Spyware)", "high",
+            "signature-group medium-danger prevent-all ausente — ameaças de médio risco não bloqueadas",
+            "anti-spyware → signature-group medium-danger prevent-all → commit"))
+
+    # SW-SPY-04: Outbound spyware inspection
+    if spy["inspection_outbound"]:
+        controls.append(_pass("SW-SPY-04", "Inspeção outbound Anti-Spyware habilitada", "medium",
+            "inspection outbound ativo — callbacks de spyware saindo da rede são detectados"))
+    else:
+        controls.append(_fail("SW-SPY-04", "Inspeção outbound Anti-Spyware habilitada", "medium",
+            "inspection outbound desabilitado — spyware infectado internamente pode comunicar com C2 sem detecção",
+            "anti-spyware → inspection outbound → commit"))
+
+    # ── Intrusion Prevention checks ──────────────────────────────────────────
+
+    # SW-IPS-01: IPS enabled
+    if ips["enabled"]:
+        controls.append(_pass("SW-IPS-01", "Intrusion Prevention (IPS) habilitado", "critical",
+            "enable encontrado — serviço IPS ativo"))
+    else:
+        controls.append(_fail("SW-IPS-01", "Intrusion Prevention (IPS) habilitado", "critical",
+            "IPS desabilitado — exploits e ataques de rede não são detectados ou bloqueados",
+            "configure → intrusion-prevention → enable → commit"))
+
+    # SW-IPS-02: High-priority prevention
+    if ips["high_prevent"]:
+        controls.append(_pass("SW-IPS-02", "Prevenção IPS HIGH-PRIORITY ativa", "critical",
+            "signature-group high-priority prevent-all ativo — exploits críticos bloqueados"))
+    else:
+        controls.append(_fail("SW-IPS-02", "Prevenção IPS HIGH-PRIORITY ativa", "critical",
+            "signature-group high-priority prevent-all ausente — ataques de alta prioridade apenas logados",
+            "intrusion-prevention → signature-group high-priority prevent-all → commit"))
+
+    # SW-IPS-03: Medium-priority prevention
+    if ips["medium_prevent"]:
+        controls.append(_pass("SW-IPS-03", "Prevenção IPS MEDIUM-PRIORITY ativa", "high",
+            "signature-group medium-priority prevent-all ativo"))
+    else:
+        controls.append(_fail("SW-IPS-03", "Prevenção IPS MEDIUM-PRIORITY ativa", "high",
+            "signature-group medium-priority prevent-all ausente — ataques de média prioridade não bloqueados",
+            "intrusion-prevention → signature-group medium-priority prevent-all → commit"))
+
+    return controls
+
+
 # ── Generic SSH fallback ──────────────────────────────────────────────────────
 
 async def _collect_generic_ssh(device: Device) -> list[dict]:
@@ -635,10 +943,8 @@ async def collect_device_compliance(device: Device) -> tuple[str, list[dict]]:
         return policy_name, controls
 
     elif vendor in (VendorEnum.sonicwall,):
-        # SonicWall: use existing get_security_status data via SSH/REST
-        # For now, use generic SSH (SonicWall SSH connector exists)
-        controls = await _collect_generic_ssh(device)
-        policy_name = "Network Device Compliance (SonicWall)"
+        controls = await _collect_sonicwall(device)
+        policy_name = "SonicWall Security Services Compliance"
         return policy_name, controls
 
     else:

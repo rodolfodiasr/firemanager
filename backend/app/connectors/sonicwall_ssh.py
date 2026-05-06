@@ -492,3 +492,89 @@ class SonicWallSSHConnector:
             commands_executed=commands,
             error=None if success else output,
         )
+
+    # ------------------------------------------------------------------
+    # Security services collection (GAV / Anti-Spyware / IPS)
+    # ------------------------------------------------------------------
+
+    def _connect_and_collect_security(self) -> tuple[bool, dict | str]:
+        """Enter configure mode and collect show output for each security service sub-mode."""
+        import paramiko
+
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        try:
+            client.connect(
+                hostname=self.host,
+                port=self.ssh_port,
+                username=self.username,
+                password=self.password,
+                timeout=30,
+                look_for_keys=False,
+                allow_agent=False,
+            )
+            shell = client.invoke_shell(width=250, height=1000)
+
+            out_banner = self._wait_for(shell, [">", "assword:"], timeout=15)
+            if "assword:" in out_banner and ">" not in out_banner:
+                self._send(shell, self.password)
+                out_banner += self._wait_for(shell, [">"], timeout=10)
+
+            self._enter_configure(shell)
+
+            collected: dict[str, str] = {}
+
+            for submode, show_cmd, key in [
+                ("gateway-antivirus",    "show gateway-antivirus",    "gateway_antivirus"),
+                ("anti-spyware",         "show anti-spyware",         "anti_spyware"),
+                ("intrusion-prevention", "show intrusion-prevention", "intrusion_prevention"),
+            ]:
+                # Enter sub-mode
+                self._send(shell, submode)
+                self._wait_for(shell, [f"config-{submode}"], timeout=10)
+                # Run show command and capture full output
+                self._send(shell, show_cmd)
+                out = self._read_until_prompt(shell, timeout=30)
+                collected[key] = out
+                # Exit back to top-level configure mode
+                self._send(shell, "exit")
+                self._wait_for(shell, ["config("], timeout=10)
+
+            self._exit_configure(shell)
+            shell.close()
+            client.close()
+            return True, collected
+
+        except RuntimeError as exc:
+            return False, str(exc)
+        except Exception as exc:
+            import paramiko as _p
+            if isinstance(exc, _p.AuthenticationException):
+                return False, f"Falha de autenticação SSH em {self.host}:{self.ssh_port}: {exc}"
+            if isinstance(exc, _p.SSHException):
+                return False, f"Erro SSH em {self.host}:{self.ssh_port}: {exc}"
+            if isinstance(exc, OSError):
+                return False, f"Conexão SSH recusada em {self.host}:{self.ssh_port}: {exc}"
+            return False, f"Erro SSH ({type(exc).__name__}): {exc}"
+        finally:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+    async def collect_security_services(self) -> dict:
+        """Collect Gateway AV, Anti-Spyware and IPS config via configure-mode show commands.
+
+        Returns dict with keys: gateway_antivirus, anti_spyware, intrusion_prevention.
+        Each value is the raw CLI output of the corresponding show command.
+        Raises RuntimeError on connection/auth failure.
+        """
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            success, result = await loop.run_in_executor(
+                executor, self._connect_and_collect_security
+            )
+        if not success:
+            raise RuntimeError(result)
+        return result
