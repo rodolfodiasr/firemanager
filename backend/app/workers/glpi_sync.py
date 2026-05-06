@@ -306,13 +306,23 @@ def _parse_json(raw: str) -> dict:
     return {}
 
 
+def _steps_to_html(text: str) -> str:
+    """Convert numbered-step plain text (1. ... 2. ...) to an HTML ordered list."""
+    import re
+    items = re.split(r"\n?\s*\d+\.\s+", text.strip())
+    items = [i.strip() for i in items if i.strip()]
+    if not items:
+        return text
+    return "<ol>" + "".join(f"<li>{i}</li>" for i in items) + "</ol>"
+
+
 def _build_followup(ai_result: dict, is_recurrent: bool, recurrence_count: int, related_ids: list | None = None) -> str:
-    """Build the followup note posted to GLPI — compact, analyst-friendly format."""
+    """Build the followup note posted to GLPI — compact, analyst-friendly HTML format."""
     confianca = float(ai_result.get("confianca", 0.0))
     pct       = round(confianca * 100)
     security  = ai_result.get("is_security_incident", False)
 
-    lines: list[str] = []
+    parts: list[str] = []
 
     # ── Header ────────────────────────────────────────────────────────────────
     badges: list[str] = []
@@ -321,43 +331,37 @@ def _build_followup(ai_result: dict, is_recurrent: bool, recurrence_count: int, 
     if is_recurrent:
         badges.append(f"🔁 <b>RECORRENTE</b> ({recurrence_count} chamados similares)")
 
-    lines.append("<b>🤖 Análise FireManager</b>" + (f" &nbsp;|&nbsp; {' &nbsp;|&nbsp; '.join(badges)}" if badges else ""))
-    lines.append(f"<i>Confiança da análise: {pct}%</i>")
-    lines.append("<hr/>")
+    header = "<b>🤖 Análise FireManager</b>"
+    if badges:
+        header += f" &nbsp;|&nbsp; {' &nbsp;|&nbsp; '.join(badges)}"
+    parts.append(f"<p>{header}<br><i>Confiança da análise: {pct}%</i></p>")
+    parts.append("<hr/>")
 
     # ── Diagnóstico ───────────────────────────────────────────────────────────
     if diagnostico := ai_result.get("diagnostico"):
-        lines.append(f"<b>📋 Diagnóstico</b>")
-        lines.append(diagnostico)
-        lines.append("")
+        parts.append(f"<p><b>📋 Diagnóstico</b><br>{diagnostico}</p>")
 
     # ── Ação imediata ─────────────────────────────────────────────────────────
     if acao_imediata := ai_result.get("acoes_imediatas"):
-        lines.append("<b>⚡ Ação imediata — faça agora</b>")
-        lines.append(acao_imediata)
-        lines.append("")
+        parts.append(f"<p><b>⚡ Ação imediata — faça agora</b></p>{_steps_to_html(acao_imediata)}")
 
     # ── Ação definitiva ───────────────────────────────────────────────────────
     if acao_definitiva := ai_result.get("plano_remediacao"):
-        lines.append("<b>🔧 Ação definitiva — médio prazo</b>")
-        lines.append(acao_definitiva)
-        lines.append("")
+        parts.append(f"<p><b>🔧 Ação definitiva — médio prazo</b></p>{_steps_to_html(acao_definitiva)}")
 
-    # ── Recorrência com links ──────────────────────────────────────────────────
+    # ── Recorrência com links ─────────────────────────────────────────────────
     if is_recurrent and recurrence_count:
-        lines.append("<b>🔁 Recorrência</b>")
         ref_part = ""
         if related_ids:
             ids_str = ", ".join(f"#{i}" for i in related_ids[:5])
             ref_part = f" — chamados anteriores: {ids_str}"
-        lines.append(f"Sim, {recurrence_count} chamados similares resolvidos anteriormente{ref_part}.")
-        lines.append("")
+        parts.append(f"<p><b>🔁 Recorrência</b><br>Sim, {recurrence_count} chamados similares resolvidos anteriormente{ref_part}.</p>")
 
     # ── Causa raiz (compacta) ─────────────────────────────────────────────────
     if causa := ai_result.get("causa_raiz"):
-        lines.append(f"<b>🔍 Causa raiz:</b> {causa}")
+        parts.append(f"<p><b>🔍 Causa raiz:</b> {causa}</p>")
 
-    return "\n".join(lines)
+    return "\n".join(parts)
 
 
 # Local alias so _process_ticket can call strip_html without circular import
