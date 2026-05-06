@@ -247,7 +247,7 @@ async def create_direct_ssh_operation(
         raise HTTPException(status_code=404, detail="Dispositivo não encontrado.")
 
     effective_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, device.category)
-    if effective_role is None or effective_role == TenantRole.readonly:
+    if effective_role is None or effective_role in (TenantRole.readonly, TenantRole.analyst_n1):
         raise HTTPException(
             status_code=403,
             detail=f"Sem permissão para operações SSH em dispositivos do tipo '{device.category.value}'.",

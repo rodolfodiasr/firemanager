@@ -8,6 +8,7 @@ from app.api.auth import TenantContext, get_tenant_context, require_tenant_admin
 from app.database import get_db
 from app.schemas.device import BookstackPageInfo, DeviceBookstackLink, DeviceCreate, DeviceRead, DeviceUpdate, DocDraftResult
 from app.services.device_service import (
+    DeviceNotFoundError,
     create_device,
     delete_device,
     get_device,
@@ -46,7 +47,10 @@ async def get_device_by_id(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)] = None,
     db:  Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> DeviceRead:
-    device = await get_device(db, device_id, tenant_id=ctx.tenant.id)
+    try:
+        device = await get_device(db, device_id, tenant_id=ctx.tenant.id)
+    except DeviceNotFoundError:
+        raise HTTPException(status_code=404, detail="Dispositivo não encontrado")
     return DeviceRead.model_validate(device)
 
 
@@ -76,7 +80,10 @@ async def run_health_check(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)] = None,
     db:  Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> DeviceRead:
-    device = await health_check_device(db, device_id, tenant_id=ctx.tenant.id)
+    try:
+        device = await health_check_device(db, device_id, tenant_id=ctx.tenant.id)
+    except DeviceNotFoundError:
+        raise HTTPException(status_code=404, detail="Dispositivo não encontrado")
     return DeviceRead.model_validate(device)
 
 

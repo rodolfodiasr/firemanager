@@ -270,7 +270,7 @@ class TestSuperAdminForgery:
             timedelta(minutes=5),
         )
         resp = await client.get(
-            "/admin/tenants",
+            "/admin/tenants/overview",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code in (401, 403)
@@ -285,7 +285,7 @@ class TestSuperAdminForgery:
             timedelta(minutes=5),
         )
         resp = await client.get(
-            "/admin/tenants",
+            "/admin/tenants/overview",
             headers={"Authorization": f"Bearer {token}"},
         )
         # require_super_admin checks DB record — user.is_super_admin is False
