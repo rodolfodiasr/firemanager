@@ -74,6 +74,9 @@ class Device(Base):
         Enum(DeviceCategory, native_enum=False), nullable=False, default=DeviceCategory.firewall
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # External system correlation — used by GLPI enrichment worker for precise matching
+    zabbix_host_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    wazuh_agent_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # BookStack integration — human-maintained page for reading context
     bookstack_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # BookStack integration — FM-owned changelog page

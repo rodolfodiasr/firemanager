@@ -409,9 +409,7 @@ async def _fetch_zabbix_data(tenant_id, device_ids: list) -> str | None:
     parts: list[str] = []
     for device in devices:
         try:
-            # Use device.host (IP) as the Zabbix host identifier
-            # Falls back to zabbix_host_name field if set (future field)
-            host_id = getattr(device, "zabbix_host_name", None) or device.host
+            host_id = device.zabbix_host_name or device.host
             summary = await zabbix_service.get_host_recent_summary(
                 tenant_id=tenant_id,
                 host_identifier=host_id,
@@ -442,7 +440,7 @@ async def _fetch_wazuh_data(tenant_id, device_ids: list) -> str | None:
     parts: list[str] = []
     for device in devices:
         try:
-            agent_id = getattr(device, "wazuh_agent_name", None) or device.host
+            agent_id = device.wazuh_agent_name or device.host
             summary  = await wazuh_service.get_agent_recent_alerts(
                 tenant_id=tenant_id,
                 agent_identifier=agent_id,

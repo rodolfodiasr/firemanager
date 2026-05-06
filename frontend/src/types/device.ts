@@ -33,6 +33,8 @@ export interface Device {
   status: DeviceStatus;
   last_seen: string | null;
   notes: string | null;
+  zabbix_host_name: string | null;
+  wazuh_agent_name: string | null;
   bookstack_page_id: number | null;
   bookstack_fm_page_id: number | null;
   bookstack_doc_page_id: number | null;
@@ -63,4 +65,6 @@ export interface DeviceCreate {
   use_ssl: boolean;
   verify_ssl: boolean;
   notes?: string;
+  zabbix_host_name?: string;
+  wazuh_agent_name?: string;
 }

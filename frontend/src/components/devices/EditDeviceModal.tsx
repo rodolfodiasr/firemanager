@@ -30,6 +30,8 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
         use_ssl: device.use_ssl,
         verify_ssl: device.verify_ssl,
         notes: device.notes ?? "",
+        zabbix_host_name: device.zabbix_host_name ?? "",
+        wazuh_agent_name: device.wazuh_agent_name ?? "",
       });
       setChangeCredentials(false);
     }
@@ -51,6 +53,8 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
       use_ssl: data.use_ssl,
       verify_ssl: data.verify_ssl,
       notes: data.notes,
+      zabbix_host_name: data.zabbix_host_name || null,
+      wazuh_agent_name: data.wazuh_agent_name || null,
     };
     if (changeCredentials) {
       payload.credentials = {
@@ -197,6 +201,35 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
               )}
             </div>
           )}
+
+          {/* Correlação com sistemas externos */}
+          <div className="border rounded-lg p-3 bg-gray-50 space-y-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Correlação — Zabbix / Wazuh</p>
+            <p className="text-xs text-gray-400">
+              Preencha somente se o nome do host no Zabbix ou o nome do agente no Wazuh difere do IP/nome deste dispositivo.
+              Usado pelo módulo de análise de tickets GLPI para correlação precisa.
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Host name no Zabbix <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <input
+                {...register("zabbix_host_name")}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                placeholder="Ex: fw-sp-01.empresa.local"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Agent name no Wazuh <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <input
+                {...register("wazuh_agent_name")}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                placeholder="Ex: fw-sp-01"
+              />
+            </div>
+          </div>
 
           <div className="flex justify-end gap-3 pt-2">
             <button

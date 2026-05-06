@@ -28,6 +28,8 @@ class DeviceCreate(BaseModel):
     use_ssl: bool = True
     verify_ssl: bool = False
     notes: str | None = None
+    zabbix_host_name: str | None = None
+    wazuh_agent_name: str | None = None
 
 
 class DeviceUpdate(BaseModel):
@@ -40,6 +42,8 @@ class DeviceUpdate(BaseModel):
     use_ssl: bool | None = None
     verify_ssl: bool | None = None
     notes: str | None = None
+    zabbix_host_name: str | None = None
+    wazuh_agent_name: str | None = None
 
 
 class DeviceRead(BaseModel):
@@ -56,6 +60,8 @@ class DeviceRead(BaseModel):
     last_seen: datetime | None
     last_error: str | None
     notes: str | None
+    zabbix_host_name: str | None = None
+    wazuh_agent_name: str | None = None
     bookstack_page_id: int | None = None
     bookstack_fm_page_id: int | None = None
     bookstack_doc_page_id: int | None = None
