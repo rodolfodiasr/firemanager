@@ -243,7 +243,7 @@ async def list_glpi_analyses(
     result = await db.execute(stmt)
     rows = result.all()
     return [
-        GlpiAnalysisListItem(**GlpiAnalysisListItem.model_validate(row[0]).model_dump(), glpi_url=row[1])
+        GlpiAnalysisListItem.model_validate(row[0]).model_copy(update={"glpi_url": row[1]})
         for row in rows
     ]
 
@@ -265,4 +265,4 @@ async def get_glpi_analysis(
     analysis, glpi_url = row
     if analysis.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=403, detail="Sem acesso a esta análise")
-    return GlpiTicketAnalysisRead(**GlpiTicketAnalysisRead.model_validate(analysis).model_dump(), glpi_url=glpi_url)
+    return GlpiTicketAnalysisRead.model_validate(analysis).model_copy(update={"glpi_url": glpi_url})
