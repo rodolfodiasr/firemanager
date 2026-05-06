@@ -1,5 +1,7 @@
 from app.models.analysis_session import AnalysisSession
 from app.models.audit_log import AuditLog
+from app.models.glpi_integration import GlpiIntegration
+from app.models.glpi_ticket_analysis import GlpiTicketAnalysis, GlpiAnalysisStatus
 from app.models.audit_policy import AuditPolicy
 from app.models.bookstack_embedding import BookstackEmbedding
 from app.models.bulk_job import BulkJob
@@ -24,6 +26,9 @@ from app.models.variable import TenantVariable, DeviceVariable
 
 __all__ = [
     "AnalysisSession",
+    "GlpiIntegration",
+    "GlpiTicketAnalysis",
+    "GlpiAnalysisStatus",
     "AuditLog",
     "AuditPolicy",
     "BookstackEmbedding",
