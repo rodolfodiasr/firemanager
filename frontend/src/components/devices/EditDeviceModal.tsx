@@ -53,8 +53,8 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
       use_ssl: data.use_ssl,
       verify_ssl: data.verify_ssl,
       notes: data.notes,
-      zabbix_host_name: data.zabbix_host_name || null,
-      wazuh_agent_name: data.wazuh_agent_name || null,
+      zabbix_host_name: data.zabbix_host_name || undefined,
+      wazuh_agent_name: data.wazuh_agent_name || undefined,
     };
     if (changeCredentials) {
       payload.credentials = {
