@@ -119,11 +119,13 @@ async def inspect_device(
             ssh = get_ssh_connector(device)
 
             if device.vendor == VendorEnum.sonicwall:
-                # Sub-mode collector returns richer structured output per service
+                from app.services.operation_service import _parse_security_status
+
+                # 3 main services — via configure sub-mode (richer structured data)
                 raw_data = await ssh.collect_security_services()
                 _SW_LABELS = {
-                    "gateway_antivirus":   "Gateway Anti-Virus",
-                    "anti_spyware":        "Anti-Spyware",
+                    "gateway_antivirus":    "Gateway Anti-Virus",
+                    "anti_spyware":         "Anti-Spyware",
                     "intrusion_prevention": "Intrusion Prevention (IPS)",
                 }
                 items = []
@@ -131,6 +133,18 @@ async def inspect_device(
                     parsed = _parse_sonicwall_security_section(raw_data.get(key, ""))
                     enabled = parsed.pop("enabled")
                     items.append({"service": label, "enabled": enabled, "details": parsed})
+
+                # Remaining services — flat SSH show commands from top level
+                _EXTRA_CMDS = [
+                    "show app-control",
+                    "show geo-ip",
+                    "show botnet",
+                    "show dpi-ssl",
+                ]
+                extra_result = await ssh.execute_show_commands(_EXTRA_CMDS)
+                if extra_result.success:
+                    items.extend(_parse_security_status(_EXTRA_CMDS, extra_result.output))
+
                 return {"resource": resource, "items": items}
 
             # Fallback for other vendors
