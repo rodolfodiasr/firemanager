@@ -17,6 +17,7 @@ from app.schemas.glpi import (
     GlpiIntegrationCreate,
     GlpiIntegrationRead,
     GlpiIntegrationUpdate,
+    GlpiRunAnalysisRequest,
     GlpiTestResult,
     GlpiTicketAnalysisRead,
 )
@@ -246,6 +247,36 @@ async def list_glpi_analyses(
         GlpiAnalysisListItem.model_validate(row[0]).model_copy(update={"glpi_url": row[1]})
         for row in rows
     ]
+
+
+@router.post("/analyses/{analysis_id}/run", status_code=202)
+async def run_glpi_analysis(
+    analysis_id: UUID,
+    body: GlpiRunAnalysisRequest,
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    result = await db.execute(
+        select(GlpiTicketAnalysis).where(GlpiTicketAnalysis.id == analysis_id)
+    )
+    analysis = result.scalar_one_or_none()
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Análise não encontrada")
+    if analysis.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=403, detail="Sem acesso a esta análise")
+    if analysis.status != GlpiAnalysisStatus.pending_manual:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Análise não está em fila manual (status atual: {analysis.status})",
+        )
+
+    analysis.status = GlpiAnalysisStatus.analyzing
+    await db.commit()
+
+    from app.workers.glpi_sync import run_glpi_analysis_manual
+    run_glpi_analysis_manual.delay(str(analysis_id), body.device_ids)
+
+    return {"queued": True, "analysis_id": str(analysis_id)}
 
 
 @router.get("/analyses/{analysis_id}", response_model=GlpiTicketAnalysisRead)

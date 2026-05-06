@@ -43,4 +43,7 @@ export const glpiApi = {
 
   getAnalysis: (id: string) =>
     apiClient.get<GlpiTicketAnalysis>(`/glpi/analyses/${id}`).then((r) => r.data),
+
+  runAnalysis: (id: string, deviceIds: string[]) =>
+    apiClient.post(`/glpi/analyses/${id}/run`, { device_ids: deviceIds }).then((r) => r.data),
 };

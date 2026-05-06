@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
+  Play,
   RefreshCw,
   RotateCcw,
   Shield,
@@ -17,6 +18,7 @@ import {
 import toast from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { glpiApi } from "../api/glpi";
+import { RunAnalysisModal } from "../components/glpi/RunAnalysisModal";
 import type { GlpiAnalysisStatus, GlpiAnalysisListItem, GlpiTicketAnalysis } from "../types/glpi";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -77,9 +79,11 @@ function ConfidenceBadge({ value }: { value: number | null }) {
 function AnalysisSlideOver({
   analysisId,
   onClose,
+  onRunAnalysis,
 }: {
   analysisId: string;
   onClose: () => void;
+  onRunAnalysis: () => void;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["glpi-analysis", analysisId],
@@ -184,6 +188,21 @@ function AnalysisSlideOver({
                   <div className="pt-5"><Section title="🔍 Causa raiz"                     content={data.causa_raiz} /></div>
                   <div className="pt-5"><Section title="🛡 Prevenção"                      content={data.prevencao} /></div>
                 </div>
+              ) : data.status === "pending_manual" ? (
+                <div className="bg-amber-50 border border-amber-100 rounded-lg px-4 py-4 space-y-3">
+                  <p className="text-sm font-medium text-amber-800">Aguardando análise manual</p>
+                  <p className="text-xs text-amber-600">
+                    Este ticket não foi analisado automaticamente. Clique em "Analisar agora" para
+                    selecionar os dispositivos relacionados e iniciar a análise com IA.
+                  </p>
+                  <button
+                    onClick={() => { onClose(); onRunAnalysis(); }}
+                    className="flex items-center gap-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <Play size={14} />
+                    Analisar agora
+                  </button>
+                </div>
               ) : data.status === "failed" ? (
                 <div className="bg-red-50 border border-red-100 rounded-lg px-4 py-3 text-sm text-red-700">
                   <p className="font-medium mb-1">Falha na análise</p>
@@ -268,6 +287,7 @@ export function GlpiAnalyses() {
   const [securityOnly, setSecurityOnly]   = useState(false);
   const [recurrentOnly, setRecurrentOnly] = useState(false);
   const [selectedId, setSelectedId]       = useState<string | null>(null);
+  const [runModalAnalysis, setRunModalAnalysis] = useState<GlpiAnalysisListItem | null>(null);
 
   const { data: integration } = useQuery({
     queryKey: ["glpi-integration"],
@@ -455,8 +475,19 @@ export function GlpiAnalyses() {
                   <td className="px-4 py-3 text-right text-xs text-gray-400 whitespace-nowrap">
                     {fmtDate(a.created_at)}
                   </td>
-                  <td className="px-3 py-3">
-                    <ChevronRight size={14} className="text-gray-300" />
+                  <td className="px-3 py-3 text-right">
+                    {a.status === "pending_manual" ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setRunModalAnalysis(a); }}
+                        className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2 py-1 rounded-lg transition-colors whitespace-nowrap"
+                        title="Iniciar análise manual"
+                      >
+                        <Play size={11} />
+                        Analisar
+                      </button>
+                    ) : (
+                      <ChevronRight size={14} className="text-gray-300" />
+                    )}
                   </td>
                 </tr>
               ))}
@@ -467,7 +498,23 @@ export function GlpiAnalyses() {
 
       {/* Slide-over detail */}
       {selectedId && (
-        <AnalysisSlideOver analysisId={selectedId} onClose={() => setSelectedId(null)} />
+        <AnalysisSlideOver
+          analysisId={selectedId}
+          onClose={() => setSelectedId(null)}
+          onRunAnalysis={() => {
+            const item = analyses.find((a) => a.id === selectedId);
+            if (item) setRunModalAnalysis(item);
+            setSelectedId(null);
+          }}
+        />
+      )}
+
+      {/* Manual analysis modal */}
+      {runModalAnalysis && (
+        <RunAnalysisModal
+          analysis={runModalAnalysis}
+          onClose={() => setRunModalAnalysis(null)}
+        />
       )}
     </PageWrapper>
   );

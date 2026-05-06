@@ -640,3 +640,114 @@ def _build_followup(
 def GlpiClient_strip_html(html: str | None) -> str:
     from app.services.glpi_service import GlpiClient
     return GlpiClient.strip_html(html)
+
+
+# ── Manual analysis task ──────────────────────────────────────────────────────
+
+@celery_app.task(
+    name="app.workers.glpi_sync.run_glpi_analysis_manual",
+    bind=True,
+    soft_time_limit=600,
+    time_limit=660,
+)
+def run_glpi_analysis_manual(self: object, analysis_id: str, device_ids: list[str]) -> dict:
+    return asyncio.get_event_loop().run_until_complete(
+        _async_run_manual_analysis(analysis_id, device_ids)
+    )
+
+
+async def _async_run_manual_analysis(analysis_id: str, device_ids: list[str]) -> dict:
+    import app.models  # noqa: F401 — ensure ORM models registered
+    from uuid import UUID
+    from app.database import AsyncSessionLocal
+    from app.models.glpi_integration import GlpiIntegration
+    from app.models.glpi_ticket_analysis import GlpiTicketAnalysis, GlpiAnalysisStatus
+    from app.services.glpi_service import GlpiClient
+    from app.utils.crypto import decrypt_credentials
+
+    aid = UUID(analysis_id)
+
+    async with AsyncSessionLocal() as db:
+        analysis    = await db.get(GlpiTicketAnalysis, aid)
+        if not analysis or analysis.status != GlpiAnalysisStatus.analyzing:
+            log.warning("manual_analysis_skip id=%s status=%s", analysis_id, analysis.status if analysis else "not_found")
+            return {"skipped": True}
+        integration = await db.get(GlpiIntegration, analysis.glpi_integration_id)
+        if not integration:
+            log.error("manual_analysis_no_integration id=%s", analysis_id)
+            return {"error": "integration not found"}
+
+        title            = analysis.glpi_ticket_title
+        content          = analysis.glpi_ticket_content or ""
+        is_recurrent     = analysis.is_recurrent or False
+        recurrence_count = analysis.recurrence_count or 0
+        related_ids      = list(analysis.related_ticket_ids or [])
+        glpi_ticket_id   = analysis.glpi_ticket_id
+        itemtype         = analysis.glpi_itemtype
+
+    # Enrichment — use provided device_ids, fall back to auto-correlation
+    effective_device_ids = device_ids
+    if not effective_device_ids and integration.auto_correlate_devices:
+        async with AsyncSessionLocal() as db:
+            effective_device_ids = await _correlate_devices(
+                db, integration.tenant_id, title, content
+            )
+
+    enrichment: dict[str, str] = {}
+    if effective_device_ids:
+        enrichment = await _collect_enrichment(integration, effective_device_ids)
+
+    # Call Claude
+    try:
+        ai_result = await _call_claude(title, content, is_recurrent, recurrence_count, enrichment)
+    except Exception as exc:
+        async with AsyncSessionLocal() as db:
+            rec = await db.get(GlpiTicketAnalysis, aid)
+            if rec:
+                rec.status        = GlpiAnalysisStatus.failed
+                rec.error_message = str(exc)[:1000]
+                await db.commit()
+        log.warning("manual_claude_failed id=%s error=%s", analysis_id, exc)
+        return {"error": str(exc)}
+
+    # Post followup to GLPI
+    followup_id = None
+    try:
+        creds    = decrypt_credentials(integration.encrypted_password)
+        password = creds.get("password", "")
+        async with GlpiClient(
+            glpi_url=integration.glpi_url,
+            app_token=integration.app_token,
+            username=integration.username,
+            password=password,
+            verify_ssl=integration.verify_ssl,
+        ) as client:
+            followup_text = _build_followup(
+                ai_result, is_recurrent, recurrence_count,
+                related_ids=related_ids, enrichment_sources=list(enrichment.keys()),
+            )
+            followup_id = await client.add_followup(glpi_ticket_id, followup_text, itemtype=itemtype)
+    except Exception as exc:
+        log.warning("manual_glpi_followup_failed id=%s error=%s", analysis_id, exc)
+
+    # Persist
+    async with AsyncSessionLocal() as db:
+        rec = await db.get(GlpiTicketAnalysis, aid)
+        if rec:
+            rec.status               = GlpiAnalysisStatus.completed
+            rec.diagnostico          = ai_result.get("diagnostico")
+            rec.acoes_imediatas      = ai_result.get("acoes_imediatas")
+            rec.plano_remediacao     = ai_result.get("plano_remediacao")
+            rec.causa_raiz           = ai_result.get("causa_raiz")
+            rec.prevencao            = ai_result.get("prevencao")
+            rec.confianca            = float(ai_result.get("confianca", 0.0))
+            rec.is_security_incident = bool(ai_result.get("is_security_incident", False))
+            rec.is_recurrent         = is_recurrent or bool(ai_result.get("is_recurrent", False))
+            rec.glpi_followup_id     = followup_id
+            await db.commit()
+
+    log.info(
+        "manual_analysis_done id=%s ticket=%d enriched=%s",
+        analysis_id, glpi_ticket_id, list(enrichment.keys()),
+    )
+    return {"analysed": True}

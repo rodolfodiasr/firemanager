@@ -116,6 +116,10 @@ class GlpiTestResult(BaseModel):
     latency_ms: float | None = None
 
 
+class GlpiRunAnalysisRequest(BaseModel):
+    device_ids: list[str] = []
+
+
 class GlpiAnalysisListItem(BaseModel):
     id: UUID
     glpi_ticket_id: int
