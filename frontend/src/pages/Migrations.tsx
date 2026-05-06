@@ -187,6 +187,7 @@ function PortMappingTable({
           <th className="px-3 py-2 border-b">Porta origem</th>
           <th className="px-3 py-2 border-b">Modo</th>
           <th className="px-3 py-2 border-b">PVID</th>
+          <th className="px-3 py-2 border-b">VLANs Tagged</th>
           <th className="px-3 py-2 border-b">Porta destino</th>
         </tr>
       </thead>
@@ -204,6 +205,11 @@ function PortMappingTable({
               </span>
             </td>
             <td className="px-3 py-2 font-mono text-xs text-gray-500">{iface.pvid ?? "—"}</td>
+            <td className="px-3 py-2 font-mono text-xs text-gray-400 max-w-[140px]">
+              {iface.tagged_vlans.length > 0
+                ? iface.tagged_vlans.slice(0, 8).join(", ") + (iface.tagged_vlans.length > 8 ? "…" : "")
+                : "—"}
+            </td>
             <td className="px-3 py-2">
               <input
                 value={portMapping[iface.name] ?? ""}

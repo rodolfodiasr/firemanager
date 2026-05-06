@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import re
 from uuid import UUID
 
 from app.workers.celery_app import celery_app
@@ -224,11 +225,22 @@ async def _claude_review(
     )
 
     raw = msg.content[0].text.strip()
-    if raw.startswith("```"):
-        parts = raw.split("```")
-        raw = parts[1] if len(parts) >= 2 else raw
-        if raw.startswith("json"):
-            raw = raw[4:]
+
+    # Strip markdown fences in any position
+    if "```" in raw:
+        # Extract content between first ``` pair
+        m = re.search(r"```(?:json)?\s*([\s\S]+?)```", raw)
+        raw = m.group(1).strip() if m else raw.replace("```json", "").replace("```", "").strip()
+
+    # Find the JSON object boundaries in case Claude added preamble text
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+    if start >= 0 and end > start:
+        raw = raw[start:end]
+
+    if not raw:
+        log.warning("Claude review returned empty response")
+        return commands, ["Revisão IA retornou resposta vazia — comandos gerados automaticamente mantidos"]
 
     data = json.loads(raw)
     return data.get("commands_revised", commands), data.get("warnings", [])

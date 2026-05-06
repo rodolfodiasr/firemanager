@@ -155,13 +155,13 @@ def _parse_edgeswitch(config: str) -> dict[str, Any]:
                 i += 1
             continue
 
-        # Interface block
-        ifm = re.match(r"^interface\s+(\S+)", line, re.I)
+        # Interface block — capture full name (handles "interface lag 1", "interface vlan 10", etc.)
+        ifm = re.match(r"^interface\s+(.+)", line, re.I)
         if ifm:
             if cur_iface:
                 ir["interfaces"].append(_finalize_iface(cur_iface))
             cur_iface = {
-                "name": ifm.group(1), "mode": "access",
+                "name": ifm.group(1).strip(), "mode": "access",
                 "pvid": None, "tagged_vlans": [], "description": None,
                 "_participation": [],
             }
@@ -292,7 +292,7 @@ def _parse_ios_style(config: str) -> dict[str, Any]:
                 i += 1
             continue
 
-        # Interface block
+        # Interface block — full name capture
         ifm = re.match(r"^interface\s+(.+)", line, re.I)
         if ifm:
             if cur_iface:
