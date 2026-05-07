@@ -161,6 +161,14 @@ def _parse_edgeswitch(config: str) -> dict[str, Any]:
                 if vl.lower() == "exit":
                     i += 1
                     break
+                # EdgeSwitch: "vlan name 2 "WIFI-CORP"" (name on separate line)
+                nm2 = re.match(r"vlan\s+name\s+(\d+)\s+(.+)", vl, re.I)
+                if nm2:
+                    vid2 = nm2.group(1)
+                    ir["vlans"].setdefault(vid2, {"name": None})
+                    ir["vlans"][vid2]["name"] = nm2.group(2).strip().strip('"').strip("'")
+                    i += 1
+                    continue
                 vm = re.match(r"vlan\s+(\S+?)(?:\s+name\s+(.+))?$", vl, re.I)
                 if vm:
                     for vid in _expand_vlan_list(vm.group(1)):
@@ -772,13 +780,33 @@ def _extract_l3_interfaces(config: str) -> list[dict]:
     """Extract VLAN L3 interface IP addresses from any vendor raw config.
 
     Handles:
-      EdgeSwitch / IOS:  interface vlan 100  →  ip address 10.0.0.1/24 (no indent)
+      EdgeSwitch native: network parms <ip> <mask> <gw>  +  network mgmt_vlan <vid>
+      IOS-style:         interface vlan 100  →  ip address 10.0.0.1/24
       HP Comware:        interface Vlan-interface 100  →  ip address 10.0.0.1 255.255.255.0
     Returns list of {"vlan_id": str, "ip": str, "mask": str}.
     """
     result: list[dict] = []
     seen: set[str] = set()
     lines = config.splitlines()
+
+    # ── EdgeSwitch: "network parms IP MASK GW" + "network mgmt_vlan VID" ──────
+    mgmt_ip: str | None = None
+    mgmt_mask: str = "255.255.255.0"
+    mgmt_vlan: str = "1"
+    for raw in lines:
+        s = raw.strip()
+        npm = re.match(r"network\s+parms\s+([\d.]+)\s+([\d.]+)", s, re.I)
+        if npm:
+            mgmt_ip, mgmt_mask = npm.group(1), npm.group(2)
+        nvm = re.match(r"network\s+mgmt_vlan\s+(\d+)", s, re.I)
+        if nvm:
+            mgmt_vlan = nvm.group(1)
+    if mgmt_ip:
+        key = f"{mgmt_vlan}:{mgmt_ip}"
+        seen.add(key)
+        result.append({"vlan_id": mgmt_vlan, "ip": mgmt_ip, "mask": mgmt_mask})
+
+    # ── IOS-style / HP Comware: interface vlan X / ip address ... ────────────
     _BLOCK_END = re.compile(r"^(interface|vlan\s|hostname|spanning-tree|router|ip\s+route)\b", re.I)
     i = 0
     while i < len(lines):
@@ -792,11 +820,9 @@ def _extract_l3_interfaces(config: str) -> list[dict]:
             i += 1
             while i < len(lines):
                 ils = lines[i].strip()
-                # Explicit end-of-block keywords
                 if ils.lower() in ("quit", "exit", "!"):
                     i += 1
                     break
-                # Next top-level statement ends the block
                 if ils and _BLOCK_END.match(ils):
                     break
                 ip_m = re.match(
