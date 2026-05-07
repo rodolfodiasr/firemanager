@@ -134,18 +134,20 @@ async def health_check_device(
     try:
         if device.vendor in CLI_VENDORS:
             connector = get_ssh_connector(device)
-        else:
-            connector = get_connector(device)
-        result = await connector.test_connection()
-
-        # SonicWall REST 403 → REST API disabled on device; fall back to SSH health check
-        if not result.success and device.vendor == VendorEnum.sonicwall and (
-            "403" in (result.error or "") or "auth failed" in (result.error or "").lower()
-        ):
+            result = await connector.test_connection()
+        elif device.vendor == VendorEnum.sonicwall:
+            # SonicWall: SSH first (single management session — REST override kicks out SSH)
+            # If SSH works → online. Only try REST if SSH fails (e.g. SSH port blocked).
             ssh = get_ssh_connector(device)
             ssh_result = await ssh.execute_show_commands(["show version"])
             if ssh_result.success:
                 result = ConnectionResult(success=True)
+            else:
+                rest = get_connector(device)
+                result = await rest.test_connection()
+        else:
+            connector = get_connector(device)
+            result = await connector.test_connection()
 
         if result.success:
             device.status = DeviceStatus.online
