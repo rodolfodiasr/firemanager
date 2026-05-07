@@ -79,9 +79,13 @@ class SonicWallConnector(BaseConnector):
             headers={"Content-Type": "application/json", "Accept": "application/json"},
             timeout=30.0,
         ) as client:
+            # Gen6 rejects {"override": True} body (406) — that parameter is Gen7+ only.
+            # Use os_version hint before firmware is known; _v6 is resolved after auth.
+            is_v6_hint = self._v6 is True or (self._v6 is None and self.os_version <= 6)
+            auth_kwargs: dict = {} if is_v6_hint else {"json": {"override": True}}
             resp = await client.post(
                 "/api/sonicos/auth",
-                json={"override": True},
+                **auth_kwargs,
                 auth=httpx.DigestAuth(self.username, self.password),
             )
             if not resp.is_success:
@@ -89,7 +93,7 @@ class SonicWallConnector(BaseConnector):
                     f"SonicWall auth failed: HTTP {resp.status_code} — {resp.text[:200]}"
                 )
 
-            # Fallback: both SonicOS 6 and 7 return config_mode in auth, so use os_version hint
+            # Resolve _v6 from firmware detection or fall back to os_version hint
             if self._v6 is None:
                 self._v6 = (self.os_version <= 6)
 
