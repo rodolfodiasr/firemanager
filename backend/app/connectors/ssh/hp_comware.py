@@ -20,6 +20,37 @@ _MORE_RE = re.compile(r"\s*----\s*More\s*----\s*", re.IGNORECASE)
 
 _COMWARE_SHOW_PREFIXES = ("display ", "ping ", "tracert ", "traceroute ")
 
+# Errors that indicate the SSH session was dropped — not necessarily a config failure.
+_SOCKET_ERRORS = ("socket is closed", "eof", "connection reset", "broken pipe", "timed out")
+
+
+def _split_vlan_ip_blocks(cmds: list[str]) -> tuple[list[str], list[str]]:
+    """Split commands into (main_cmds, vlan_interface_blocks).
+
+    Pulls out 'interface Vlan-interface X / ip address / quit' groups so they
+    can be sent in a separate SSH connection AFTER the main config is saved.
+    This prevents losing the config when the management IP changes and drops
+    the active SSH session.
+    """
+    main: list[str] = []
+    l3: list[str] = []
+    i = 0
+    while i < len(cmds):
+        if re.match(r"^interface\s+vlan", cmds[i].strip(), re.IGNORECASE):
+            block = [cmds[i]]
+            i += 1
+            while i < len(cmds):
+                block.append(cmds[i])
+                if cmds[i].strip().lower() in ("quit", "exit"):
+                    i += 1
+                    break
+                i += 1
+            l3.extend(block)
+        else:
+            main.append(cmds[i])
+            i += 1
+    return main, l3
+
 # Commands that need system-view to run (currently none — display current-configuration
 # interface X works from user-view after _cmdline-mode on)
 _COMWARE_SYSVIEW_DISPLAY: tuple[()] = ()
@@ -124,39 +155,30 @@ class HPComwareConnector(BaseSSHConnector):
         if all(self._is_comware_show(c) for c in commands):
             return self._show_sync(commands)
 
-        # Strip commands that conflict with send_config_set's implicit system-view management:
-        #   "system-view"  — send_config_set already enters system-view; duplicate causes nesting
-        #   "return"       — exits all the way to user-view; if sent mid-batch the next exit_config
-        #                    call would send 'quit' in user-view → closes the SSH session
-        #   "save force" / "save" — handled explicitly after config set
         _STRIP = {"system-view", "return", "save force", "save"}
         cfg_cmds = [c for c in commands if c.strip().lower() not in _STRIP]
 
+        # Separate Vlan-interface IP blocks: sent AFTER save so a management-IP
+        # change that drops SSH does not leave the config unsaved.
+        main_cmds, l3_ip_cmds = _split_vlan_ip_blocks(cfg_cmds)
+
+        combined = ""
+
+        # ── Phase 1: main config + explicit save ─────────────────────────────
         try:
             with self._connect_handler() as conn:
                 self._enter_cmdline_mode(conn)
-                # exit_config_mode=False — Claude commands include 'quit' after each block;
-                # we exit cleanly below with an explicit 'return'
-                raw = conn.send_config_set(cfg_cmds, exit_config_mode=False, read_timeout=60)
-                combined = self._clean(raw)
-                # Return to user-view in one step (avoids 'quit' closing the session)
+                if main_cmds:
+                    raw = conn.send_config_set(main_cmds, exit_config_mode=False, read_timeout=60)
+                    combined = self._clean(raw)
                 conn.send_command_timing("return", last_read=2.0)
-                # Save explicitly — save force can take up to ~30s on older models
-                display_only = all(c.strip().lower().startswith("display ") for c in cfg_cmds)
+                display_only = all(c.strip().lower().startswith("display ") for c in main_cmds) if main_cmds else True
                 if not display_only:
                     try:
                         save_out = conn.send_command_timing("save force", last_read=30.0)
                         combined += "\n" + self._clean(save_out)
                     except Exception:
                         pass
-            err = self._first_error(combined)
-            if err:
-                return SSHResult(
-                    success=False, output=combined,
-                    error=f"CLI error: {err}",
-                    commands_executed=commands,
-                )
-            return SSHResult(success=True, output=combined, commands_executed=commands)
         except NetmikoAuthenticationException as exc:
             return SSHResult(success=False, error=f"Autenticação falhou: {exc}",
                              commands_executed=commands)
@@ -165,6 +187,38 @@ class HPComwareConnector(BaseSSHConnector):
                              commands_executed=commands)
         except Exception as exc:
             return SSHResult(success=False, error=str(exc), commands_executed=commands)
+
+        # ── Phase 2: Vlan-interface IP blocks (separate connection) ───────────
+        # If the management IP changes and SSH drops, the main config is already
+        # saved — treat the socket close as an expected outcome, not an error.
+        if l3_ip_cmds:
+            try:
+                with self._connect_handler() as conn2:
+                    self._enter_cmdline_mode(conn2)
+                    raw2 = conn2.send_config_set(l3_ip_cmds, exit_config_mode=False, read_timeout=60)
+                    combined += "\n" + self._clean(raw2)
+                    try:
+                        conn2.send_command_timing("return", last_read=2.0)
+                    except Exception:
+                        pass
+            except Exception as exc:
+                err_s = str(exc).lower()
+                if any(kw in err_s for kw in _SOCKET_ERRORS):
+                    combined += (
+                        "\n[Sessão SSH encerrada após aplicar ip address — "
+                        "IP de gerência provavelmente alterado no switch destino]"
+                    )
+                else:
+                    return SSHResult(success=False, error=str(exc), commands_executed=commands)
+
+        err = self._first_error(combined)
+        if err:
+            return SSHResult(
+                success=False, output=combined,
+                error=f"CLI error: {err}",
+                commands_executed=commands,
+            )
+        return SSHResult(success=True, output=combined, commands_executed=commands)
 
     def _show_sync(self, commands: list[str]) -> SSHResult:
         if any(c.strip().lower().startswith(_COMWARE_SYSVIEW_DISPLAY) for c in commands):
