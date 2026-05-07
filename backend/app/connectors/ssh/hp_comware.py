@@ -148,6 +148,13 @@ class HPComwareConnector(BaseSSHConnector):
         # Migration apply can take several minutes (many interface cmds + save force)
         params["session_timeout"] = 300
         params["timeout"] = 60
+        # HP V1910 / Comware 5.x only offer legacy SHA1 key exchange algorithms.
+        # Modern Paramiko prefers rsa-sha2-256/512 and newer KEX by default.
+        # Disable the SHA2 pubkey variants so Paramiko falls back to ssh-rsa,
+        # and allow the SHA1-based KEX that the switch advertises.
+        params["disabled_algorithms"] = {
+            "pubkeys": ["rsa-sha2-256", "rsa-sha2-512"],
+        }
         return params
 
     def _config_sync(self, commands: list[str]) -> SSHResult:
