@@ -587,6 +587,16 @@ function MigrationDetail({
     onError: () => toast.error("Erro ao iniciar aplicação"),
   });
 
+  const retryMut = useMutation({
+    mutationFn: () => migrationApi.retry(migrationId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["migration-detail", migrationId] });
+      qc.invalidateQueries({ queryKey: ["migrations"] });
+      toast.success("Tentando novamente — aguarde conclusão");
+    },
+    onError: () => toast.error("Erro ao tentar novamente"),
+  });
+
   const currentMapping = portMapping ?? migration?.port_mapping ?? {};
   const interfaces = migration?.migration_plan?.interfaces ?? [];
   const vlans = migration?.migration_plan?.vlans ?? {};
@@ -658,12 +668,31 @@ function MigrationDetail({
             )}
 
             {/* Error */}
-            {migration.status === "failed" && migration.error_message && (
+            {migration.status === "failed" && (
               <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-                <div className="flex items-center gap-2 font-medium mb-1">
-                  <XCircle size={14} /> Erro
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2 font-medium">
+                    <XCircle size={14} /> Erro na aplicação
+                  </div>
+                  <button
+                    onClick={() => retryMut.mutate()}
+                    disabled={retryMut.isPending || mappingDirty || editingCmds}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {retryMut.isPending ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <RefreshCw size={12} />
+                    )}
+                    Tentar novamente
+                  </button>
                 </div>
-                <p className="text-xs font-mono">{migration.error_message}</p>
+                {migration.error_message && (
+                  <p className="text-xs font-mono mt-1">{migration.error_message}</p>
+                )}
+                <p className="text-[10px] text-red-500 mt-2">
+                  Edite os comandos abaixo se necessário antes de tentar novamente.
+                </p>
               </div>
             )}
 
@@ -785,7 +814,7 @@ function MigrationDetail({
                     <Terminal size={14} className="text-gray-500" />
                     <h3 className="text-sm font-semibold text-gray-700">Preview de comandos</h3>
                   </div>
-                  {migration.status === "ready" && !editingCmds && (
+                  {(migration.status === "ready" || migration.status === "failed") && !editingCmds && (
                     <button
                       onClick={() => { setCmdsDraft(migration.commands_preview ?? ""); setEditingCmds(true); }}
                       className="flex items-center gap-1.5 text-xs px-2.5 py-1 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"

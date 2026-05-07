@@ -155,6 +155,27 @@ async def apply_migration(
     return {"queued": True, "migration_id": str(migration_id)}
 
 
+@router.post("/{migration_id}/retry", status_code=202)
+async def retry_migration(
+    migration_id: UUID,
+    ctx: Annotated[TenantContext, Depends(require_reviewer)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    row = await db.get(ConfigMigration, migration_id)
+    if not row or row.tenant_id != ctx.tenant.id:
+        raise HTTPException(404, "Migração não encontrada")
+    if row.status != MigrationStatus.failed:
+        raise HTTPException(400, "Retry só é possível quando status é 'failed'")
+
+    from app.workers.migration_worker import apply_config_migration
+    apply_config_migration.delay(str(migration_id))
+
+    row.status = MigrationStatus.applying
+    row.error_message = None
+    await db.commit()
+    return {"queued": True, "migration_id": str(migration_id)}
+
+
 @router.delete("/{migration_id}", status_code=204)
 async def delete_migration(
     migration_id: UUID,

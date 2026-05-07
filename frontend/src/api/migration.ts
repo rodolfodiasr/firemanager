@@ -20,6 +20,9 @@ export const migrationApi = {
   apply: (id: string) =>
     apiClient.post<{ queued: boolean; migration_id: string }>(`/config-migrations/${id}/apply`, {}).then((r) => r.data),
 
+  retry: (id: string) =>
+    apiClient.post<{ queued: boolean; migration_id: string }>(`/config-migrations/${id}/retry`, {}).then((r) => r.data),
+
   remove: (id: string) =>
     apiClient.delete(`/config-migrations/${id}`),
 };
