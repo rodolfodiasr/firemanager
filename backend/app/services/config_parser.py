@@ -772,13 +772,14 @@ def _extract_l3_interfaces(config: str) -> list[dict]:
     """Extract VLAN L3 interface IP addresses from any vendor raw config.
 
     Handles:
-      EdgeSwitch / IOS:  interface vlan 100  →  ip address 10.0.0.1/24
+      EdgeSwitch / IOS:  interface vlan 100  →  ip address 10.0.0.1/24 (no indent)
       HP Comware:        interface Vlan-interface 100  →  ip address 10.0.0.1 255.255.255.0
     Returns list of {"vlan_id": str, "ip": str, "mask": str}.
     """
     result: list[dict] = []
     seen: set[str] = set()
     lines = config.splitlines()
+    _BLOCK_END = re.compile(r"^(interface|vlan\s|hostname|spanning-tree|router|ip\s+route)\b", re.I)
     i = 0
     while i < len(lines):
         line = lines[i].strip()
@@ -790,12 +791,16 @@ def _extract_l3_interfaces(config: str) -> list[dict]:
             vid = vlan_m.group(1)
             i += 1
             while i < len(lines):
-                il = lines[i]
-                ils = il.strip()
-                if ils.lower() in ("quit", "exit", "!") or (ils and not il[:1].isspace()):
+                ils = lines[i].strip()
+                # Explicit end-of-block keywords
+                if ils.lower() in ("quit", "exit", "!"):
+                    i += 1
+                    break
+                # Next top-level statement ends the block
+                if ils and _BLOCK_END.match(ils):
                     break
                 ip_m = re.match(
-                    r"ip\s+address\s+([\d.]+)(?:/(\d+)|[ ]+([\d.]+))",
+                    r"(?:ip\s+address|ipaddress)\s+([\d.]+)(?:/(\d+)|[ ]+([\d.]+))",
                     ils, re.IGNORECASE,
                 )
                 if ip_m:
