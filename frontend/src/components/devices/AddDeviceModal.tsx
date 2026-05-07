@@ -87,6 +87,16 @@ const VENDOR_CONFIG: Record<VendorEnum, VendorConfig> = {
     defaultPort: 10443,
     hint: "Endian 3.x — suporte básico (teste de conectividade)",
   },
+  sophos: {
+    label: "Sophos XG / SFOS",
+    authType: "user_pass",
+    connProtocol: "rest",
+    usernameLabel: "Usuário admin",
+    usernamePlaceholder: "admin",
+    passwordLabel: "Senha",
+    defaultPort: 4444,
+    hint: "Sophos SFOS 18+ · Administration > Device Access > Local service ACL > HTTPS (Admin)",
+  },
 
   // ── Routers / Switches ───────────────────────────────────────────────────
   cisco_ios: {

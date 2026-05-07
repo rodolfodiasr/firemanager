@@ -4,7 +4,9 @@ from __future__ import annotations
 import enum
 from uuid import uuid4
 
-from sqlalchemy import Enum, ForeignKey, String, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -40,5 +42,5 @@ class FirewallMigration(Base):
     warnings:          Mapped[list | None] = mapped_column(JSONB, nullable=True)
     error_message:     Mapped[str | None]  = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[object] = mapped_column(server_default=func.now(), nullable=False)
-    updated_at: Mapped[object] = mapped_column(server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

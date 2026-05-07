@@ -22,6 +22,7 @@ const VENDOR_LABEL: Record<VendorEnum, string> = {
   opnsense:    "OPNsense",
   mikrotik:    "MikroTik",
   endian:      "Endian",
+  sophos:      "Sophos XG",
   cisco_ios:   "Cisco IOS",
   cisco_nxos:  "Cisco NX-OS",
   juniper:     "Juniper",
