@@ -41,6 +41,7 @@ _SHOW_CONFIG_CMD = {
     "hp_comware": "display current-configuration",
     "aruba":      "show running-config",
     "juniper":    "show configuration",
+    "intelbras":  "show running-config",
 }
 
 

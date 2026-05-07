@@ -17,7 +17,7 @@ from typing import Any
 import re as _re
 
 _LAG_IFACE_RE = _re.compile(
-    r"^(lag|port-channel|port\s+channel|bridge-aggregation|aggregation)\s*\d+$",
+    r"^(lag|port-channel|port\s+channel|bridge-aggregation|aggregation|ae)\s*\d+$",
     _re.I,
 )
 
@@ -297,6 +297,161 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
     return {"commands": cmds, "warnings": warns}
 
 
+# ── Juniper EX renderer ───────────────────────────────────────────────────────
+
+def _render_juniper(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str, Any]:
+    cmds: list[str] = []
+    warns: list[str] = []
+
+    if ir.get("hostname"):
+        cmds += ["system {", f"    host-name {ir['hostname']};", "}", ""]
+
+    vlans = ir.get("vlans", {})
+    if vlans:
+        cmds.append("vlans {")
+        for vid in sorted(vlans, key=_vlan_key):
+            vname = vlans[vid].get("name") or f"VLAN{vid}"
+            # Juniper VLAN names: alphanumeric, dash, underscore only
+            vname = _re.sub(r"[^A-Za-z0-9_\-]", "_", vname)
+            cmds += [f"    {vname} {{", f"        vlan-id {vid};", "    }"]
+        cmds += ["}", ""]
+
+    cmds.append("interfaces {")
+
+    for iface in ir.get("interfaces", []):
+        if iface.get("lag_member_of"):
+            continue
+
+        src = iface["name"]
+        tgt = port_mapping.get(src)
+        if not tgt:
+            warns.append(f"Porta '{src}' sem mapeamento — ignorada")
+            continue
+
+        # LAG: render member ether-options blocks before the aggregated interface
+        if iface.get("members"):
+            lag_mode = iface.get("lag_mode", "active")
+            for member_src in iface["members"]:
+                member_tgt = port_mapping.get(member_src)
+                if not member_tgt:
+                    warns.append(f"Membro '{member_src}' do LAG '{src}' sem mapeamento — ignorado")
+                    continue
+                cmds += [
+                    f"    {member_tgt} {{",
+                    "        ether-options {",
+                    f"            802.3ad {tgt};",
+                    "        }",
+                    "    }",
+                ]
+            # Open the aggregated interface block
+            cmds.append(f"    {tgt} {{")
+            if iface.get("description"):
+                cmds.append(f'        description "{iface["description"]}";')
+            cmds += [
+                "        aggregated-ether-options {",
+                "            lacp {",
+                f"                {lag_mode};",
+                "            }",
+                "        }",
+            ]
+        else:
+            cmds.append(f"    {tgt} {{")
+            if iface.get("description"):
+                cmds.append(f'        description "{iface["description"]}";')
+
+        mode = iface.get("mode", "access")
+        pvid = iface.get("pvid")
+        tagged = [v for v in iface.get("tagged_vlans", []) if v != "all"]
+
+        cmds += ["        unit 0 {", "            family ethernet-switching {",
+                 f"                interface-mode {mode};"]
+        if mode == "trunk":
+            if tagged:
+                cmds.append(f"                vlan {{ members [ {' '.join(sorted(tagged, key=_vlan_key))} ]; }}")
+            if pvid:
+                cmds.append(f"                native-vlan-id {pvid};")
+        else:
+            if pvid:
+                cmds.append(f"                vlan {{ members {pvid}; }}")
+        cmds += ["            }", "        }", "    }"]
+
+    cmds.append("}")
+    return {"commands": cmds, "warnings": warns}
+
+
+# ── Aruba ArubaOS-Switch renderer ─────────────────────────────────────────────
+
+def _render_aruba(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str, Any]:
+    cmds: list[str] = []
+    warns: list[str] = []
+
+    if ir.get("hostname"):
+        cmds += [f'hostname "{ir["hostname"]}"', "!"]
+
+    for vid, vinfo in sorted(ir.get("vlans", {}).items(), key=lambda kv: _vlan_key(kv[0])):
+        cmds.append(f"vlan {vid}")
+        if vinfo.get("name"):
+            cmds.append(f'   name "{vinfo["name"]}"')
+        cmds += ["!", ""]
+
+    # trunk commands for LAG interfaces
+    for iface in ir.get("interfaces", []):
+        if iface.get("lag_member_of") or not iface.get("members"):
+            continue
+        src = iface["name"]
+        tgt = port_mapping.get(src)
+        if not tgt:
+            warns.append(f"LAG '{src}' sem mapeamento — ignorado")
+            continue
+        member_tgts = []
+        for ms in iface["members"]:
+            mt = port_mapping.get(ms)
+            if mt:
+                member_tgts.append(mt)
+            else:
+                warns.append(f"Membro '{ms}' do LAG '{src}' sem mapeamento — ignorado")
+        if member_tgts:
+            mode_kw = " lacp" if iface.get("lag_mode") in ("active", "passive") else ""
+            cmds += [f"trunk {','.join(member_tgts)} {tgt}{mode_kw}", ""]
+
+    # Interface VLAN config
+    for iface in ir.get("interfaces", []):
+        if iface.get("lag_member_of"):
+            continue
+
+        src = iface["name"]
+        tgt = port_mapping.get(src)
+        if not tgt:
+            warns.append(f"Porta '{src}' sem mapeamento — ignorada")
+            continue
+
+        mode = iface.get("mode", "access")
+        pvid = iface.get("pvid")
+        tagged = [v for v in iface.get("tagged_vlans", []) if v != "all"]
+
+        cmds.append(f"interface {tgt}")
+        if iface.get("description"):
+            cmds.append(f'   name "{iface["description"]}"')
+        if mode == "trunk":
+            if tagged:
+                cmds.append(f"   tagged vlan {_comma_vlans(tagged)}")
+            if pvid:
+                cmds.append(f"   untagged vlan {pvid}")
+        else:
+            if pvid:
+                cmds.append(f"   untagged vlan {pvid}")
+        cmds += ["!", ""]
+
+    return {"commands": cmds, "warnings": warns}
+
+
+# ── Intelbras SG renderer ─────────────────────────────────────────────────────
+# Intelbras SG uses Cisco IOS-compatible syntax. Thin wrapper for future customization.
+
+def _render_intelbras(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str, Any]:
+    return _render_cisco_ios(ir, port_mapping)
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 _RENDERERS = {
@@ -305,7 +460,9 @@ _RENDERERS = {
     "cisco_ios":  _render_cisco_ios,
     "cisco_nxos": _render_cisco_ios,
     "hp_comware": _render_hp_comware,
-    "aruba":      _render_cisco_ios,
+    "aruba":      _render_aruba,
+    "juniper":    _render_juniper,
+    "intelbras":  _render_intelbras,
 }
 
 

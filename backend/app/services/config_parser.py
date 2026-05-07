@@ -39,7 +39,7 @@ from typing import Any
 # ── LAG helpers ──────────────────────────────────────────────────────────────
 
 _LAG_IFACE_RE = re.compile(
-    r"^(lag|port-channel|port\s+channel|bridge-aggregation|aggregation)\s*\d+$",
+    r"^(lag|port-channel|port\s+channel|bridge-aggregation|aggregation|ae)\s*\d+$",
     re.I,
 )
 
@@ -80,6 +80,9 @@ def _build_lag_members(interfaces: list[dict]) -> None:
         lag_ref = iface.pop("_lag_member_of", None)
         lag_mode = iface.pop("_lag_mode", None)
         if not lag_ref:
+            # Juniper (and others) may set lag_mode on the LAG interface itself
+            if lag_mode:
+                iface["lag_mode"] = lag_mode
             continue
         iface["lag_member_of"] = lag_ref
         if lag_mode:
@@ -497,6 +500,266 @@ def _parse_hp_comware(config: str) -> dict[str, Any]:
     return ir
 
 
+# ── Juniper EX parser ─────────────────────────────────────────────────────────
+
+def _parse_juniper(config: str) -> dict[str, Any]:
+    """Parse Juniper EX 'show configuration' hierarchical { } format."""
+    ir: dict[str, Any] = {
+        "hostname": None, "stp_mode": None,
+        "vlans": {}, "interfaces": [], "warnings": [],
+    }
+    vlan_name_to_id: dict[str, str] = {}
+
+    def _get_or_create(name: str) -> dict:
+        for iface in ir["interfaces"]:
+            if iface["name"] == name:
+                return iface
+        entry: dict = {
+            "name": name, "mode": "access",
+            "pvid": None, "tagged_vlans": [], "description": None,
+            "members": [], "lag_member_of": None,
+        }
+        ir["interfaces"].append(entry)
+        return entry
+
+    path: list[str] = []
+
+    for raw in config.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("/*"):
+            continue
+        # Strip inline Juniper comments (## ...)
+        line = re.sub(r"\s+##.*$", "", line).strip()
+        if not line:
+            continue
+
+        if line.endswith("{"):
+            path.append(line[:-1].strip())
+            continue
+        if line == "}":
+            if path:
+                path.pop()
+            continue
+        if not line.endswith(";"):
+            continue
+
+        leaf = line[:-1].strip()
+        depth = len(path)
+
+        # system { host-name X; }
+        if depth >= 1 and path[0] == "system":
+            if leaf.startswith("host-name "):
+                ir["hostname"] = leaf.split(None, 1)[1].strip().strip('"')
+
+        # vlans { NAME { vlan-id X; } }
+        elif depth >= 2 and path[0] == "vlans":
+            vname = path[1]
+            if leaf.startswith("vlan-id "):
+                vid = leaf.split(None, 1)[1].strip()
+                ir["vlans"].setdefault(vid, {"name": None})
+                ir["vlans"][vid]["name"] = vname
+                vlan_name_to_id[vname.lower()] = vid
+
+        # interfaces { IFACE { ... } }
+        elif depth >= 2 and path[0] == "interfaces":
+            iface_name = path[1]
+
+            # Top-level description
+            if depth == 2 and leaf.startswith("description "):
+                _get_or_create(iface_name)["description"] = leaf.split(None, 1)[1].strip().strip('"')
+
+            # LAG member: ether-options { 802.3ad aeX; }
+            elif depth == 3 and path[2] == "ether-options" and leaf.startswith("802.3ad "):
+                _get_or_create(iface_name)["_lag_member_of"] = leaf.split(None, 1)[1].strip()
+
+            # LACP mode: aggregated-ether-options { lacp { active; } }
+            elif (depth == 4 and path[2] == "aggregated-ether-options"
+                  and path[3] == "lacp" and leaf in ("active", "passive")):
+                _get_or_create(iface_name)["_lag_mode"] = leaf
+
+            # unit 0 > family ethernet-switching
+            elif (depth == 4 and path[2].startswith("unit")
+                  and path[3] == "family ethernet-switching"):
+                entry = _get_or_create(iface_name)
+                if leaf.startswith("interface-mode "):
+                    mode = leaf.split(None, 1)[1].strip()
+                    entry["mode"] = mode if mode in ("trunk", "access") else "access"
+                elif leaf.startswith("native-vlan-id "):
+                    entry["pvid"] = leaf.split(None, 1)[1].strip()
+                elif leaf.startswith("description "):
+                    entry["description"] = leaf.split(None, 1)[1].strip().strip('"')
+
+            # unit 0 > family ethernet-switching > vlan { members ...; }
+            elif (depth == 5 and path[2].startswith("unit")
+                  and path[3] == "family ethernet-switching"
+                  and path[4] == "vlan" and leaf.startswith("members ")):
+                entry = _get_or_create(iface_name)
+                raw_m = leaf.split(None, 1)[1].strip().strip("[]").strip()
+                for token in raw_m.split():
+                    vid = token if token.isdigit() else vlan_name_to_id.get(token.lower(), token)
+                    if vid.isdigit() and vid not in entry["tagged_vlans"]:
+                        entry["tagged_vlans"].append(vid)
+
+    # Access ports: move single tagged VLAN to pvid
+    for iface in ir["interfaces"]:
+        if iface["mode"] == "access" and iface["tagged_vlans"] and iface["pvid"] is None:
+            iface["pvid"] = iface["tagged_vlans"][0]
+            iface["tagged_vlans"] = []
+
+    _build_lag_members(ir["interfaces"])
+    return ir
+
+
+# ── Aruba ArubaOS-Switch parser ───────────────────────────────────────────────
+
+def _parse_aruba(config: str) -> dict[str, Any]:
+    """Parse ArubaOS-Switch (ProCurve) VLAN-centric config format."""
+    ir: dict[str, Any] = {
+        "hostname": None, "stp_mode": None,
+        "vlans": {}, "interfaces": [], "warnings": [],
+    }
+    port_vlan_tagged: dict[str, list[str]] = {}
+    port_vlan_untagged: dict[str, list[str]] = {}
+    trunk_defs: dict[str, dict] = {}    # "trk1" → {"members":[], "mode": "active"}
+    descriptions: dict[str, str] = {}
+
+    def _aruba_ports(spec: str) -> list[str]:
+        ports: list[str] = []
+        for part in spec.replace(" ", "").split(","):
+            if "-" in part:
+                lo, hi = part.split("-", 1)
+                if lo.isdigit() and hi.isdigit():
+                    ports.extend(str(p) for p in range(int(lo), int(hi) + 1))
+                else:
+                    ports.append(part)
+            elif part:
+                ports.append(part)
+        return ports
+
+    lines = config.splitlines()
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        line = raw.strip()
+        if not line or line.startswith(";") or line.startswith("#"):
+            i += 1
+            continue
+
+        if line.lower().startswith("hostname "):
+            ir["hostname"] = line.split(None, 1)[1].strip().strip('"')
+            i += 1
+            continue
+
+        m = re.match(r"spanning-tree\s+(\S+)", line, re.I)
+        if m:
+            ir["stp_mode"] = m.group(1).lower()
+            i += 1
+            continue
+
+        # trunk PORT_LIST TRKID [lacp|trunk]
+        m = re.match(r"^trunk\s+([\w,\-]+)\s+(trk\d+)(?:\s+(\S+))?", line, re.I)
+        if m:
+            members = _aruba_ports(m.group(1))
+            trk_id = m.group(2).lower()
+            mode_raw = (m.group(3) or "").lower()
+            trunk_defs[trk_id] = {
+                "members": members,
+                "mode": "active" if mode_raw == "lacp" else "on",
+            }
+            i += 1
+            continue
+
+        # VLAN block
+        vm = re.match(r"^vlan\s+(\d+)\s*$", line, re.I)
+        if vm:
+            vid = vm.group(1)
+            ir["vlans"].setdefault(vid, {"name": None})
+            i += 1
+            while i < len(lines):
+                vl = lines[i].strip()
+                if not vl or vl == "!":
+                    i += 1
+                    break
+                if lines[i] and not lines[i][0:1].isspace():
+                    break
+                nm = re.match(r'name\s+"?(.+?)"?\s*$', vl, re.I)
+                if nm:
+                    ir["vlans"][vid]["name"] = nm.group(1).strip().strip('"')
+                tm = re.match(r"tagged\s+([\w,\-]+)", vl, re.I)
+                if tm:
+                    for port in _aruba_ports(tm.group(1)):
+                        port_vlan_tagged.setdefault(port.lower(), []).append(vid)
+                um = re.match(r"untagged\s+([\w,\-]+)", vl, re.I)
+                if um:
+                    for port in _aruba_ports(um.group(1)):
+                        port_vlan_untagged.setdefault(port.lower(), []).append(vid)
+                i += 1
+            continue
+
+        # Interface block (descriptions)
+        ifm = re.match(r"^interface\s+(.+)", line, re.I)
+        if ifm:
+            iname = ifm.group(1).strip().lower()
+            i += 1
+            while i < len(lines):
+                il = lines[i].strip()
+                if not il or il == "!":
+                    i += 1
+                    break
+                if lines[i] and not lines[i][0:1].isspace():
+                    break
+                nm = re.match(r'name\s+"?(.+?)"?\s*$', il, re.I)
+                if nm:
+                    descriptions[iname] = nm.group(1).strip().strip('"')
+                i += 1
+            continue
+
+        i += 1
+
+    # LAG member port names — excluded from standalone interface list
+    lag_members: set[str] = {m.lower() for td in trunk_defs.values() for m in td["members"]}
+
+    # Regular ports from VLAN data
+    all_ports = (set(port_vlan_tagged) | set(port_vlan_untagged)) - lag_members - set(trunk_defs)
+
+    def _port_key(p: str) -> tuple:
+        return (0, int(p), "") if p.isdigit() else (1, 0, p)
+
+    for port in sorted(all_ports, key=_port_key):
+        vt = sorted(set(port_vlan_tagged.get(port, [])), key=lambda v: int(v) if v.isdigit() else 9999)
+        vu = port_vlan_untagged.get(port, [])
+        ir["interfaces"].append({
+            "name": port, "mode": "trunk" if vt else "access",
+            "pvid": vu[0] if vu else None, "tagged_vlans": vt,
+            "description": descriptions.get(port), "members": [], "lag_member_of": None,
+        })
+
+    # LAG interfaces + member entries
+    for trk_id, trk_info in sorted(trunk_defs.items()):
+        vt = sorted(set(port_vlan_tagged.get(trk_id, [])), key=lambda v: int(v) if v.isdigit() else 9999)
+        vu = port_vlan_untagged.get(trk_id, [])
+        ir["interfaces"].append({
+            "name": trk_id, "mode": "trunk" if vt else "access",
+            "pvid": vu[0] if vu else None, "tagged_vlans": vt,
+            "description": descriptions.get(trk_id),
+            "members": trk_info["members"], "lag_member_of": None,
+            "lag_mode": trk_info["mode"],
+        })
+        for member in trk_info["members"]:
+            ir["interfaces"].append({
+                "name": member, "mode": "access", "pvid": None, "tagged_vlans": [],
+                "description": descriptions.get(member.lower()),
+                "members": [], "lag_member_of": trk_id, "lag_mode": trk_info["mode"],
+            })
+
+    return ir
+
+
+# ── Intelbras SG parser ───────────────────────────────────────────────────────
+# Intelbras SG series uses Cisco IOS-compatible syntax — reuse _parse_ios_style.
+_parse_intelbras = _parse_ios_style
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 _PARSERS = {
@@ -505,7 +768,9 @@ _PARSERS = {
     "cisco_ios":  _parse_ios_style,
     "cisco_nxos": _parse_ios_style,
     "hp_comware": _parse_hp_comware,
-    "aruba":      _parse_ios_style,
+    "aruba":      _parse_aruba,
+    "juniper":    _parse_juniper,
+    "intelbras":  _parse_intelbras,
 }
 
 
