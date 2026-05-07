@@ -15,33 +15,36 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Use DO block to avoid error if type was already created by SQLAlchemy ORM
+    # Create enum idempotently, then table in pure SQL to avoid SQLAlchemy
+    # auto-triggering a second CREATE TYPE via sa.Enum in op.create_table.
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE connectivity_status AS ENUM ('pending', 'running', 'completed', 'failed');
         EXCEPTION WHEN duplicate_object THEN null;
-        END $$;
+        END $$
     """)
-
-    op.create_table(
-        "connectivity_analyses",
-        sa.Column("id",            UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id",     UUID(as_uuid=True), sa.ForeignKey("tenants.id",  ondelete="CASCADE"), nullable=True,  index=True),
-        sa.Column("device_id",     UUID(as_uuid=True), sa.ForeignKey("devices.id",  ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("status",        sa.Enum("pending", "running", "completed", "failed", name="connectivity_status", create_type=False), nullable=False, server_default="pending"),
-        sa.Column("routes",        JSONB, nullable=True),
-        sa.Column("bgp_peers",     JSONB, nullable=True),
-        sa.Column("ospf_neighbors",JSONB, nullable=True),
-        sa.Column("sdwan_services",JSONB, nullable=True),
-        sa.Column("anomalies",     JSONB, nullable=True),
-        sa.Column("ai_summary",    sa.Text, nullable=True),
-        sa.Column("ai_recommendations", JSONB, nullable=True),
-        sa.Column("error",         sa.Text, nullable=True),
-        sa.Column("created_at",    sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("completed_at",  sa.TIMESTAMP(timezone=True), nullable=True),
-    )
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS connectivity_analyses (
+            id              UUID PRIMARY KEY,
+            tenant_id       UUID REFERENCES tenants(id)  ON DELETE CASCADE,
+            device_id       UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            status          connectivity_status NOT NULL DEFAULT 'pending',
+            routes          JSONB,
+            bgp_peers       JSONB,
+            ospf_neighbors  JSONB,
+            sdwan_services  JSONB,
+            anomalies       JSONB,
+            ai_summary      TEXT,
+            ai_recommendations JSONB,
+            error           TEXT,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            completed_at    TIMESTAMPTZ
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_connectivity_analyses_tenant_id ON connectivity_analyses(tenant_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_connectivity_analyses_device_id ON connectivity_analyses(device_id)")
 
 
 def downgrade() -> None:
-    op.drop_table("connectivity_analyses")
+    op.execute("DROP TABLE IF EXISTS connectivity_analyses")
     op.execute("DROP TYPE IF EXISTS connectivity_status")
