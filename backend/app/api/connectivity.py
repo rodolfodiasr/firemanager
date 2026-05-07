@@ -13,6 +13,7 @@ from app.models.device import Device
 from app.schemas.connectivity import (
     ConnectivityAnalysisRead,
     ConnectivityAnalysisSummary,
+    PairAnalysisRequest,
 )
 
 router = APIRouter()
@@ -23,6 +24,8 @@ def _to_summary(r: ConnectivityAnalysis) -> ConnectivityAnalysisSummary:
         id=str(r.id),
         tenant_id=str(r.tenant_id) if r.tenant_id else None,
         device_id=str(r.device_id),
+        mode=r.mode or "single",
+        device_b_id=str(r.device_b_id) if r.device_b_id else None,
         status=r.status,
         anomaly_count=len(r.anomalies or []),
         route_count=len(r.routes or []),
@@ -37,11 +40,17 @@ def _to_read(r: ConnectivityAnalysis) -> ConnectivityAnalysisRead:
         id=str(r.id),
         tenant_id=str(r.tenant_id) if r.tenant_id else None,
         device_id=str(r.device_id),
+        mode=r.mode or "single",
+        device_b_id=str(r.device_b_id) if r.device_b_id else None,
         status=r.status,
         routes=r.routes,
         bgp_peers=r.bgp_peers,
         ospf_neighbors=r.ospf_neighbors,
         sdwan_services=r.sdwan_services,
+        device_b_routes=r.device_b_routes,
+        device_b_bgp_peers=r.device_b_bgp_peers,
+        device_b_ospf_neighbors=r.device_b_ospf_neighbors,
+        device_b_sdwan_services=r.device_b_sdwan_services,
         anomalies=r.anomalies,
         ai_summary=r.ai_summary,
         ai_recommendations=r.ai_recommendations,
@@ -51,6 +60,14 @@ def _to_read(r: ConnectivityAnalysis) -> ConnectivityAnalysisRead:
     )
 
 
+def _check_device_access(device: Device | None, ctx: TenantContext) -> Device:
+    if not device or (not ctx.user.is_super_admin and device.tenant_id != ctx.tenant.id):
+        raise HTTPException(404, "Dispositivo não encontrado")
+    return device
+
+
+# ── Análise individual ────────────────────────────────────────────────────────
+
 @router.post("/analyze/{device_id}", response_model=ConnectivityAnalysisSummary, status_code=201)
 async def trigger_analysis(
     device_id: UUID,
@@ -58,13 +75,12 @@ async def trigger_analysis(
     ctx: Annotated[TenantContext, Depends(require_reviewer)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> ConnectivityAnalysisSummary:
-    device = await db.get(Device, device_id)
-    if not device or (not ctx.user.is_super_admin and device.tenant_id != ctx.tenant.id):
-        raise HTTPException(404, "Dispositivo não encontrado")
+    device = _check_device_access(await db.get(Device, device_id), ctx)
 
     record = ConnectivityAnalysis(
         tenant_id=device.tenant_id,
         device_id=device.id,
+        mode="single",
         status=ConnectivityStatus.pending,
     )
     db.add(record)
@@ -79,6 +95,44 @@ async def trigger_analysis(
     await db.refresh(record)
     return _to_summary(record)
 
+
+# ── Análise ponto-a-ponto (dois firewalls) ────────────────────────────────────
+
+@router.post("/analyze-pair/{device_a_id}/{device_b_id}", response_model=ConnectivityAnalysisSummary, status_code=201)
+async def trigger_pair_analysis(
+    device_a_id: UUID,
+    device_b_id: UUID,
+    background_tasks: BackgroundTasks,
+    ctx: Annotated[TenantContext, Depends(require_reviewer)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> ConnectivityAnalysisSummary:
+    if device_a_id == device_b_id:
+        raise HTTPException(400, "Dispositivo A e B devem ser diferentes")
+
+    device_a = _check_device_access(await db.get(Device, device_a_id), ctx)
+    device_b = _check_device_access(await db.get(Device, device_b_id), ctx)
+
+    record = ConnectivityAnalysis(
+        tenant_id=device_a.tenant_id,
+        device_id=device_a.id,
+        device_b_id=device_b.id,
+        mode="pair",
+        status=ConnectivityStatus.pending,
+    )
+    db.add(record)
+    await db.flush()
+    await db.refresh(record)
+    analysis_id = str(record.id)
+    await db.commit()
+
+    from app.services.connectivity_service import run_analysis
+    background_tasks.add_task(run_analysis, analysis_id)
+
+    await db.refresh(record)
+    return _to_summary(record)
+
+
+# ── Listagens ─────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[ConnectivityAnalysisSummary])
 async def list_analyses(
@@ -98,9 +152,7 @@ async def list_device_analyses(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     db:  Annotated[AsyncSession, Depends(get_db)],
 ) -> list[ConnectivityAnalysisSummary]:
-    device = await db.get(Device, device_id)
-    if not device or (not ctx.user.is_super_admin and device.tenant_id != ctx.tenant.id):
-        raise HTTPException(404, "Dispositivo não encontrado")
+    device = _check_device_access(await db.get(Device, device_id), ctx)
 
     rows = await db.execute(
         select(ConnectivityAnalysis)

@@ -10,6 +10,11 @@ export const connectivityApi = {
       .post<ConnectivityAnalysisSummary>(`/connectivity/analyze/${deviceId}`)
       .then((r) => r.data),
 
+  triggerPair: (deviceAId: string, deviceBId: string) =>
+    apiClient
+      .post<ConnectivityAnalysisSummary>(`/connectivity/analyze-pair/${deviceAId}/${deviceBId}`)
+      .then((r) => r.data),
+
   list: () =>
     apiClient
       .get<ConnectivityAnalysisSummary[]>("/connectivity")

@@ -1,8 +1,8 @@
 """Pydantic schemas for Fase 18 — Network Connectivity Analysis."""
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,7 +12,7 @@ class RouteEntry(BaseModel):
     prefix_len:  int
     next_hop:    str
     interface:   str | None = None
-    protocol:    str        = "static"   # static, ospf, bgp, connected
+    protocol:    str        = "static"
     distance:    int        = 0
     metric:      int        = 0
     active:      bool       = True
@@ -34,42 +34,54 @@ class OspfNeighbor(BaseModel):
 
 
 class ConnectivityAnomaly(BaseModel):
-    type:        str   # no_default_route, static_dynamic_conflict, redundant_no_failover,
-                       # unreachable_nexthop, bgp_not_established, ospf_not_full
-    severity:    str   # high, medium, low
+    type:        str
+    severity:    str
     description: str
     details:     dict[str, Any] | None = None
 
 
-class ConnectivityAnalysisCreate(BaseModel):
-    device_id: str
+class PairAnalysisRequest(BaseModel):
+    device_b_id: UUID
 
 
 class ConnectivityAnalysisSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id:           str
-    tenant_id:    str | None
-    device_id:    str
-    status:       str
+    id:            str
+    tenant_id:     str | None
+    device_id:     str
+    mode:          str = "single"
+    device_b_id:   str | None = None
+    status:        str
     anomaly_count: int = 0
     route_count:   int = 0
-    created_at:   str
-    completed_at: str | None = None
-    error:        str | None = None
+    created_at:    str
+    completed_at:  str | None = None
+    error:         str | None = None
 
 
 class ConnectivityAnalysisRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id:                 str
-    tenant_id:          str | None
-    device_id:          str
-    status:             str
+    id:           str
+    tenant_id:    str | None
+    device_id:    str
+    mode:         str = "single"
+    device_b_id:  str | None = None
+    status:       str
+
+    # Dispositivo A (ou único em modo single)
     routes:             list[dict] | None = None
     bgp_peers:          list[dict] | None = None
     ospf_neighbors:     list[dict] | None = None
     sdwan_services:     list[dict] | None = None
+
+    # Dispositivo B — apenas mode="pair"
+    device_b_routes:          list[dict] | None = None
+    device_b_bgp_peers:       list[dict] | None = None
+    device_b_ospf_neighbors:  list[dict] | None = None
+    device_b_sdwan_services:  list[dict] | None = None
+
     anomalies:          list[dict] | None = None
     ai_summary:         str | None = None
     ai_recommendations: list[str] | None = None

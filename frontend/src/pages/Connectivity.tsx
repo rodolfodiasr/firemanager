@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   AlertTriangle,
+  ArrowLeftRight,
   CheckCircle2,
   ChevronRight,
   Info,
@@ -22,6 +23,7 @@ import type {
   ConnectivityAnalysisRead,
   ConnectivityAnalysisSummary,
   ConnectivityAnomalySeverity,
+  ConnectivityMode,
   ConnectivityStatus,
   SdwanService,
 } from "../types/connectivity";
@@ -54,14 +56,17 @@ const SEVERITY_LABEL: Record<string, string> = {
 };
 
 const ANOMALY_TYPE_LABEL: Record<string, string> = {
-  no_default_route:       "Sem Rota Padrão",
-  static_dynamic_conflict:"Conflito Estático × Dinâmico",
-  redundant_no_failover:  "Rotas Redundantes s/ Failover",
-  bgp_not_established:    "Peer BGP Não Estabelecido",
-  ospf_not_full:          "Vizinho OSPF Não-FULL",
-  cidr_overlap:           "Sobreposição de CIDR",
-  multi_protocol_conflict:"Conflito Multi-Protocolo",
-  sdwan_routing_conflict: "Conflito SD-WAN × Roteamento",
+  no_default_route:        "Sem Rota Padrão",
+  static_dynamic_conflict: "Conflito Estático × Dinâmico",
+  redundant_no_failover:   "Rotas Redundantes s/ Failover",
+  bgp_not_established:     "Peer BGP Não Estabelecido",
+  ospf_not_full:           "Vizinho OSPF Não-FULL",
+  cidr_overlap:            "Sobreposição de CIDR",
+  multi_protocol_conflict: "Conflito Multi-Protocolo",
+  sdwan_routing_conflict:  "Conflito SD-WAN × Roteamento",
+  missing_return_route:    "Rota de Retorno Ausente",
+  asymmetric_routing:      "Roteamento Assimétrico",
+  unreachable_subnet:      "Subrede Inalcançável",
 };
 
 function fmtDate(iso: string) {
@@ -80,68 +85,101 @@ function isInProgress(status: ConnectivityStatus) {
 function StatusBadge({ status }: { status: ConnectivityStatus }) {
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLE[status]}`}>
-      {status === "running" && <Loader2 size={11} className="animate-spin" />}
+      {status === "running"   && <Loader2 size={11} className="animate-spin" />}
       {status === "completed" && <CheckCircle2 size={11} />}
-      {status === "failed" && <XCircle size={11} />}
+      {status === "failed"    && <XCircle size={11} />}
       {STATUS_LABEL[status]}
     </span>
   );
 }
 
-// ── Detail modal tabs ─────────────────────────────────────────────────────────
+function ModeBadge({ mode }: { mode: ConnectivityMode }) {
+  if (mode === "pair") {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+        <ArrowLeftRight size={10} /> Ponto-a-Ponto
+      </span>
+    );
+  }
+  return null;
+}
 
-type Tab = "routes" | "anomalies" | "bgp_ospf" | "ai";
+// ── Tab content components ────────────────────────────────────────────────────
 
-function RoutesTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
-  const routes = analysis.routes ?? [];
-  if (!routes.length) return <p className="text-sm text-gray-500 py-4">Nenhuma rota coletada.</p>;
+const PROTO_STYLE: Record<string, string> = {
+  static:    "bg-gray-100 text-gray-700",
+  connected: "bg-emerald-100 text-emerald-700",
+  ospf:      "bg-purple-100 text-purple-700",
+  bgp:       "bg-blue-100 text-blue-700",
+  rip:       "bg-yellow-100 text-yellow-700",
+  unknown:   "bg-gray-100 text-gray-500",
+};
 
-  const PROTO_STYLE: Record<string, string> = {
-    static: "bg-gray-100 text-gray-700",
-    connected: "bg-emerald-100 text-emerald-700",
-    ospf: "bg-purple-100 text-purple-700",
-    bgp: "bg-blue-100 text-blue-700",
-    rip: "bg-yellow-100 text-yellow-700",
-    unknown: "bg-gray-100 text-gray-500",
-  };
-
+function RoutesTable({ routes, label }: { routes: { destination: string; prefix_len: number; next_hop: string; interface?: string; protocol: string; active: boolean }[]; label?: string }) {
+  if (!routes.length) return <p className="text-sm text-gray-500 py-2">Nenhuma rota coletada.</p>;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b text-left text-xs text-gray-500 font-medium">
-            <th className="pb-2 pr-4">Destino</th>
-            <th className="pb-2 pr-4">Próximo Hop</th>
-            <th className="pb-2 pr-4">Interface</th>
-            <th className="pb-2 pr-4">Protocolo</th>
-            <th className="pb-2">Ativo</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {routes.map((r, i) => (
-            <tr key={i} className="hover:bg-gray-50">
-              <td className="py-1.5 pr-4 font-mono text-xs">{r.destination}/{r.prefix_len}</td>
-              <td className="py-1.5 pr-4 font-mono text-xs">{r.next_hop}</td>
-              <td className="py-1.5 pr-4 text-xs text-gray-600">{r.interface ?? "—"}</td>
-              <td className="py-1.5 pr-4">
-                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${PROTO_STYLE[r.protocol] ?? "bg-gray-100 text-gray-600"}`}>
-                  {r.protocol}
-                </span>
-              </td>
-              <td className="py-1.5">
-                {r.active
-                  ? <CheckCircle2 size={14} className="text-green-500" />
-                  : <XCircle size={14} className="text-gray-400" />}
-              </td>
+    <div>
+      {label && <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{label}</h5>}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs text-gray-500 font-medium">
+              <th className="pb-2 pr-4">Destino</th>
+              <th className="pb-2 pr-4">Próximo Hop</th>
+              <th className="pb-2 pr-4">Interface</th>
+              <th className="pb-2 pr-4">Protocolo</th>
+              <th className="pb-2">Ativo</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {routes.map((r, i) => (
+              <tr key={i} className="hover:bg-gray-50">
+                <td className="py-1.5 pr-4 font-mono text-xs">{r.destination}/{r.prefix_len}</td>
+                <td className="py-1.5 pr-4 font-mono text-xs">{r.next_hop}</td>
+                <td className="py-1.5 pr-4 text-xs text-gray-600">{r.interface ?? "—"}</td>
+                <td className="py-1.5 pr-4">
+                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${PROTO_STYLE[r.protocol] ?? "bg-gray-100 text-gray-600"}`}>
+                    {r.protocol}
+                  </span>
+                </td>
+                <td className="py-1.5">
+                  {r.active
+                    ? <CheckCircle2 size={14} className="text-green-500" />
+                    : <XCircle size={14} className="text-gray-400" />}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
-function AnomaliesTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
+function RoutesTab({ analysis, deviceName, deviceBName }: { analysis: ConnectivityAnalysisRead; deviceName: string; deviceBName?: string }) {
+  const routes   = analysis.routes ?? [];
+  const routesB  = analysis.device_b_routes ?? [];
+  const isPair   = analysis.mode === "pair";
+
+  if (!routes.length && !routesB.length) {
+    return <p className="text-sm text-gray-500 py-4">Nenhuma rota coletada.</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <RoutesTable routes={routes} label={isPair ? deviceName : undefined} />
+      {isPair && routesB.length > 0 && (
+        <>
+          <div className="border-t pt-4">
+            <RoutesTable routes={routesB} label={deviceBName} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function AnomaliesTab({ analysis, deviceName, deviceBName }: { analysis: ConnectivityAnalysisRead; deviceName: string; deviceBName?: string }) {
   const anomalies = analysis.anomalies ?? [];
   if (!anomalies.length) {
     return (
@@ -157,65 +195,79 @@ function AnomaliesTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
 
   return (
     <div className="space-y-3">
-      {sorted.map((a, i) => (
-        <div key={i} className={`p-3 rounded-lg ${SEVERITY_STYLE[a.severity] ?? "bg-gray-100"}`}>
-          <div className="flex items-start gap-2">
-            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-semibold uppercase tracking-wide">
-                  {SEVERITY_LABEL[a.severity] ?? a.severity}
-                </span>
-                <span className="text-xs opacity-70">
-                  {ANOMALY_TYPE_LABEL[a.type] ?? a.type}
-                </span>
+      {sorted.map((a, i) => {
+        const isPairAnomaly = a._scope === "pair";
+        return (
+          <div key={i} className={`p-3 rounded-lg ${SEVERITY_STYLE[a.severity] ?? "bg-gray-100"}`}>
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide">
+                    {SEVERITY_LABEL[a.severity] ?? a.severity}
+                  </span>
+                  <span className="text-xs opacity-70">
+                    {ANOMALY_TYPE_LABEL[a.type] ?? a.type}
+                  </span>
+                  {isPairAnomaly && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                      <ArrowLeftRight size={9} /> Cruzada
+                    </span>
+                  )}
+                  {a._device && !isPairAnomaly && (
+                    <span className="text-xs opacity-60 font-mono">{a._device}</span>
+                  )}
+                </div>
+                <p className="text-sm">{a.description}</p>
               </div>
-              <p className="text-sm">{a.description}</p>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function BgpOspfTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
-  const bgp = analysis.bgp_peers ?? [];
-  const ospf = analysis.ospf_neighbors ?? [];
-  const sdwan = analysis.sdwan_services ?? [];
+function BgpOspfSection({
+  bgp, ospf, sdwan, label,
+}: {
+  bgp: ConnectivityAnalysisRead["bgp_peers"];
+  ospf: ConnectivityAnalysisRead["ospf_neighbors"];
+  sdwan: ConnectivityAnalysisRead["sdwan_services"];
+  label?: string;
+}) {
+  const bgpList  = bgp   ?? [];
+  const ospfList = ospf  ?? [];
+  const sdwanList = sdwan ?? [];
 
-  if (!bgp.length && !ospf.length && !sdwan.length) {
-    return <p className="text-sm text-gray-500 py-4">BGP, OSPF e SD-WAN não detectados neste dispositivo.</p>;
+  if (!bgpList.length && !ospfList.length && !sdwanList.length) {
+    return <p className="text-sm text-gray-500">BGP, OSPF e SD-WAN não detectados.</p>;
   }
 
   return (
-    <div className="space-y-6">
-      {bgp.length > 0 && (
+    <div className="space-y-5">
+      {label && <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</h5>}
+
+      {bgpList.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-            <Activity size={14} /> Peers BGP
-          </h4>
+          <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5"><Activity size={14} /> Peers BGP</h4>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-gray-500 font-medium">
-                <th className="pb-2 pr-4">Peer IP</th>
-                <th className="pb-2 pr-4">ASN</th>
-                <th className="pb-2 pr-4">Estado</th>
-                <th className="pb-2 pr-4">Uptime</th>
-                <th className="pb-2">Prefixos Recebidos</th>
+                <th className="pb-2 pr-4">Peer IP</th><th className="pb-2 pr-4">ASN</th>
+                <th className="pb-2 pr-4">Estado</th><th className="pb-2 pr-4">Uptime</th>
+                <th className="pb-2">Prefixos</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {bgp.map((p, i) => {
+              {bgpList.map((p, i) => {
                 const up = p.state?.toLowerCase() === "established";
                 return (
                   <tr key={i} className="hover:bg-gray-50">
                     <td className="py-1.5 pr-4 font-mono text-xs">{p.peer_ip}</td>
                     <td className="py-1.5 pr-4 text-xs">{p.asn ?? "—"}</td>
                     <td className="py-1.5 pr-4">
-                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${up ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {p.state}
-                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${up ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{p.state}</span>
                     </td>
                     <td className="py-1.5 pr-4 text-xs text-gray-600">{p.uptime ?? "—"}</td>
                     <td className="py-1.5 text-xs">{p.prefixes_received}</td>
@@ -227,30 +279,24 @@ function BgpOspfTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
         </div>
       )}
 
-      {ospf.length > 0 && (
+      {ospfList.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-            <Network size={14} /> Vizinhos OSPF
-          </h4>
+          <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5"><Network size={14} /> Vizinhos OSPF</h4>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-gray-500 font-medium">
-                <th className="pb-2 pr-4">Neighbor ID</th>
-                <th className="pb-2 pr-4">Estado</th>
-                <th className="pb-2 pr-4">Interface</th>
-                <th className="pb-2">Endereço</th>
+                <th className="pb-2 pr-4">Neighbor ID</th><th className="pb-2 pr-4">Estado</th>
+                <th className="pb-2 pr-4">Interface</th><th className="pb-2">Endereço</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {ospf.map((n, i) => {
+              {ospfList.map((n, i) => {
                 const full = n.state?.toLowerCase().includes("full");
                 return (
                   <tr key={i} className="hover:bg-gray-50">
                     <td className="py-1.5 pr-4 font-mono text-xs">{n.neighbor_id}</td>
                     <td className="py-1.5 pr-4">
-                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${full ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-                        {n.state}
-                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${full ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>{n.state}</span>
                     </td>
                     <td className="py-1.5 pr-4 text-xs text-gray-600">{n.interface ?? "—"}</td>
                     <td className="py-1.5 text-xs text-gray-600">{n.address ?? "—"}</td>
@@ -262,43 +308,29 @@ function BgpOspfTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
         </div>
       )}
 
-      {sdwan.length > 0 && (
+      {sdwanList.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-            <Shield size={14} /> Políticas SD-WAN
-          </h4>
+          <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5"><Shield size={14} /> Políticas SD-WAN</h4>
           <div className="space-y-2">
-            {sdwan.map((svc: SdwanService, i: number) => (
+            {sdwanList.map((svc: SdwanService, i: number) => (
               <div key={i} className="border border-gray-200 rounded-lg p-3 text-xs">
-                <div className="flex items-center gap-2 mb-1.5">
+                <div className="flex flex-wrap items-center gap-2 mb-1.5">
                   <span className="font-semibold text-gray-800">{svc.name || `Política ${i + 1}`}</span>
-                  {svc.mode && (
-                    <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">
-                      {svc.mode}
-                    </span>
-                  )}
-                  <span className={`px-1.5 py-0.5 rounded font-medium ${svc.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                    {svc.status}
-                  </span>
+                  {svc.mode && <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">{svc.mode}</span>}
+                  <span className={`px-1.5 py-0.5 rounded font-medium ${svc.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>{svc.status}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-gray-500 block mb-0.5">Destinos</span>
                     {svc.destinations.length > 0
-                      ? svc.destinations.map((d, di) => (
-                          <span key={di} className="font-mono block">{d}</span>
-                        ))
-                      : <span className="text-gray-400">Qualquer</span>
-                    }
+                      ? svc.destinations.map((d, di) => <span key={di} className="font-mono block">{d}</span>)
+                      : <span className="text-gray-400">Qualquer</span>}
                   </div>
                   <div>
                     <span className="text-gray-500 block mb-0.5">Interfaces WAN</span>
                     {svc.members.length > 0
-                      ? svc.members.map((m, mi) => (
-                          <span key={mi} className="font-mono block">{m}</span>
-                        ))
-                      : <span className="text-gray-400">—</span>
-                    }
+                      ? svc.members.map((m, mi) => <span key={mi} className="font-mono block">{m}</span>)
+                      : <span className="text-gray-400">—</span>}
                   </div>
                 </div>
               </div>
@@ -310,11 +342,34 @@ function BgpOspfTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
   );
 }
 
+function BgpOspfTab({ analysis, deviceName, deviceBName }: { analysis: ConnectivityAnalysisRead; deviceName: string; deviceBName?: string }) {
+  const isPair = analysis.mode === "pair";
+  return (
+    <div className="space-y-6">
+      <BgpOspfSection
+        bgp={analysis.bgp_peers}
+        ospf={analysis.ospf_neighbors}
+        sdwan={analysis.sdwan_services}
+        label={isPair ? deviceName : undefined}
+      />
+      {isPair && (
+        <div className="border-t pt-4">
+          <BgpOspfSection
+            bgp={analysis.device_b_bgp_peers}
+            ospf={analysis.device_b_ospf_neighbors}
+            sdwan={analysis.device_b_sdwan_services}
+            label={deviceBName}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AITab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
   if (!analysis.ai_summary && !analysis.ai_recommendations?.length) {
     return <p className="text-sm text-gray-500 py-4">Análise IA não disponível.</p>;
   }
-
   return (
     <div className="space-y-4">
       {analysis.ai_summary && (
@@ -326,16 +381,13 @@ function AITab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
           <p className="text-sm text-blue-900 whitespace-pre-line">{analysis.ai_summary}</p>
         </div>
       )}
-
       {(analysis.ai_recommendations ?? []).length > 0 && (
         <div>
           <h4 className="text-sm font-semibold text-gray-700 mb-2">Recomendações</h4>
           <ol className="space-y-2">
             {analysis.ai_recommendations!.map((rec, i) => (
               <li key={i} className="flex gap-2 text-sm text-gray-700">
-                <span className="shrink-0 flex items-center justify-center w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-xs font-bold">
-                  {i + 1}
-                </span>
+                <span className="shrink-0 flex items-center justify-center w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-xs font-bold">{i + 1}</span>
                 <span>{rec}</span>
               </li>
             ))}
@@ -348,13 +400,17 @@ function AITab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
 
 // ── Detail modal ──────────────────────────────────────────────────────────────
 
+type Tab = "anomalies" | "routes" | "bgp_ospf" | "ai";
+
 function DetailModal({
   summaryId,
   deviceName,
+  deviceBName,
   onClose,
 }: {
   summaryId: string;
   deviceName: string;
+  deviceBName?: string;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("anomalies");
@@ -368,10 +424,13 @@ function DetailModal({
     },
   });
 
+  const isPair = analysis?.mode === "pair";
+  const pairLabel = isPair ? " (A + B)" : "";
+
   const TABS: { id: Tab; label: string }[] = [
     { id: "anomalies", label: "Anomalias" },
-    { id: "routes",    label: "Rotas" },
-    { id: "bgp_ospf",  label: "BGP / OSPF / SD-WAN" },
+    { id: "routes",    label: `Rotas${pairLabel}` },
+    { id: "bgp_ospf",  label: `BGP / OSPF / SD-WAN${pairLabel}` },
     { id: "ai",        label: "Análise IA" },
   ];
 
@@ -383,10 +442,13 @@ function DetailModal({
           <div className="flex items-center gap-2">
             <Network size={20} className="text-brand-600" />
             <div>
-              <h2 className="text-base font-semibold text-gray-900">{deviceName}</h2>
+              <h2 className="text-base font-semibold text-gray-900">
+                {isPair ? `${deviceName} ↔ ${deviceBName ?? "Dispositivo B"}` : deviceName}
+              </h2>
               {analysis && (
                 <div className="flex items-center gap-2 mt-0.5">
                   <StatusBadge status={analysis.status as ConnectivityStatus} />
+                  {analysis.mode === "pair" && <ModeBadge mode="pair" />}
                   {analysis.completed_at && (
                     <span className="text-xs text-gray-500">{fmtDate(analysis.completed_at)}</span>
                   )}
@@ -394,30 +456,24 @@ function DetailModal({
               )}
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
-            <XCircle size={20} />
-          </button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><XCircle size={20} /></button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b px-6">
+        <div className="flex border-b px-6 overflow-x-auto">
           {TABS.map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`py-2.5 px-4 text-sm font-medium border-b-2 transition-colors ${
+              className={`py-2.5 px-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 tab === id
                   ? "border-brand-600 text-brand-700"
                   : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
               {label}
-              {id === "anomalies" && analysis?.anomalies?.length
-                ? ` (${analysis.anomalies.length})`
-                : ""}
-              {id === "routes" && analysis?.routes?.length
-                ? ` (${analysis.routes.length})`
-                : ""}
+              {id === "anomalies" && analysis?.anomalies?.length ? ` (${analysis.anomalies.length})` : ""}
+              {id === "routes"    && analysis?.routes?.length    ? ` (${analysis.routes.length}${isPair && analysis.device_b_routes?.length ? `+${analysis.device_b_routes.length}` : ""})` : ""}
             </button>
           ))}
         </div>
@@ -425,9 +481,7 @@ function DetailModal({
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {isLoading && (
-            <div className="flex items-center gap-2 text-gray-500">
-              <Loader2 size={16} className="animate-spin" /> Carregando...
-            </div>
+            <div className="flex items-center gap-2 text-gray-500"><Loader2 size={16} className="animate-spin" /> Carregando...</div>
           )}
 
           {analysis?.status === "running" && (
@@ -445,10 +499,16 @@ function DetailModal({
 
           {analysis && analysis.status === "completed" && (
             <>
-              {tab === "anomalies" && <AnomaliesTab analysis={analysis} />}
-              {tab === "routes"    && <RoutesTab analysis={analysis} />}
-              {tab === "bgp_ospf"  && <BgpOspfTab analysis={analysis} />}
-              {tab === "ai"        && <AITab analysis={analysis} />}
+              {tab === "anomalies" && (
+                <AnomaliesTab analysis={analysis} deviceName={deviceName} deviceBName={deviceBName} />
+              )}
+              {tab === "routes" && (
+                <RoutesTab analysis={analysis} deviceName={deviceName} deviceBName={deviceBName} />
+              )}
+              {tab === "bgp_ospf" && (
+                <BgpOspfTab analysis={analysis} deviceName={deviceName} deviceBName={deviceBName} />
+              )}
+              {tab === "ai" && <AITab analysis={analysis} />}
             </>
           )}
         </div>
@@ -461,7 +521,9 @@ function DetailModal({
 
 export function Connectivity() {
   const qc = useQueryClient();
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+  const [mode, setMode] = useState<ConnectivityMode>("single");
+  const [deviceAId, setDeviceAId] = useState("");
+  const [deviceBId, setDeviceBId] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const { data: devices = [] } = useQuery({
@@ -474,60 +536,130 @@ export function Connectivity() {
     queryFn: connectivityApi.list,
     refetchInterval: (query) => {
       const list = query.state.data ?? [];
-      const hasActive = list.some((a) => isInProgress(a.status));
-      return hasActive ? 4000 : false;
+      return list.some((a) => isInProgress(a.status)) ? 4000 : false;
     },
   });
 
-  const triggerMutation = useMutation({
-    mutationFn: connectivityApi.trigger,
-    onSuccess: () => {
-      toast.success("Análise iniciada");
-      qc.invalidateQueries({ queryKey: ["connectivity"] });
-    },
+  const triggerSingle = useMutation({
+    mutationFn: () => connectivityApi.trigger(deviceAId),
+    onSuccess: () => { toast.success("Análise iniciada"); qc.invalidateQueries({ queryKey: ["connectivity"] }); },
+    onError: () => toast.error("Falha ao iniciar análise"),
+  });
+
+  const triggerPair = useMutation({
+    mutationFn: () => connectivityApi.triggerPair(deviceAId, deviceBId),
+    onSuccess: () => { toast.success("Análise ponto-a-ponto iniciada"); qc.invalidateQueries({ queryKey: ["connectivity"] }); },
     onError: () => toast.error("Falha ao iniciar análise"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: connectivityApi.remove,
-    onSuccess: () => {
-      toast.success("Análise excluída");
-      qc.invalidateQueries({ queryKey: ["connectivity"] });
-    },
+    onSuccess: () => { toast.success("Análise excluída"); qc.invalidateQueries({ queryKey: ["connectivity"] }); },
     onError: () => toast.error("Falha ao excluir análise"),
   });
 
-  const deviceMap = Object.fromEntries(devices.map((d: Device) => [d.id, d.name]));
-
+  const deviceMap = Object.fromEntries(devices.map((d: Device) => [d.id, d]));
   const detailSummary = analyses.find((a) => a.id === detailId);
+
+  const canTrigger = mode === "single"
+    ? !!deviceAId
+    : !!deviceAId && !!deviceBId && deviceAId !== deviceBId;
+
+  const isPending = triggerSingle.isPending || triggerPair.isPending;
+
+  function handleTrigger() {
+    if (mode === "single") triggerSingle.mutate();
+    else triggerPair.mutate();
+  }
 
   return (
     <PageWrapper
       title="Conectividade de Rede"
       subtitle="Análise de tabelas de roteamento, BGP/OSPF e detecção de anomalias"
     >
-      {/* Trigger bar */}
-      <div className="bg-white border rounded-xl p-4 flex items-center gap-3 mb-6">
-        <select
-          value={selectedDeviceId}
-          onChange={(e) => setSelectedDeviceId(e.target.value)}
-          className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-        >
-          <option value="">Selecione um dispositivo...</option>
-          {devices.map((d: Device) => (
-            <option key={d.id} value={d.id}>{d.name} ({d.vendor})</option>
-          ))}
-        </select>
-        <button
-          disabled={!selectedDeviceId || triggerMutation.isPending}
-          onClick={() => triggerMutation.mutate(selectedDeviceId)}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 disabled:opacity-50 transition-colors"
-        >
-          {triggerMutation.isPending
-            ? <Loader2 size={16} className="animate-spin" />
-            : <Play size={16} />}
-          Analisar Conectividade
-        </button>
+      {/* Mode toggle + selectors */}
+      <div className="bg-white border rounded-xl p-4 mb-6 space-y-3">
+        {/* Toggle */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600 font-medium">Modo:</span>
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+            <button
+              onClick={() => { setMode("single"); setDeviceBId(""); }}
+              className={`px-3 py-1.5 font-medium transition-colors ${mode === "single" ? "bg-brand-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+            >
+              Individual
+            </button>
+            <button
+              onClick={() => setMode("pair")}
+              className={`px-3 py-1.5 font-medium transition-colors flex items-center gap-1.5 ${mode === "pair" ? "bg-purple-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+            >
+              <ArrowLeftRight size={14} /> Ponto-a-Ponto
+            </button>
+          </div>
+        </div>
+
+        {/* Selectors */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            {mode === "pair" && (
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Firewall A (origem)</label>
+            )}
+            <select
+              value={deviceAId}
+              onChange={(e) => setDeviceAId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="">{mode === "pair" ? "Selecione o Firewall A..." : "Selecione um dispositivo..."}</option>
+              {devices.map((d: Device) => (
+                <option key={d.id} value={d.id} disabled={d.id === deviceBId}>
+                  {d.name} ({d.vendor})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {mode === "pair" && (
+            <>
+              <div className="flex items-end pb-1">
+                <ArrowLeftRight size={18} className="text-gray-400" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 font-medium">Firewall B (destino)</label>
+                <select
+                  value={deviceBId}
+                  onChange={(e) => setDeviceBId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="">Selecione o Firewall B...</option>
+                  {devices.map((d: Device) => (
+                    <option key={d.id} value={d.id} disabled={d.id === deviceAId}>
+                      {d.name} ({d.vendor})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
+
+          <div className={mode === "pair" ? "flex items-end" : ""}>
+            <button
+              disabled={!canTrigger || isPending}
+              onClick={handleTrigger}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 text-white ${
+                mode === "pair"
+                  ? "bg-purple-600 hover:bg-purple-700"
+                  : "bg-brand-600 hover:bg-brand-700"
+              }`}
+            >
+              {isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+              {mode === "pair" ? "Analisar Par" : "Analisar"}
+            </button>
+          </div>
+        </div>
+
+        {mode === "pair" && deviceAId && deviceBId && deviceAId === deviceBId && (
+          <p className="text-xs text-red-500">Selecione dispositivos diferentes para a análise ponto-a-ponto.</p>
+        )}
       </div>
 
       {/* Analyses table */}
@@ -559,7 +691,7 @@ export function Connectivity() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-gray-50 text-left text-xs text-gray-500 font-medium">
-                <th className="px-5 py-2">Dispositivo</th>
+                <th className="px-5 py-2">Dispositivo(s)</th>
                 <th className="px-4 py-2">Status</th>
                 <th className="px-4 py-2 text-center">Rotas</th>
                 <th className="px-4 py-2 text-center">Anomalias</th>
@@ -568,53 +700,53 @@ export function Connectivity() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {analyses.map((a: ConnectivityAnalysisSummary) => (
-                <tr
-                  key={a.id}
-                  className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => setDetailId(a.id)}
-                >
-                  <td className="px-5 py-3 font-medium text-gray-800">
-                    {deviceMap[a.device_id] ?? a.device_id.slice(0, 8)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={a.status} />
-                  </td>
-                  <td className="px-4 py-3 text-center text-gray-600">{a.route_count}</td>
-                  <td className="px-4 py-3 text-center">
-                    {a.anomaly_count > 0 ? (
-                      <span className="inline-flex items-center gap-1 text-red-600 font-medium">
-                        <AlertTriangle size={13} /> {a.anomaly_count}
-                      </span>
-                    ) : (
-                      <span className="text-green-600 text-xs">Nenhuma</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(a.created_at)}</td>
-                  <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => setDetailId(a.id)}
-                        className="text-gray-400 hover:text-brand-600"
-                        title="Ver detalhes"
-                      >
-                        <ChevronRight size={16} />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm("Excluir esta análise?")) {
-                            deleteMutation.mutate(a.id);
-                          }
-                        }}
-                        className="text-gray-300 hover:text-red-500"
-                        title="Excluir"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {analyses.map((a: ConnectivityAnalysisSummary) => {
+                const devA = deviceMap[a.device_id];
+                const devB = a.device_b_id ? deviceMap[a.device_b_id] : null;
+                const deviceLabel = devA
+                  ? (devB ? `${devA.name} ↔ ${devB.name}` : devA.name)
+                  : a.device_id.slice(0, 8);
+                return (
+                  <tr
+                    key={a.id}
+                    className="hover:bg-gray-50 cursor-pointer"
+                    onClick={() => setDetailId(a.id)}
+                  >
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-800">{deviceLabel}</span>
+                        {a.mode === "pair" && <ModeBadge mode="pair" />}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3"><StatusBadge status={a.status} /></td>
+                    <td className="px-4 py-3 text-center text-gray-600">{a.route_count}</td>
+                    <td className="px-4 py-3 text-center">
+                      {a.anomaly_count > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-red-600 font-medium">
+                          <AlertTriangle size={13} /> {a.anomaly_count}
+                        </span>
+                      ) : (
+                        <span className="text-green-600 text-xs">Nenhuma</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(a.created_at)}</td>
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => setDetailId(a.id)} className="text-gray-400 hover:text-brand-600" title="Ver detalhes">
+                          <ChevronRight size={16} />
+                        </button>
+                        <button
+                          onClick={() => { if (confirm("Excluir esta análise?")) deleteMutation.mutate(a.id); }}
+                          className="text-gray-300 hover:text-red-500"
+                          title="Excluir"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -623,7 +755,8 @@ export function Connectivity() {
       {detailId && detailSummary && (
         <DetailModal
           summaryId={detailId}
-          deviceName={deviceMap[detailSummary.device_id] ?? "Dispositivo"}
+          deviceName={deviceMap[detailSummary.device_id]?.name ?? "Dispositivo A"}
+          deviceBName={detailSummary.device_b_id ? deviceMap[detailSummary.device_b_id]?.name : undefined}
           onClose={() => setDetailId(null)}
         />
       )}

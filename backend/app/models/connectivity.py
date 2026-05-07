@@ -27,15 +27,31 @@ class ConnectivityAnalysis(Base):
     tenant_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
     device_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True)
 
+    # "single" = análise de um dispositivo; "pair" = análise ponto-a-ponto entre dois firewalls
+    mode: Mapped[str] = mapped_column(String, nullable=False, server_default="single")
+
+    # Dispositivo B — apenas em mode="pair"
+    device_b_id: Mapped[UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
     status: Mapped[str] = mapped_column(
         Enum(ConnectivityStatus, name="connectivity_status"),
         nullable=False, default=ConnectivityStatus.pending,
     )
 
+    # Dados do dispositivo A (ou único dispositivo em modo single)
     routes:          Mapped[list | None]  = mapped_column(JSONB, nullable=True)
     bgp_peers:       Mapped[list | None]  = mapped_column(JSONB, nullable=True)
     ospf_neighbors:  Mapped[list | None]  = mapped_column(JSONB, nullable=True)
     sdwan_services:  Mapped[list | None]  = mapped_column(JSONB, nullable=True)
+
+    # Dados do dispositivo B — apenas em mode="pair"
+    device_b_routes:          Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    device_b_bgp_peers:       Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    device_b_ospf_neighbors:  Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    device_b_sdwan_services:  Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
     anomalies:       Mapped[list | None]  = mapped_column(JSONB, nullable=True)
     ai_summary:      Mapped[str | None]   = mapped_column(Text,  nullable=True)
     ai_recommendations: Mapped[list | None] = mapped_column(JSONB, nullable=True)

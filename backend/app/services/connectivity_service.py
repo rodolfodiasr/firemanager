@@ -846,6 +846,136 @@ def detect_anomalies(
     return anomalies
 
 
+# ── Pair anomaly detection (cross-device) ────────────────────────────────────
+
+def _has_covering_route(target_prefix: str, route_map: dict[str, dict]) -> bool:
+    """Return True if any route in route_map covers target_prefix (exact or supernet match)."""
+    try:
+        target = ipaddress.ip_network(target_prefix, strict=False)
+    except ValueError:
+        return False
+    for key in route_map:
+        try:
+            net = ipaddress.ip_network(key, strict=False)
+            if net == target or net.supernet_of(target):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _detect_pair_anomalies(
+    routes_a: list[dict],
+    routes_b: list[dict],
+    name_a: str,
+    name_b: str,
+) -> list[dict]:
+    anomalies: list[dict] = []
+
+    map_a = {f"{r['destination']}/{r.get('prefix_len', 0)}": r for r in routes_a}
+    map_b = {f"{r['destination']}/{r.get('prefix_len', 0)}": r for r in routes_b}
+
+    connected_a = [f"{r['destination']}/{r.get('prefix_len', 0)}" for r in routes_a if r.get("protocol") == "connected"]
+    connected_b = [f"{r['destination']}/{r.get('prefix_len', 0)}" for r in routes_b if r.get("protocol") == "connected"]
+
+    # Rota de retorno faltando: rede local de A sem rota em B, e vice-versa
+    for prefix in connected_a:
+        if prefix in ("0.0.0.0/0", "0.0.0.0/32"):
+            continue
+        if not _has_covering_route(prefix, map_b):
+            anomalies.append({
+                "type": "missing_return_route",
+                "severity": "high",
+                "description": (
+                    f"Rede local {prefix} de {name_a} não possui rota correspondente em {name_b}. "
+                    f"Tráfego de retorno de {name_b} para {name_a} pode falhar."
+                ),
+                "details": {"missing_in": name_b, "prefix": prefix, "source": name_a},
+                "_scope": "pair",
+            })
+
+    for prefix in connected_b:
+        if prefix in ("0.0.0.0/0", "0.0.0.0/32"):
+            continue
+        if not _has_covering_route(prefix, map_a):
+            anomalies.append({
+                "type": "missing_return_route",
+                "severity": "high",
+                "description": (
+                    f"Rede local {prefix} de {name_b} não possui rota correspondente em {name_a}. "
+                    f"Tráfego de retorno de {name_a} para {name_b} pode falhar."
+                ),
+                "details": {"missing_in": name_a, "prefix": prefix, "source": name_b},
+                "_scope": "pair",
+            })
+
+    # Roteamento assimétrico: mesmo prefixo, gateways diferentes nos dois lados
+    common = set(map_a.keys()) & set(map_b.keys())
+    for prefix in common:
+        ra = map_a[prefix]
+        rb = map_b[prefix]
+        gw_a = ra.get("next_hop", "")
+        gw_b = rb.get("next_hop", "")
+        if (gw_a and gw_b and gw_a != gw_b
+                and gw_a != "0.0.0.0" and gw_b != "0.0.0.0"):
+            anomalies.append({
+                "type": "asymmetric_routing",
+                "severity": "medium",
+                "description": (
+                    f"Prefixo {prefix} usa gateways diferentes nos dois firewalls: "
+                    f"{name_a} → {gw_a} ({ra.get('protocol', '?')}) vs "
+                    f"{name_b} → {gw_b} ({rb.get('protocol', '?')}). "
+                    f"Roteamento assimétrico pode causar problemas com stateful inspection e VPN."
+                ),
+                "details": {
+                    "prefix": prefix,
+                    name_a: {"gateway": gw_a, "protocol": ra.get("protocol")},
+                    name_b: {"gateway": gw_b, "protocol": rb.get("protocol")},
+                },
+                "_scope": "pair",
+            })
+
+    # Subnet inalcançável: rede local de A sem nenhuma rota em B (nem default)
+    has_default_b = any(r.get("destination") in ("0.0.0.0", "") and r.get("prefix_len", 1) == 0 for r in routes_b)
+    has_default_a = any(r.get("destination") in ("0.0.0.0", "") and r.get("prefix_len", 1) == 0 for r in routes_a)
+
+    if not has_default_b:
+        for prefix in connected_a:
+            if prefix in ("0.0.0.0/0", "0.0.0.0/32"):
+                continue
+            if not _has_covering_route(prefix, map_b):
+                anomalies.append({
+                    "type": "unreachable_subnet",
+                    "severity": "high",
+                    "description": (
+                        f"Subrede {prefix} de {name_a} é inalcançável a partir de {name_b}: "
+                        f"não existe rota específica nem rota padrão. "
+                        f"Conectividade ponto-a-ponto comprometida."
+                    ),
+                    "details": {"subnet": prefix, "unreachable_from": name_b},
+                    "_scope": "pair",
+                })
+
+    if not has_default_a:
+        for prefix in connected_b:
+            if prefix in ("0.0.0.0/0", "0.0.0.0/32"):
+                continue
+            if not _has_covering_route(prefix, map_a):
+                anomalies.append({
+                    "type": "unreachable_subnet",
+                    "severity": "high",
+                    "description": (
+                        f"Subrede {prefix} de {name_b} é inalcançável a partir de {name_a}: "
+                        f"não existe rota específica nem rota padrão. "
+                        f"Conectividade ponto-a-ponto comprometida."
+                    ),
+                    "details": {"subnet": prefix, "unreachable_from": name_a},
+                    "_scope": "pair",
+                })
+
+    return anomalies
+
+
 # ── Claude AI analysis ────────────────────────────────────────────────────────
 
 async def _claude_analysis(
@@ -856,22 +986,32 @@ async def _claude_analysis(
     ospf_neighbors: list[dict],
     sdwan_services: list[dict],
     anomalies: list[dict],
+    # pair mode extras (optional)
+    device_b_name: str | None = None,
+    device_b_vendor: str | None = None,
+    routes_b: list[dict] | None = None,
 ) -> tuple[str, list[str]]:
     import anthropic
 
     client = anthropic.AsyncAnthropic()
 
-    payload = {
-        "device": device_name,
-        "vendor": vendor,
-        "route_count": len(routes),
-        "routes_sample": routes[:20],
+    payload: dict = {
+        "device_a": device_name,
+        "vendor_a": vendor,
+        "route_count_a": len(routes),
+        "routes_sample_a": routes[:20],
         "bgp_peers": bgp_peers,
         "ospf_neighbors": ospf_neighbors,
         "sdwan_services": sdwan_services,
         "anomalies": anomalies,
         "administrative_distances": _AD,
     }
+    if device_b_name:
+        payload["device_b"] = device_b_name
+        payload["vendor_b"] = device_b_vendor
+        payload["route_count_b"] = len(routes_b or [])
+        payload["routes_sample_b"] = (routes_b or [])[:20]
+        payload["analysis_mode"] = "pair"
 
     msg = await client.messages.create(
         model="claude-sonnet-4-6",
@@ -885,14 +1025,32 @@ async def _claude_analysis(
     return data.get("summary", ""), data.get("recommendations", [])
 
 
+# ── Helpers de coleta por vendor ──────────────────────────────────────────────
+
+async def _collect_device_data(device) -> tuple[list, list, list, list]:
+    from app.models.device import VendorEnum
+    from app.connectors.factory import CLI_VENDORS
+
+    vendor = device.vendor
+    if vendor == VendorEnum.fortinet:
+        return await _fetch_fortinet_routes(device)
+    elif vendor == VendorEnum.sonicwall:
+        return await _fetch_sonicwall_routes(device)
+    elif vendor == VendorEnum.mikrotik:
+        return await _fetch_mikrotik_routes(device)
+    elif vendor in CLI_VENDORS:
+        return await _fetch_cli_routes(device)
+    else:
+        raise ValueError(f"Vendor '{vendor.value}' não suportado para análise de conectividade.")
+
+
 # ── Main analysis runner (called in background) ───────────────────────────────
 
 async def run_analysis(analysis_id: str) -> None:
     import app.models  # noqa: F401 — ensure all models are registered
     from app.database import AsyncSessionLocal
     from app.models.connectivity import ConnectivityAnalysis, ConnectivityStatus
-    from app.models.device import Device, VendorEnum
-    from app.connectors.factory import CLI_VENDORS
+    from app.models.device import Device
 
     async with AsyncSessionLocal() as db:
         record = await db.get(ConnectivityAnalysis, UUID(analysis_id))
@@ -900,53 +1058,78 @@ async def run_analysis(analysis_id: str) -> None:
             return
 
         try:
-            device = await db.get(Device, record.device_id)
-            if not device:
-                raise ValueError("Dispositivo não encontrado")
+            device_a = await db.get(Device, record.device_id)
+            if not device_a:
+                raise ValueError("Dispositivo A não encontrado")
 
             record.status = ConnectivityStatus.running
             await db.commit()
 
-            vendor = device.vendor
+            # ── Coleta dispositivo A ──────────────────────────────────────────
+            routes_a, bgp_a, ospf_a, sdwan_a = await _collect_device_data(device_a)
+            anomalies = detect_anomalies(routes_a, bgp_a, ospf_a, sdwan_a)
 
-            if vendor == VendorEnum.fortinet:
-                routes, bgp_peers, ospf_neighbors, sdwan_services = await _fetch_fortinet_routes(device)
-            elif vendor == VendorEnum.sonicwall:
-                routes, bgp_peers, ospf_neighbors, sdwan_services = await _fetch_sonicwall_routes(device)
-            elif vendor == VendorEnum.mikrotik:
-                routes, bgp_peers, ospf_neighbors, sdwan_services = await _fetch_mikrotik_routes(device)
-            elif vendor in CLI_VENDORS:
-                routes, bgp_peers, ospf_neighbors, sdwan_services = await _fetch_cli_routes(device)
-            else:
-                raise ValueError(f"Vendor '{vendor.value}' não suportado para análise de conectividade ainda.")
+            record.routes         = routes_a
+            record.bgp_peers      = bgp_a
+            record.ospf_neighbors = ospf_a
+            record.sdwan_services = sdwan_a
 
-            anomalies = detect_anomalies(routes, bgp_peers, ospf_neighbors, sdwan_services)
+            # ── Coleta dispositivo B (modo pair) ──────────────────────────────
+            routes_b: list = []
+            if record.mode == "pair" and record.device_b_id:
+                device_b = await db.get(Device, record.device_b_id)
+                if not device_b:
+                    raise ValueError("Dispositivo B não encontrado")
 
+                routes_b, bgp_b, ospf_b, sdwan_b = await _collect_device_data(device_b)
+                anomalies_b = detect_anomalies(routes_b, bgp_b, ospf_b, sdwan_b)
+
+                # Tag anomalias com o dispositivo de origem
+                for a in anomalies:
+                    a.setdefault("_device", device_a.name)
+                for a in anomalies_b:
+                    a.setdefault("_device", device_b.name)
+
+                pair_anomalies = _detect_pair_anomalies(
+                    routes_a, routes_b, device_a.name, device_b.name
+                )
+
+                anomalies = anomalies + anomalies_b + pair_anomalies
+
+                record.device_b_routes          = routes_b
+                record.device_b_bgp_peers       = bgp_b
+                record.device_b_ospf_neighbors  = ospf_b
+                record.device_b_sdwan_services  = sdwan_b
+
+            # ── Análise IA ────────────────────────────────────────────────────
             ai_summary, ai_recs = "", []
             try:
+                device_b_obj = (
+                    await db.get(Device, record.device_b_id)
+                    if record.mode == "pair" and record.device_b_id else None
+                )
                 ai_summary, ai_recs = await _claude_analysis(
-                    device_name=device.name,
-                    vendor=vendor.value,
-                    routes=routes,
-                    bgp_peers=bgp_peers,
-                    ospf_neighbors=ospf_neighbors,
-                    sdwan_services=sdwan_services,
+                    device_name=device_a.name,
+                    vendor=device_a.vendor.value,
+                    routes=routes_a,
+                    bgp_peers=bgp_a,
+                    ospf_neighbors=ospf_a,
+                    sdwan_services=sdwan_a,
                     anomalies=anomalies,
+                    device_b_name=device_b_obj.name if device_b_obj else None,
+                    device_b_vendor=device_b_obj.vendor.value if device_b_obj else None,
+                    routes_b=routes_b if routes_b else None,
                 )
             except Exception as exc:
                 log.warning("Claude analysis failed for connectivity %s: %s", analysis_id, exc)
                 ai_summary = "Análise IA indisponível."
                 ai_recs = []
 
-            record.routes          = routes
-            record.bgp_peers       = bgp_peers
-            record.ospf_neighbors  = ospf_neighbors
-            record.sdwan_services  = sdwan_services
-            record.anomalies       = anomalies
-            record.ai_summary      = ai_summary
+            record.anomalies          = anomalies
+            record.ai_summary         = ai_summary
             record.ai_recommendations = ai_recs
-            record.status          = ConnectivityStatus.completed
-            record.completed_at    = datetime.now(timezone.utc)
+            record.status             = ConnectivityStatus.completed
+            record.completed_at       = datetime.now(timezone.utc)
 
         except Exception as exc:
             log.exception("Connectivity analysis %s failed: %s", analysis_id, exc)
