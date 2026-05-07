@@ -272,16 +272,168 @@ async def _fetch_fortinet_routes(device) -> tuple[list[dict], list[dict], list[d
     return routes, bgp_peers, ospf_neighbors, sdwan_services
 
 
+# ── SonicOS CLI parsers ───────────────────────────────────────────────────────
+
+def _parse_sonicwall_routes(output: str) -> list[dict]:
+    """Parse SonicOS 'show route' output into normalized route dicts."""
+    routes: list[dict] = []
+    # SonicOS route table lines: Destination/Mask  Gateway  Pref  Metric  Interface  Type
+    # e.g.: 0.0.0.0/0   200.1.1.1   1   0   X1   Static
+    #        10.0.0.0/8  0.0.0.0     0   0   X0   Connected
+    pattern = re.compile(
+        r"([\d.]+)/([\d.]+)\s+"          # dest / mask-or-plen
+        r"([\d.]+)\s+"                    # gateway
+        r"\d+\s+\d+\s+"                  # pref + metric
+        r"(\S+)\s+"                       # interface
+        r"(\w+)"                          # type
+    )
+    proto_map = {
+        "static": "static", "connected": "connected", "ospf": "ospf",
+        "bgp": "bgp", "rip": "rip", "eigrp": "eigrp",
+    }
+    for m in pattern.finditer(output):
+        dest, mask_or_plen, gw, iface, rtype = m.groups()
+        plen = _mask_to_plen(mask_or_plen)
+        try:
+            net = ipaddress.ip_network(f"{dest}/{plen}", strict=False)
+            dest = str(net.network_address)
+        except ValueError:
+            pass
+        routes.append({
+            "destination": dest,
+            "prefix_len": plen,
+            "next_hop": gw if gw != "0.0.0.0" else "0.0.0.0",
+            "interface": iface,
+            "protocol": proto_map.get(rtype.lower(), "unknown"),
+            "active": True,
+        })
+    return routes
+
+
+def _parse_sonicwall_ospf(output: str) -> list[dict]:
+    """Parse SonicOS 'show ospf neighbor' output."""
+    neighbors: list[dict] = []
+    # e.g.: 0.0.0.0  10.0.0.2  10.0.0.2  Full  00:10:00  X2
+    pattern = re.compile(
+        r"[\d.]+\s+"           # area
+        r"([\d.]+)\s+"         # router-id
+        r"([\d.]+)\s+"         # address
+        r"(\w+)\s+"            # state
+        r"\S+\s+"              # uptime
+        r"(\S+)"               # interface
+    )
+    for m in pattern.finditer(output):
+        router_id, address, state, iface = m.groups()
+        neighbors.append({
+            "neighbor_id": router_id,
+            "state": state,
+            "interface": iface,
+            "address": address,
+        })
+    return neighbors
+
+
+def _parse_sonicwall_sdwan(output: str) -> list[dict]:
+    """Parse SonicOS 'show sdwan-groups' or 'show wan-failover' output.
+
+    SonicOS SD-WAN groups list active/standby WAN members. We return a
+    minimal service descriptor so the UI can display WAN group membership.
+    """
+    services: list[dict] = []
+    # Group header: e.g. "SD-WAN Group: WAN_Group_1  Mode: Load Balance"
+    grp_pattern = re.compile(r"(?:SD-WAN Group|WAN Group)[:\s]+(\S+).*?Mode[:\s]+([^\n]+)", re.IGNORECASE)
+    # Member line: e.g. "  Interface: X1  Status: Active"
+    member_pattern = re.compile(r"Interface[:\s]+(\S+)\s+Status[:\s]+(\S+)", re.IGNORECASE)
+
+    for grp_match in grp_pattern.finditer(output):
+        name = grp_match.group(1).strip()
+        mode = grp_match.group(2).strip()
+        # Collect members that follow this group header
+        start = grp_match.end()
+        next_grp = grp_pattern.search(output, start)
+        segment = output[start:next_grp.start() if next_grp else len(output)]
+        members = [m.group(1) for m in member_pattern.finditer(segment)]
+        services.append({
+            "name": name,
+            "mode": mode,
+            "destinations": [],  # SonicWall WAN groups apply globally
+            "members": members,
+            "status": "active",
+        })
+
+    # Fallback: wan-failover style — "Primary: X1  Backup: X2  Status: Primary Active"
+    if not services:
+        prim = re.search(r"Primary[:\s]+(\S+)", output, re.IGNORECASE)
+        backup = re.search(r"Backup[:\s]+(\S+)", output, re.IGNORECASE)
+        status = re.search(r"Status[:\s]+([^\n]+)", output, re.IGNORECASE)
+        if prim:
+            members = [prim.group(1)]
+            if backup:
+                members.append(backup.group(1))
+            services.append({
+                "name": "WAN Failover",
+                "mode": "failover",
+                "destinations": [],
+                "members": members,
+                "status": (status.group(1).strip() if status else "unknown"),
+            })
+
+    return services
+
+
 async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+    from app.connectors.factory import get_ssh_connector
     from app.utils.crypto import decrypt_credentials
     import httpx
 
+    routes: list[dict] = []
+    bgp_peers: list[dict] = []
+    ospf_neighbors: list[dict] = []
+    sdwan_services: list[dict] = []
+    ssh_routes_ok = False
+
+    # ── FASE 1: SSH (deve terminar antes de abrir sessão REST) ────────────────
+    # SonicWall permite apenas uma sessão de gerenciamento por vez.
+    # Idêntico ao padrão usado em bookstack_service._collect_live_data.
+    try:
+        ssh = get_ssh_connector(device)
+        ssh_result = await asyncio.wait_for(
+            ssh.execute_show_commands([
+                "show route",
+                "show ospf neighbor",
+                "show sdwan-groups",
+            ]),
+            timeout=60,
+        )
+        if ssh_result.success and ssh_result.output:
+            output = ssh_result.output
+            # Split output by command echo
+            sections = re.split(r"(?:show route|show ospf neighbor|show sdwan-groups)\s*\n", output, flags=re.IGNORECASE)
+            route_out = sections[0] if sections else output
+            ospf_out  = sections[1] if len(sections) > 1 else ""
+            sdwan_out = sections[2] if len(sections) > 2 else ""
+
+            parsed = _parse_sonicwall_routes(route_out)
+            if parsed:
+                routes = parsed
+                ssh_routes_ok = True
+
+            ospf_neighbors = _parse_sonicwall_ospf(ospf_out)
+            sdwan_services = _parse_sonicwall_sdwan(sdwan_out)
+
+            log.info("SonicWall SSH routes=%d ospf=%d sdwan=%d",
+                     len(routes), len(ospf_neighbors), len(sdwan_services))
+        else:
+            log.debug("SonicWall SSH show failed: %s", ssh_result.error)
+    except Exception as exc:
+        log.debug("SonicWall SSH phase skipped: %s", exc)
+
+    # ── FASE 2: REST (SSH já fechou — seguro abrir nova sessão) ───────────────
     creds = decrypt_credentials(device.encrypted_credentials)
     base = f"{'https' if device.use_ssl else 'http'}://{device.host}:{device.port}"
     verify = device.verify_ssl if device.verify_ssl is not None else False
     username = creds.get("username", "")
     password = creds.get("password", "")
-    routes, bgp_peers, ospf_neighbors, sdwan_services = [], [], [], []
 
     async with httpx.AsyncClient(
         base_url=base,
@@ -290,7 +442,6 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
         headers={"Content-Type": "application/json", "Accept": "application/json"},
     ) as client:
         try:
-            # Digest Auth + override=True (matches existing SonicWall connector pattern)
             auth_r = await client.post(
                 "/api/sonicos/auth",
                 json={"override": True},
@@ -299,8 +450,8 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
             if not auth_r.is_success:
                 raise ValueError(f"SonicWall auth falhou: HTTP {auth_r.status_code} — {auth_r.text[:200]}")
 
-            # Build address object name → CIDR lookup
-            addr_map: dict[str, tuple[str, int]] = {}  # name → (network_ip, prefix_len)
+            # Address objects → mapa nome→CIDR para resolver destinos de route policies
+            addr_map: dict[str, tuple[str, int]] = {}
             try:
                 r = await client.get("/api/sonicos/address-objects/ipv4")
                 if r.status_code == 200:
@@ -320,81 +471,71 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
                             except ValueError:
                                 pass
             except Exception as e:
-                log.debug("SonicWall address objects error: %s", e)
+                log.debug("SonicWall address-objects error: %s", e)
 
-            # Connected routes from interface IPs
-            try:
-                r = await client.get("/api/sonicos/interfaces/ipv4")
-                if r.status_code == 200:
-                    for entry in r.json().get("interfaces", []):
-                        iface = entry.get("ipv4", entry) if isinstance(entry, dict) else {}
-                        iface_name = iface.get("name", "")
-                        # SonicOS stores IP under ip_assignment.mode.static or directly under ip/mask
-                        ip_assign = iface.get("ip_assignment", {})
-                        mode = ip_assign.get("mode", {})
-                        static = mode.get("static", {}) if isinstance(mode, dict) else {}
-                        addr = static.get("ip", "") or iface.get("ip", "")
-                        mask = static.get("mask", "") or iface.get("mask", "")
-                        if addr and addr not in ("0.0.0.0", ""):
-                            try:
-                                plen = _mask_to_plen(mask) if mask else 32
-                                net = ipaddress.ip_network(f"{addr}/{plen}", strict=False)
-                                routes.append({
-                                    "destination": str(net.network_address),
-                                    "prefix_len": net.prefixlen,
-                                    "next_hop": "0.0.0.0",
-                                    "interface": iface_name,
-                                    "protocol": "connected",
-                                    "active": True,
-                                })
-                            except ValueError:
-                                pass
-            except Exception as e:
-                log.debug("SonicWall interfaces error: %s", e)
+            # Se SSH não trouxe rotas, usa REST (interfaces + route policies)
+            if not ssh_routes_ok:
+                try:
+                    r = await client.get("/api/sonicos/interfaces/ipv4")
+                    if r.status_code == 200:
+                        for entry in r.json().get("interfaces", []):
+                            iface = entry.get("ipv4", entry) if isinstance(entry, dict) else {}
+                            iface_name = iface.get("name", "")
+                            ip_assign = iface.get("ip_assignment", {})
+                            mode = ip_assign.get("mode", {})
+                            static = mode.get("static", {}) if isinstance(mode, dict) else {}
+                            addr = static.get("ip", "") or iface.get("ip", "")
+                            mask = static.get("mask", "") or iface.get("mask", "")
+                            if addr and addr not in ("0.0.0.0", ""):
+                                try:
+                                    plen = _mask_to_plen(mask) if mask else 32
+                                    net = ipaddress.ip_network(f"{addr}/{plen}", strict=False)
+                                    routes.append({
+                                        "destination": str(net.network_address),
+                                        "prefix_len": net.prefixlen,
+                                        "next_hop": "0.0.0.0",
+                                        "interface": iface_name,
+                                        "protocol": "connected",
+                                        "active": True,
+                                    })
+                                except ValueError:
+                                    pass
+                except Exception as e:
+                    log.debug("SonicWall interfaces error: %s", e)
 
-            # Route policies (static routes)
-            try:
-                r = await client.get("/api/sonicos/route-policies/ipv4")
-                if r.status_code == 200:
-                    for item in r.json().get("route_policies", []):
-                        rp = item.get("ipv4", item) if isinstance(item, dict) else item
+                try:
+                    r = await client.get("/api/sonicos/route-policies/ipv4")
+                    if r.status_code == 200:
+                        for item in r.json().get("route_policies", []):
+                            rp = item.get("ipv4", item) if isinstance(item, dict) else item
+                            dst_field = rp.get("destination", {})
+                            dst_name = dst_field.get("name") or dst_field.get("group") or ""
+                            if dst_name in addr_map:
+                                dest_ip, plen = addr_map[dst_name]
+                            else:
+                                dest_ip, plen = "0.0.0.0", 0
+                            gw = rp.get("gateway", {})
+                            nexthop = "0.0.0.0" if (isinstance(gw, dict) and gw.get("default")) else (gw.get("ip", "0.0.0.0") if isinstance(gw, dict) else str(gw or "0.0.0.0"))
+                            routes.append({
+                                "destination": dest_ip,
+                                "prefix_len": plen,
+                                "next_hop": nexthop,
+                                "interface": rp.get("interface", ""),
+                                "protocol": "static",
+                                "active": not rp.get("disable_on_interface_down", False),
+                            })
+                except Exception as e:
+                    log.debug("SonicWall route-policies error: %s", e)
 
-                        # Resolve destination
-                        dst_field = rp.get("destination", {})
-                        dst_name = dst_field.get("name") or dst_field.get("group") or ""
-                        if dst_name in addr_map:
-                            dest_ip, plen = addr_map[dst_name]
-                        else:
-                            # If destination is "Any" or unresolved, treat as default route
-                            dest_ip, plen = ("0.0.0.0", 0) if not dst_name or dst_name.lower() in ("any", "") else ("0.0.0.0", 0)
-
-                        # Gateway
-                        gw = rp.get("gateway", {})
-                        if isinstance(gw, dict):
-                            nexthop = "0.0.0.0" if gw.get("default") else gw.get("ip", "0.0.0.0")
-                        else:
-                            nexthop = str(gw) if gw else "0.0.0.0"
-
-                        routes.append({
-                            "destination": dest_ip,
-                            "prefix_len": plen,
-                            "next_hop": nexthop,
-                            "interface": rp.get("interface", ""),
-                            "protocol": "static",
-                            "active": not rp.get("disable_on_interface_down", False),
-                        })
-            except Exception as e:
-                log.debug("SonicWall route policies error: %s", e)
-
-            # Logout
             try:
                 await client.delete("/api/sonicos/auth")
             except Exception:
                 pass
 
-        except Exception as e:
-            log.debug("SonicWall route fetch error: %s", e)
-            raise ValueError(f"SonicWall REST: {e}") from e
+        except Exception as exc:
+            log.debug("SonicWall REST phase error: %s", exc)
+            if not ssh_routes_ok and not routes:
+                raise ValueError(f"SonicWall: SSH e REST falharam — {exc}") from exc
 
     return routes, bgp_peers, ospf_neighbors, sdwan_services
 
