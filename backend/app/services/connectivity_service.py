@@ -436,6 +436,14 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
     username = creds.get("username", "")
     password = creds.get("password", "")
 
+    # Gen6 rejects {"override": True} body — same logic as SonicWallConnector._session()
+    _os_raw = creds.get("os_version") or "7"
+    try:
+        _os_version = int(str(_os_raw)[0])
+    except (ValueError, TypeError, IndexError):
+        _os_version = 7
+    _auth_kwargs: dict = {} if _os_version <= 6 else {"json": {"override": True}}
+
     async with httpx.AsyncClient(
         base_url=base,
         verify=verify,
@@ -445,7 +453,7 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
         try:
             auth_r = await client.post(
                 "/api/sonicos/auth",
-                json={"override": True},
+                **_auth_kwargs,
                 auth=httpx.DigestAuth(username, password),
             )
             if not auth_r.is_success:
