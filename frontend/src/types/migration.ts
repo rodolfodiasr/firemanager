@@ -30,11 +30,18 @@ export interface ParsedInterface {
   port_type: "ethernet" | "fiber" | "lag" | "vlan" | "unknown";
 }
 
+export interface L3Interface {
+  vlan_id: string;
+  ip: string;
+  mask: string;
+}
+
 export interface MigrationPlan {
   hostname: string | null;
   stp_mode: string | null;
   vlans: Record<string, ParsedVlan>;
   interfaces: ParsedInterface[];
+  l3_interfaces: L3Interface[];
   warnings: string[];
 }
 

@@ -112,6 +112,14 @@ def _render_edgeswitch(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
                 cmds.append(f" vlan participation include {pvid}")
         cmds += ["exit", ""]
 
+    for l3 in ir.get("l3_interfaces", []):
+        cmds += [f"interface Vlan {l3['vlan_id']}",
+                 f" ip address {l3['ip']} {l3['mask']}", "exit", ""]
+        warns.append(
+            f"IP de gerência migrado (VLAN {l3['vlan_id']}: {l3['ip']} {l3['mask']}) "
+            f"— verifique se é o IP correto para o switch de destino antes de aplicar"
+        )
+
     return {"commands": cmds, "warnings": warns}
 
 
@@ -232,6 +240,14 @@ def _render_cisco_ios(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[
                 cmds.append(f" switchport access vlan {pvid}")
         cmds += ["!", ""]
 
+    for l3 in ir.get("l3_interfaces", []):
+        cmds += [f"interface Vlan{l3['vlan_id']}",
+                 f" ip address {l3['ip']} {l3['mask']}", "!", ""]
+        warns.append(
+            f"IP de gerência migrado (VLAN {l3['vlan_id']}: {l3['ip']} {l3['mask']}) "
+            f"— verifique se é o IP correto para o switch de destino antes de aplicar"
+        )
+
     return {"commands": cmds, "warnings": warns}
 
 
@@ -306,6 +322,14 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
                     f"port access vlan <ID>"
                 )
         cmds += ["quit", ""]
+
+    for l3 in ir.get("l3_interfaces", []):
+        cmds += [f"interface Vlan-interface {l3['vlan_id']}",
+                 f" ip address {l3['ip']} {l3['mask']}", "quit", ""]
+        warns.append(
+            f"IP de gerência migrado (VLAN {l3['vlan_id']}: {l3['ip']} {l3['mask']}) "
+            f"— verifique se é o IP correto para o switch de destino antes de aplicar"
+        )
 
     return {"commands": cmds, "warnings": warns}
 

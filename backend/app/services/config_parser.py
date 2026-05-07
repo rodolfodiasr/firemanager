@@ -760,6 +760,57 @@ def _parse_aruba(config: str) -> dict[str, Any]:
 _parse_intelbras = _parse_ios_style
 
 
+# ── L3 interface extraction ───────────────────────────────────────────────────
+
+def _cidr_to_mask(prefix: int) -> str:
+    """Convert CIDR prefix length to dotted-decimal netmask (e.g. 24 → '255.255.255.0')."""
+    bits = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF
+    return ".".join(str((bits >> (8 * i)) & 0xFF) for i in [3, 2, 1, 0])
+
+
+def _extract_l3_interfaces(config: str) -> list[dict]:
+    """Extract VLAN L3 interface IP addresses from any vendor raw config.
+
+    Handles:
+      EdgeSwitch / IOS:  interface vlan 100  →  ip address 10.0.0.1/24
+      HP Comware:        interface Vlan-interface 100  →  ip address 10.0.0.1 255.255.255.0
+    Returns list of {"vlan_id": str, "ip": str, "mask": str}.
+    """
+    result: list[dict] = []
+    seen: set[str] = set()
+    lines = config.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        vlan_m = re.match(
+            r"^interface\s+(?:vlan[-\s]?interface\s*|vlan\s*)(\d+)",
+            line, re.IGNORECASE,
+        )
+        if vlan_m:
+            vid = vlan_m.group(1)
+            i += 1
+            while i < len(lines):
+                il = lines[i]
+                ils = il.strip()
+                if ils.lower() in ("quit", "exit", "!") or (ils and not il[:1].isspace()):
+                    break
+                ip_m = re.match(
+                    r"ip\s+address\s+([\d.]+)(?:/(\d+)|[ ]+([\d.]+))",
+                    ils, re.IGNORECASE,
+                )
+                if ip_m:
+                    ip = ip_m.group(1)
+                    mask = _cidr_to_mask(int(ip_m.group(2))) if ip_m.group(2) else ip_m.group(3)
+                    key = f"{vid}:{ip}"
+                    if key not in seen:
+                        seen.add(key)
+                        result.append({"vlan_id": vid, "ip": ip, "mask": mask})
+                i += 1
+            continue
+        i += 1
+    return result
+
+
 # ── Port type inference ───────────────────────────────────────────────────────
 
 def _infer_port_types(vendor: str, interfaces: list[dict]) -> None:
@@ -850,6 +901,7 @@ def parse_config(vendor: str, config_text: str) -> dict[str, Any]:
     try:
         ir = parser(config_text)
         _infer_port_types(vendor, ir.get("interfaces", []))
+        ir["l3_interfaces"] = _extract_l3_interfaces(config_text)
         return ir
     except Exception as exc:
         return {
