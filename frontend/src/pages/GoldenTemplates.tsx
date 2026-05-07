@@ -24,10 +24,12 @@ import { PageWrapper } from "../components/layout/PageWrapper";
 import { goldenTemplateApi } from "../api/goldenTemplate";
 import { devicesApi } from "../api/devices";
 import type {
+  ApplyResponse,
   DivergenceItem,
   DivergenceResponse,
   GoldenTemplateRead,
   GoldenTemplateSummary,
+  GoldenTemplateVersionRead,
   TemplateVariable,
 } from "../types/goldenTemplate";
 import type { Device } from "../types/device";
@@ -367,7 +369,7 @@ function ApplyWizard({
   const [preview, setPreview] = useState("");
   const [editingPreview, setEditingPreview] = useState(false);
   const [previewDraft, setPreviewDraft] = useState("");
-  const [applyResult, setApplyResult] = useState<{ status: string; message: string; output?: string } | null>(null);
+  const [applyResult, setApplyResult] = useState<ApplyResponse | null>(null);
 
   // Full template (with variables list) loaded on demand
   const { data: fullTpl } = useQuery({
@@ -378,14 +380,14 @@ function ApplyWizard({
   // Prefill variables when device selected
   const prefillMut = useMutation({
     mutationFn: () => goldenTemplateApi.prefill(template.id, deviceId),
-    onSuccess: (data) => {
+    onSuccess: (data: { variable_values: Record<string, string> }) => {
       setVarValues((prev) => ({ ...prev, ...data.variable_values }));
     },
   });
 
   const renderMut = useMutation({
     mutationFn: () => goldenTemplateApi.render(template.id, varValues),
-    onSuccess: (data) => {
+    onSuccess: (data: { content: string; unresolved: string[] }) => {
       setPreview(data.content);
       setPreviewDraft(data.content);
       setStep(3);
@@ -396,7 +398,7 @@ function ApplyWizard({
   const applyMut = useMutation({
     mutationFn: () =>
       goldenTemplateApi.apply(template.id, deviceId, varValues),
-    onSuccess: (data) => setApplyResult(data),
+    onSuccess: (data: ApplyResponse) => setApplyResult(data),
     onError: () => toast.error("Erro ao aplicar template"),
   });
 
@@ -612,12 +614,13 @@ function DivergenceModal({
 
   const prefillMut = useMutation({
     mutationFn: () => goldenTemplateApi.prefill(template.id, deviceId),
-    onSuccess: (data) => setVarValues((prev) => ({ ...prev, ...data.variable_values })),
+    onSuccess: (data: { variable_values: Record<string, string> }) =>
+      setVarValues((prev) => ({ ...prev, ...data.variable_values })),
   });
 
   const analyzeMut = useMutation({
     mutationFn: () => goldenTemplateApi.divergence(template.id, deviceId, varValues),
-    onSuccess: setResult,
+    onSuccess: (data: DivergenceResponse) => setResult(data),
     onError: () => toast.error("Erro ao analisar divergência"),
   });
 
@@ -797,7 +800,7 @@ function VersionHistoryModal({
   onClose: () => void;
   onRestore: (version: number) => void;
 }) {
-  const { data: versions = [], isLoading } = useQuery({
+  const { data: versions = [], isLoading } = useQuery<GoldenTemplateVersionRead[]>({
     queryKey: ["golden-template-versions", template.id],
     queryFn: () => goldenTemplateApi.versions(template.id),
     enabled: !template.is_system,
@@ -987,9 +990,9 @@ export function GoldenTemplates() {
     queryFn: goldenTemplateApi.list,
   });
 
-  const { data: devices = [] } = useQuery({
+  const { data: devices = [] } = useQuery<Device[]>({
     queryKey: ["devices"],
-    queryFn: devicesApi.getAll,
+    queryFn: devicesApi.list,
   });
 
   const createMut = useMutation({
@@ -1046,8 +1049,8 @@ export function GoldenTemplates() {
     return true;
   });
 
-  const vendors = [...new Set(templates.map((t) => t.vendor))];
-  const categories = [...new Set(templates.map((t) => t.category))];
+  const vendors: string[] = [...new Set(templates.map((t: GoldenTemplateSummary) => t.vendor))];
+  const categories: string[] = [...new Set(templates.map((t: GoldenTemplateSummary) => t.category))];
 
   return (
     <PageWrapper title="Golden Config" subtitle="Biblioteca de templates e conformidade de configuração">
