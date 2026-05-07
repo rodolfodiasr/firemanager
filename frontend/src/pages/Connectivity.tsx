@@ -497,6 +497,12 @@ function DetailModal({
             </div>
           )}
 
+          {analysis?.status === "completed" && analysis.error && (
+            <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-amber-700 text-sm">
+              <strong>Atenção:</strong> {analysis.error}
+            </div>
+          )}
+
           {analysis && analysis.status === "completed" && (
             <>
               {tab === "anomalies" && (

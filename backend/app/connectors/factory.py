@@ -79,7 +79,11 @@ def get_connector(device: Device) -> BaseConnector:
         )
 
     if device.vendor == VendorEnum.sonicwall:
-        os_version = int(str(creds.get("os_version", "7"))[0])
+        _os_raw = creds.get("os_version") or "7"
+        try:
+            os_version = int(str(_os_raw)[0])
+        except (ValueError, TypeError, IndexError):
+            os_version = 7
         return SonicWallConnector(
             host=base_url,
             username=creds.get("username", ""),

@@ -18,6 +18,7 @@ interface EditDeviceModalProps {
 
 export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDeviceModalProps) {
   const [changeCredentials, setChangeCredentials] = useState(false);
+  const [sonicwallOs, setSonicwallOs] = useState<"6" | "7">("7");
   const { register, handleSubmit, watch, reset, formState: { isSubmitting } } = useForm<DeviceCreate>();
   const authType = watch("credentials.auth_type", "token");
 
@@ -34,6 +35,7 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
         wazuh_agent_name: device.wazuh_agent_name ?? "",
       });
       setChangeCredentials(false);
+      setSonicwallOs("7");
     }
   }, [isOpen, device, reset]);
 
@@ -60,7 +62,11 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
       payload.credentials = {
         ...data.credentials,
         auth_type: SSH_VENDORS.has(device.vendor) ? "ssh" : data.credentials.auth_type,
+        ...(device.vendor === "sonicwall" ? { os_version: parseInt(sonicwallOs) } : {}),
       };
+    } else if (device.vendor === "sonicwall") {
+      // Send only os_version; backend will merge with existing credentials
+      payload.credentials = { auth_type: "user_pass", os_version: parseInt(sonicwallOs) };
     }
     await onSubmit(device.id, payload);
     handleClose();
@@ -120,6 +126,22 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
               Verificar certificado
             </label>
           </div>
+
+          {device.vendor === "sonicwall" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Geração SonicWall
+              </label>
+              <select
+                value={sonicwallOs}
+                onChange={(e) => setSonicwallOs(e.target.value as "6" | "7")}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="7">Gen 7 (SonicOS 7.x)</option>
+                <option value="6">Gen 6 (SonicOS 6.x)</option>
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">

@@ -1076,38 +1076,40 @@ async def run_analysis(analysis_id: str) -> None:
 
             # ── Coleta dispositivo B (modo pair) ──────────────────────────────
             routes_b: list = []
+            device_b_error: str | None = None
+            device_b: Device | None = None
             if record.mode == "pair" and record.device_b_id:
                 device_b = await db.get(Device, record.device_b_id)
                 if not device_b:
-                    raise ValueError("Dispositivo B não encontrado")
+                    device_b_error = "Dispositivo B não encontrado"
+                else:
+                    try:
+                        routes_b, bgp_b, ospf_b, sdwan_b = await _collect_device_data(device_b)
+                        anomalies_b = detect_anomalies(routes_b, bgp_b, ospf_b, sdwan_b)
 
-                routes_b, bgp_b, ospf_b, sdwan_b = await _collect_device_data(device_b)
-                anomalies_b = detect_anomalies(routes_b, bgp_b, ospf_b, sdwan_b)
+                        # Tag anomalias com o dispositivo de origem
+                        for a in anomalies:
+                            a.setdefault("_device", device_a.name)
+                        for a in anomalies_b:
+                            a.setdefault("_device", device_b.name)
 
-                # Tag anomalias com o dispositivo de origem
-                for a in anomalies:
-                    a.setdefault("_device", device_a.name)
-                for a in anomalies_b:
-                    a.setdefault("_device", device_b.name)
+                        pair_anomalies = _detect_pair_anomalies(
+                            routes_a, routes_b, device_a.name, device_b.name
+                        )
 
-                pair_anomalies = _detect_pair_anomalies(
-                    routes_a, routes_b, device_a.name, device_b.name
-                )
+                        anomalies = anomalies + anomalies_b + pair_anomalies
 
-                anomalies = anomalies + anomalies_b + pair_anomalies
-
-                record.device_b_routes          = routes_b
-                record.device_b_bgp_peers       = bgp_b
-                record.device_b_ospf_neighbors  = ospf_b
-                record.device_b_sdwan_services  = sdwan_b
+                        record.device_b_routes          = routes_b
+                        record.device_b_bgp_peers       = bgp_b
+                        record.device_b_ospf_neighbors  = ospf_b
+                        record.device_b_sdwan_services  = sdwan_b
+                    except Exception as exc_b:
+                        device_b_error = f"Falha ao coletar dados do dispositivo B ({device_b.name}): {exc_b}"
+                        log.warning("Pair analysis %s — device B failed: %s", analysis_id, exc_b)
 
             # ── Análise IA ────────────────────────────────────────────────────
             ai_summary, ai_recs = "", []
             try:
-                device_b_obj = (
-                    await db.get(Device, record.device_b_id)
-                    if record.mode == "pair" and record.device_b_id else None
-                )
                 ai_summary, ai_recs = await _claude_analysis(
                     device_name=device_a.name,
                     vendor=device_a.vendor.value,
@@ -1116,8 +1118,8 @@ async def run_analysis(analysis_id: str) -> None:
                     ospf_neighbors=ospf_a,
                     sdwan_services=sdwan_a,
                     anomalies=anomalies,
-                    device_b_name=device_b_obj.name if device_b_obj else None,
-                    device_b_vendor=device_b_obj.vendor.value if device_b_obj else None,
+                    device_b_name=device_b.name if device_b else None,
+                    device_b_vendor=device_b.vendor.value if device_b else None,
                     routes_b=routes_b if routes_b else None,
                 )
             except Exception as exc:
@@ -1129,6 +1131,7 @@ async def run_analysis(analysis_id: str) -> None:
             record.ai_summary         = ai_summary
             record.ai_recommendations = ai_recs
             record.status             = ConnectivityStatus.completed
+            record.error              = device_b_error
             record.completed_at       = datetime.now(timezone.utc)
 
         except Exception as exc:

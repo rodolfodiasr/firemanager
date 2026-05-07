@@ -11,7 +11,7 @@ from app.models.document import Document
 from app.models.operation import Operation
 from app.models.snapshot import Snapshot
 from app.schemas.device import DeviceCreate, DeviceUpdate
-from app.utils.crypto import encrypt_credentials
+from app.utils.crypto import decrypt_credentials, encrypt_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,10 @@ async def update_device(
     if data.port is not None:
         device.port = data.port
     if data.credentials is not None:
-        device.encrypted_credentials = encrypt_credentials(data.credentials.model_dump())
+        incoming = data.credentials.model_dump(exclude_none=True)
+        existing = decrypt_credentials(device.encrypted_credentials) if device.encrypted_credentials else {}
+        merged = {**existing, **incoming}
+        device.encrypted_credentials = encrypt_credentials(merged)
     if data.use_ssl is not None:
         device.use_ssl = data.use_ssl
     if data.verify_ssl is not None:
