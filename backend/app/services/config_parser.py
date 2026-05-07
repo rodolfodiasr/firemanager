@@ -760,6 +760,71 @@ def _parse_aruba(config: str) -> dict[str, Any]:
 _parse_intelbras = _parse_ios_style
 
 
+# ── Port type inference ───────────────────────────────────────────────────────
+
+def _infer_port_types(vendor: str, interfaces: list[dict]) -> None:
+    """Stamp port_type on each interface: 'ethernet' | 'fiber' | 'lag' | 'vlan'."""
+    for iface in interfaces:
+        name = iface["name"]
+        n = name.lower().strip()
+
+        if _is_lag_iface(name):
+            iface["port_type"] = "lag"
+            continue
+
+        # Juniper ae (aggregated ethernet) is a LAG
+        if re.match(r"^ae\d", n):
+            iface["port_type"] = "lag"
+            continue
+
+        # VLAN / loopback / management — non-switching interfaces
+        if re.match(r"^(vlan|loopback|loop\s*back|mgmt|management|irb|null|me)\d*\b", n):
+            iface["port_type"] = "vlan"
+            continue
+
+        if vendor in ("cisco_ios", "cisco_nxos", "dell_n", "intelbras"):
+            if re.match(r"^(tengigabit|te\s*\d|hundredgige|fortygig|25gig)", n):
+                iface["port_type"] = "fiber"
+            else:
+                iface["port_type"] = "ethernet"
+
+        elif vendor == "hp_comware":
+            if re.match(r"^ten-gigabitethernet|^xgigabitethernet|^40g", n):
+                iface["port_type"] = "fiber"
+            else:
+                iface["port_type"] = "ethernet"
+
+        elif vendor == "juniper":
+            if re.match(r"^(xe|et|xle|fte)-", n):
+                iface["port_type"] = "fiber"
+            else:
+                iface["port_type"] = "ethernet"
+
+        elif vendor == "aruba":
+            iface["port_type"] = "ethernet"
+
+        elif vendor == "edgeswitch":
+            # Physical ports have no type hint in name — revised below
+            iface["port_type"] = "ethernet"
+
+        else:
+            iface["port_type"] = "ethernet"
+
+    # EdgeSwitch: last 2 sequential 0/X physical ports are SFP fiber
+    if vendor == "edgeswitch":
+        physical = [
+            i for i in interfaces
+            if re.match(r"^\d+/\d+$", i["name"]) and i.get("port_type") == "ethernet"
+        ]
+        try:
+            physical_sorted = sorted(physical, key=lambda i: int(i["name"].split("/")[-1]))
+            if len(physical_sorted) >= 3:
+                for iface in physical_sorted[-2:]:
+                    iface["port_type"] = "fiber"
+        except (ValueError, IndexError):
+            pass
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 _PARSERS = {
@@ -783,7 +848,9 @@ def parse_config(vendor: str, config_text: str) -> dict[str, Any]:
             "warnings": [f"Vendor '{vendor}' não tem parser implementado"],
         }
     try:
-        return parser(config_text)
+        ir = parser(config_text)
+        _infer_port_types(vendor, ir.get("interfaces", []))
+        return ir
     except Exception as exc:
         return {
             "hostname": None, "stp_mode": None, "vlans": {}, "interfaces": [],

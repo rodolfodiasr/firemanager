@@ -27,6 +27,7 @@ export interface ParsedInterface {
   pvid: string | null;
   tagged_vlans: string[];
   description: string | null;
+  port_type: "ethernet" | "fiber" | "lag" | "vlan" | "unknown";
 }
 
 export interface MigrationPlan {

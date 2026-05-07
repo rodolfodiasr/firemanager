@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowRightLeft,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Loader2,
   Pencil,
@@ -13,6 +14,7 @@ import {
   Save,
   Terminal,
   Trash2,
+  Wand2,
   X,
   XCircle,
 } from "lucide-react";
@@ -69,6 +71,42 @@ function fmtDate(iso: string) {
 
 function vendorLabel(v: string) {
   return VENDOR_LABEL[v] ?? v;
+}
+
+// ── Port type badges ──────────────────────────────────────────────────────────
+
+const PORT_TYPE_BADGE: Record<string, { label: string; cls: string }> = {
+  ethernet: { label: "Eth",   cls: "bg-gray-100 text-gray-600" },
+  fiber:    { label: "Fibra", cls: "bg-purple-100 text-purple-700" },
+  lag:      { label: "LAG",   cls: "bg-blue-100 text-blue-700" },
+  vlan:     { label: "VLAN",  cls: "bg-green-100 text-green-700" },
+  unknown:  { label: "?",     cls: "bg-gray-100 text-gray-400" },
+};
+
+// ── Warning categorization ────────────────────────────────────────────────────
+
+type WarnCategory = "action" | "translation" | "feature" | "info";
+
+const WARN_CATEGORIES: Record<WarnCategory, {
+  label: string; countBg: string; border: string; textColor: string; headerBg: string;
+}> = {
+  action:      { label: "Ação obrigatória",      countBg: "bg-red-600",   border: "border-red-200",   textColor: "text-red-800",   headerBg: "bg-red-50"   },
+  translation: { label: "Adaptação de tradução", countBg: "bg-amber-500", border: "border-amber-200", textColor: "text-amber-800", headerBg: "bg-amber-50" },
+  feature:     { label: "Diferença de recurso",  countBg: "bg-blue-600",  border: "border-blue-200",  textColor: "text-blue-800",  headerBg: "bg-blue-50"  },
+  info:        { label: "Informativo",            countBg: "bg-gray-400",  border: "border-gray-200",  textColor: "text-gray-600",  headerBg: "bg-gray-50"  },
+};
+
+const WARN_ORDER: WarnCategory[] = ["action", "translation", "feature", "info"];
+
+function categorizeWarning(w: string): WarnCategory {
+  const low = w.toLowerCase();
+  if (/adicione manualmente|configure manualmente|ajuste manualmente|crie manualmente|criar manualmente|sem vlan de acesso|não foi migrada/.test(low))
+    return "action";
+  if (/poe|não tem equivalente direto|stp edged|verifique sint|não suportar|firmware comware/.test(low))
+    return "feature";
+  if (/traduzida como|classificou|incorretamente|participation|foram omitidas|trunk permit|foram permitidas|pvid|ignorada|mesma situação/.test(low))
+    return "translation";
+  return "info";
 }
 
 // ── New Migration Modal ───────────────────────────────────────────────────────
@@ -185,6 +223,14 @@ function PortMappingTable({
     return <p className="text-xs text-gray-400">Nenhuma interface encontrada no parser.</p>;
   }
 
+  // Group by port type; preserve original order within each group
+  const groups: Array<{ label: string; type: string; ifaces: ParsedInterface[] }> = [
+    { label: "Ethernet (cobre)",  type: "ethernet", ifaces: interfaces.filter((i) => (i.port_type ?? "ethernet") === "ethernet") },
+    { label: "Fibra / SFP",       type: "fiber",    ifaces: interfaces.filter((i) => i.port_type === "fiber") },
+    { label: "LAG / Agregação",   type: "lag",      ifaces: interfaces.filter((i) => i.port_type === "lag") },
+    { label: "Outros",            type: "other",    ifaces: interfaces.filter((i) => !["ethernet","fiber","lag"].includes(i.port_type ?? "ethernet")) },
+  ].filter((g) => g.ifaces.length > 0);
+
   return (
     <table className="w-full text-sm border-collapse">
       <thead>
@@ -197,36 +243,289 @@ function PortMappingTable({
         </tr>
       </thead>
       <tbody>
-        {interfaces.map((iface) => (
-          <tr key={iface.name} className="border-b last:border-0 hover:bg-gray-50">
-            <td className="px-3 py-2 font-mono text-xs">{iface.name}</td>
-            <td className="px-3 py-2">
-              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                iface.mode === "trunk"
-                  ? "bg-blue-50 text-blue-700"
-                  : "bg-gray-100 text-gray-600"
-              }`}>
-                {iface.mode}
-              </span>
+        {groups.flatMap((group) => [
+          // Group separator
+          <tr key={`sep-${group.type}`}>
+            <td
+              colSpan={5}
+              className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 border-t border-b"
+            >
+              {group.label}{" "}
+              <span className="font-normal">({group.ifaces.length})</span>
             </td>
-            <td className="px-3 py-2 font-mono text-xs text-gray-500">{iface.pvid ?? "—"}</td>
-            <td className="px-3 py-2 font-mono text-xs text-gray-400 max-w-[140px]">
-              {iface.tagged_vlans.length > 0
-                ? iface.tagged_vlans.slice(0, 8).join(", ") + (iface.tagged_vlans.length > 8 ? "…" : "")
-                : "—"}
-            </td>
-            <td className="px-3 py-2">
-              <input
-                value={portMapping[iface.name] ?? ""}
-                onChange={(e) => handleChange(iface.name, e.target.value)}
-                placeholder={iface.name}
-                className="w-full border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500"
-              />
-            </td>
-          </tr>
-        ))}
+          </tr>,
+          // Interface rows
+          ...group.ifaces.map((iface) => {
+            const badge = PORT_TYPE_BADGE[iface.port_type ?? "unknown"] ?? PORT_TYPE_BADGE.unknown;
+            return (
+              <tr key={iface.name} className="border-b last:border-0 hover:bg-gray-50">
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-semibold ${badge.cls}`}>
+                      {badge.label}
+                    </span>
+                    <span className="font-mono text-xs">{iface.name}</span>
+                  </div>
+                  {iface.description && (
+                    <div
+                      className="text-[10px] text-gray-400 italic pl-0.5 mt-0.5 truncate max-w-[160px]"
+                      title={iface.description}
+                    >
+                      {iface.description}
+                    </div>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                    iface.mode === "trunk"
+                      ? "bg-blue-50 text-blue-700"
+                      : "bg-gray-100 text-gray-600"
+                  }`}>
+                    {iface.mode}
+                  </span>
+                </td>
+                <td className="px-3 py-2 font-mono text-xs text-gray-500">{iface.pvid ?? "—"}</td>
+                <td className="px-3 py-2 font-mono text-xs text-gray-400 max-w-[110px]">
+                  {iface.tagged_vlans.length > 0
+                    ? iface.tagged_vlans.slice(0, 6).join(", ") + (iface.tagged_vlans.length > 6 ? "…" : "")
+                    : "—"}
+                </td>
+                <td className="px-3 py-2">
+                  <input
+                    value={portMapping[iface.name] ?? ""}
+                    onChange={(e) => handleChange(iface.name, e.target.value)}
+                    placeholder={iface.name}
+                    className="w-full border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  />
+                </td>
+              </tr>
+            );
+          }),
+        ])}
       </tbody>
     </table>
+  );
+}
+
+// ── Auto-Fill Panel ───────────────────────────────────────────────────────────
+
+function AutoFillPanel({
+  interfaces,
+  targetVendor,
+  onApply,
+  onClose,
+}: {
+  interfaces: ParsedInterface[];
+  targetVendor: string;
+  onApply: (mapping: Record<string, string>) => void;
+  onClose: () => void;
+}) {
+  // Smart defaults based on target vendor
+  const isComware = targetVendor === "hp_comware";
+  const isCisco   = targetVendor === "cisco_ios" || targetVendor === "cisco_nxos";
+  const isDell    = targetVendor === "dell_n";
+
+  const defaultEthPrefix   = isComware ? "GigabitEthernet1/0/" : isCisco ? "GigabitEthernet0/" : isDell ? "ethernet 1/g" : "";
+  const defaultFiberPrefix  = isComware ? "GigabitEthernet1/0/" : isCisco ? "TenGigabitEthernet0/" : "";
+  const defaultFiberStart   = isComware ? 25 : 1;
+  const defaultLagPrefix    = isComware ? "Bridge-Aggregation" : isCisco ? "port-channel" : isDell ? "port-channel" : "lag ";
+
+  const [ethPrefix,   setEthPrefix]   = useState(defaultEthPrefix);
+  const [ethStart,    setEthStart]    = useState(1);
+  const [fiberPrefix, setFiberPrefix] = useState(defaultFiberPrefix);
+  const [fiberStart,  setFiberStart]  = useState(defaultFiberStart);
+  const [lagPrefix,   setLagPrefix]   = useState(defaultLagPrefix);
+  const [lagStart,    setLagStart]    = useState(1);
+
+  const ethPorts   = interfaces.filter((i) => (i.port_type ?? "ethernet") === "ethernet");
+  const fiberPorts = interfaces.filter((i) => i.port_type === "fiber");
+  const lagPorts   = interfaces.filter((i) => i.port_type === "lag");
+
+  const hasEth   = ethPorts.length > 0;
+  const hasFiber = fiberPorts.length > 0;
+  const hasLag   = lagPorts.length > 0;
+
+  const handleApply = () => {
+    const mapping: Record<string, string> = {};
+    if (hasEth && ethPrefix)
+      ethPorts.forEach((iface, idx) => { mapping[iface.name] = `${ethPrefix}${ethStart + idx}`; });
+    if (hasFiber && fiberPrefix)
+      fiberPorts.forEach((iface, idx) => { mapping[iface.name] = `${fiberPrefix}${fiberStart + idx}`; });
+    if (hasLag && lagPrefix)
+      lagPorts.forEach((iface, idx) => { mapping[iface.name] = `${lagPrefix}${lagStart + idx}`; });
+    onApply(mapping);
+  };
+
+  return (
+    <div className="border border-brand-200 bg-brand-50/50 rounded-lg px-4 py-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-brand-700 flex items-center gap-1.5">
+          <Wand2 size={13} /> Auto-mapear portas
+        </span>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Header row */}
+      <div className="grid grid-cols-[100px_1fr_56px] gap-x-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-0.5">
+        <span>Tipo</span><span>Prefixo destino</span><span>Início</span>
+      </div>
+
+      {hasEth && (
+        <div className="grid grid-cols-[100px_1fr_56px] gap-x-2 items-center">
+          <span className="text-xs text-gray-600 font-medium">
+            <span className="bg-gray-100 text-gray-600 text-[10px] px-1.5 py-0.5 rounded font-semibold mr-1">Eth</span>
+            {ethPorts.length}x
+          </span>
+          <input
+            value={ethPrefix}
+            onChange={(e) => setEthPrefix(e.target.value)}
+            placeholder="prefixo"
+            className="border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          <input
+            type="number"
+            value={ethStart}
+            onChange={(e) => setEthStart(Number(e.target.value))}
+            className="border rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+        </div>
+      )}
+
+      {hasFiber && (
+        <div className="grid grid-cols-[100px_1fr_56px] gap-x-2 items-center">
+          <span className="text-xs text-gray-600 font-medium">
+            <span className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded font-semibold mr-1">Fibra</span>
+            {fiberPorts.length}x
+          </span>
+          <input
+            value={fiberPrefix}
+            onChange={(e) => setFiberPrefix(e.target.value)}
+            placeholder="prefixo"
+            className="border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          <input
+            type="number"
+            value={fiberStart}
+            onChange={(e) => setFiberStart(Number(e.target.value))}
+            className="border rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+        </div>
+      )}
+
+      {hasLag && (
+        <div className="grid grid-cols-[100px_1fr_56px] gap-x-2 items-center">
+          <span className="text-xs text-gray-600 font-medium">
+            <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded font-semibold mr-1">LAG</span>
+            {lagPorts.length}x
+          </span>
+          <input
+            value={lagPrefix}
+            onChange={(e) => setLagPrefix(e.target.value)}
+            placeholder="prefixo"
+            className="border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          <input
+            type="number"
+            value={lagStart}
+            onChange={(e) => setLagStart(Number(e.target.value))}
+            className="border rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+        </div>
+      )}
+
+      <p className="text-[10px] text-gray-400">
+        Cada porta recebe <code className="font-mono">prefixo + número sequencial</code>. Ajuste prefixo e início conforme o modelo exato.
+      </p>
+
+      <div className="flex justify-end">
+        <button
+          onClick={handleApply}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700"
+        >
+          <Wand2 size={12} /> Aplicar sugestão
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Warnings Accordion ────────────────────────────────────────────────────────
+
+function WarningsAccordion({ warnings }: { warnings: string[] }) {
+  // Start with "action" and "translation" expanded; others collapsed
+  const [open, setOpen] = useState<Set<WarnCategory>>(new Set(["action", "translation"]));
+
+  const toggle = (cat: WarnCategory) => {
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      return next;
+    });
+  };
+
+  const grouped: Record<WarnCategory, string[]> = { action: [], translation: [], feature: [], info: [] };
+  warnings.forEach((w) => grouped[categorizeWarning(w)].push(w));
+
+  const activeCategories = WARN_ORDER.filter((cat) => grouped[cat].length > 0);
+
+  return (
+    <div className="space-y-1.5">
+      {/* Summary line */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+          <AlertTriangle size={12} /> {warnings.length} avisos:
+        </span>
+        {activeCategories.map((cat) => {
+          const meta = WARN_CATEGORIES[cat];
+          return (
+            <button
+              key={cat}
+              onClick={() => toggle(cat)}
+              className={`text-[10px] px-2 py-0.5 rounded-full font-semibold text-white ${meta.countBg}`}
+            >
+              {grouped[cat].length} {meta.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Accordion sections */}
+      {activeCategories.map((cat) => {
+        const meta = WARN_CATEGORIES[cat];
+        const isOpen = open.has(cat);
+        return (
+          <div key={cat} className={`border rounded-lg overflow-hidden ${meta.border}`}>
+            <button
+              onClick={() => toggle(cat)}
+              className={`w-full flex items-center justify-between px-3 py-2 ${meta.headerBg} hover:brightness-95 transition-all`}
+            >
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-semibold ${meta.textColor}`}>{meta.label}</span>
+                <span className={`text-[10px] text-white px-1.5 py-0.5 rounded-full font-bold ${meta.countBg}`}>
+                  {grouped[cat].length}
+                </span>
+              </div>
+              <ChevronDown
+                size={13}
+                className={`text-gray-400 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+            {isOpen && (
+              <ul className="px-3 py-2 space-y-1.5 bg-white">
+                {grouped[cat].map((w, i) => (
+                  <li key={i} className={`text-xs ${meta.textColor} flex gap-1.5`}>
+                    <span className="mt-0.5 shrink-0">•</span>
+                    <span>{w}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -246,6 +545,7 @@ function MigrationDetail({
   const [mappingDirty, setMappingDirty] = useState(false);
   const [editingCmds, setEditingCmds] = useState(false);
   const [cmdsDraft, setCmdsDraft] = useState("");
+  const [showAutoFill, setShowAutoFill] = useState(false);
 
   const { data: migration, isLoading } = useQuery({
     queryKey: ["migration-detail", migrationId],
@@ -292,9 +592,19 @@ function MigrationDetail({
   const vlans = migration?.migration_plan?.vlans ?? {};
   const vlanCount = Object.keys(vlans).length;
 
+  // Port type counts for summary
+  const ethCount   = interfaces.filter((i) => (i.port_type ?? "ethernet") === "ethernet").length;
+  const fiberCount = interfaces.filter((i) => i.port_type === "fiber").length;
+  const lagCount   = interfaces.filter((i) => i.port_type === "lag").length;
+
   const handleMappingChange = (m: Record<string, string>) => {
     setPortMapping(m);
     setMappingDirty(true);
+  };
+
+  const handleAutoFill = (mapping: Record<string, string>) => {
+    handleMappingChange({ ...currentMapping, ...mapping });
+    setShowAutoFill(false);
   };
 
   const srcDevice = migration ? devicesById[migration.source_device_id] : null;
@@ -303,7 +613,7 @@ function MigrationDetail({
   return (
     <div className="fixed inset-0 z-40 flex">
       <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="w-[680px] bg-white shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-[740px] bg-white shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-2">
@@ -364,18 +674,9 @@ function MigrationDetail({
               </div>
             )}
 
-            {/* Warnings */}
+            {/* Warnings — categorized accordion */}
             {(migration.warnings ?? []).length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-                <div className="flex items-center gap-2 text-amber-700 font-medium text-xs mb-2">
-                  <AlertTriangle size={13} /> Avisos ({migration.warnings!.length})
-                </div>
-                <ul className="space-y-1">
-                  {migration.warnings!.map((w, i) => (
-                    <li key={i} className="text-xs text-amber-800">• {w}</li>
-                  ))}
-                </ul>
-              </div>
+              <WarningsAccordion warnings={migration.warnings!} />
             )}
 
             {/* Parsed summary */}
@@ -401,19 +702,67 @@ function MigrationDetail({
             {/* Port mapping */}
             {migration.migration_plan && migration.status !== "pending" && migration.status !== "analyzing" && (
               <div>
-                <div className="flex items-center justify-between mb-2">
+                {/* Header row with buttons */}
+                <div className="flex items-center justify-between mb-1">
                   <h3 className="text-sm font-semibold text-gray-700">Mapeamento de portas</h3>
-                  {mappingDirty && (
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => saveMapping.mutate(currentMapping)}
-                      disabled={saveMapping.isPending}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50"
+                      onClick={() => { setShowAutoFill((v) => !v); }}
+                      className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                        showAutoFill
+                          ? "bg-brand-100 text-brand-700 border-brand-300"
+                          : "text-brand-700 bg-brand-50 border-brand-200 hover:bg-brand-100"
+                      }`}
                     >
-                      {saveMapping.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                      Salvar mapeamento
+                      <Wand2 size={12} /> Auto-mapear
                     </button>
-                  )}
+                    {mappingDirty && (
+                      <button
+                        onClick={() => saveMapping.mutate(currentMapping)}
+                        disabled={saveMapping.isPending}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50"
+                      >
+                        {saveMapping.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        Salvar mapeamento
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Port type summary */}
+                <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                  <span className="text-[10px] text-gray-400 font-medium">Origem:</span>
+                  {ethCount > 0 && (
+                    <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono">
+                      {ethCount}× Ethernet
+                    </span>
+                  )}
+                  {fiberCount > 0 && (
+                    <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded font-mono">
+                      {fiberCount}× Fibra
+                    </span>
+                  )}
+                  {lagCount > 0 && (
+                    <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-mono">
+                      {lagCount}× LAG
+                    </span>
+                  )}
+                  <span className="text-[10px] text-gray-300 mx-0.5">→</span>
+                  <span className="text-[10px] text-gray-500 font-medium">{vendorLabel(migration.target_vendor)}</span>
+                </div>
+
+                {/* Auto-fill panel */}
+                {showAutoFill && (
+                  <div className="mb-3">
+                    <AutoFillPanel
+                      interfaces={interfaces}
+                      targetVendor={migration.target_vendor}
+                      onApply={handleAutoFill}
+                      onClose={() => setShowAutoFill(false)}
+                    />
+                  </div>
+                )}
+
                 <p className="text-xs text-gray-400 mb-3">
                   Edite a coluna "Porta destino" para mapear cada porta da origem ao nome correto
                   no switch de destino. Clique em "Salvar mapeamento" para regenerar os comandos.
