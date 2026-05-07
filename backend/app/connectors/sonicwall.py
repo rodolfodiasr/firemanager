@@ -555,6 +555,8 @@ class SonicWallConnector(BaseConnector):
             "priority": {"auto": True},
             "comment": spec.comment or "",
         }
+        if self._v6:
+            return {"nat_policies": [body]}
         return {"nat_policies": [{"ipv4": body}]}
 
     async def _resolve_nat_addr(self, client: httpx.AsyncClient, value: str, zone: str) -> str:
@@ -707,7 +709,7 @@ class SonicWallConnector(BaseConnector):
                 "tcp_acceleration": False,
                 "probe": "",
             }
-            payload = {"route_policies": [{"ipv4": body}]}
+            payload = {"route_policies": [body]} if self._v6 else {"route_policies": [{"ipv4": body}]}
             resp = await client.post("/api/sonicos/route-policies/ipv4", json=payload)
             await self._commit(client)
             if resp.status_code in (200, 201):

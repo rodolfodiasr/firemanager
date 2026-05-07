@@ -154,6 +154,7 @@ from app.agent.agent import AgentSession
 from app.agent.guardrails import GuardrailResult, check_action_plan, check_ssh_commands
 from app.connectors.base import RuleSpec
 from app.connectors.factory import CLI_VENDORS, get_connector, get_ssh_connector
+from app.models.device import VendorEnum
 from app.models.operation import Operation, OperationRisk, OperationStatus, classify_risk
 from app.models.operation_step import OperationStep, StepStatus
 from app.models.snapshot import Snapshot
@@ -332,6 +333,38 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
         if operation.status == OperationStatus.completed:
             await append_changelog(db, device, operation)
         return operation
+    # ── SonicWall: SSH-first para operações de leitura ───────────────────────
+    # SonicWall permite apenas uma sessão de gerenciamento. REST com override=True
+    # derruba sessões SSH ativas. Para consultas (list_*) usamos SSH diretamente
+    # para não precisar abrir sessão REST desnecessariamente.
+    _SONICWALL_SSH_READ: dict[IntentType, str] = {
+        IntentType.list_rules:         "show access-rules",
+        IntentType.list_nat_policies:  "show nat-policies",
+        IntentType.list_route_policies: "show route",
+    }
+    if device.vendor == VendorEnum.sonicwall and plan.intent in _SONICWALL_SSH_READ:
+        ssh_cmd = _SONICWALL_SSH_READ[plan.intent]
+        try:
+            ssh_connector = get_ssh_connector(device)
+            ssh_result = await ssh_connector.execute_show_commands_full([ssh_cmd])
+            operation.action_plan = {
+                **(operation.action_plan or {}),
+                "result": {"output": ssh_result.output or ssh_result.error},
+            }
+            operation.status = (
+                OperationStatus.completed if ssh_result.success else OperationStatus.failed
+            )
+            if not ssh_result.success:
+                operation.error_message = ssh_result.error
+        except Exception as exc:
+            operation.status = OperationStatus.failed
+            operation.error_message = str(exc)
+        await db.flush()
+        await db.refresh(operation)
+        if operation.status == OperationStatus.completed:
+            await append_changelog(db, device, operation)
+        return operation
+
     # ── REST-API vendors (existing routing below) ─────────────────────────────
 
     connector = get_connector(device)
