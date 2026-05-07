@@ -333,50 +333,53 @@ def _parse_sonicwall_ospf(output: str) -> list[dict]:
     return neighbors
 
 
-def _parse_sonicwall_sdwan(output: str) -> list[dict]:
-    """Parse SonicOS 'show sdwan-groups' or 'show wan-failover' output.
+def _parse_sonicwall_sdwan_groups(output: str) -> list[dict]:
+    """Parse SonicOS configure-mode 'show sdwan groups' output.
 
-    SonicOS SD-WAN groups list active/standby WAN members. We return a
-    minimal service descriptor so the UI can display WAN group membership.
+    Format (configure mode):
+        sdwan
+            group VPN-TGA
+                name VPN-TGA
+                interface NMTSTARLIN_TGARV
+                    priority 1
+                    exit
+                interface NMTSTARL_TGAVIVO
+                    priority 3
+                    exit
+                exit
+            exit
     """
     services: list[dict] = []
-    # Group header: e.g. "SD-WAN Group: WAN_Group_1  Mode: Load Balance"
-    grp_pattern = re.compile(r"(?:SD-WAN Group|WAN Group)[:\s]+(\S+).*?Mode[:\s]+([^\n]+)", re.IGNORECASE)
-    # Member line: e.g. "  Interface: X1  Status: Active"
-    member_pattern = re.compile(r"Interface[:\s]+(\S+)\s+Status[:\s]+(\S+)", re.IGNORECASE)
+    clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", output)
 
-    for grp_match in grp_pattern.finditer(output):
-        name = grp_match.group(1).strip()
-        mode = grp_match.group(2).strip()
-        # Collect members that follow this group header
-        start = grp_match.end()
-        next_grp = grp_pattern.search(output, start)
-        segment = output[start:next_grp.start() if next_grp else len(output)]
-        members = [m.group(1) for m in member_pattern.finditer(segment)]
+    group_re = re.compile(r"^\s+group\s+(\S+)", re.MULTILINE)
+    for grp_m in group_re.finditer(clean):
+        name = grp_m.group(1).strip().strip('"')
+        start = grp_m.end()
+        next_grp = group_re.search(clean, start)
+        segment = clean[start: next_grp.start() if next_grp else len(clean)]
+
+        members_with_prio: list[tuple[int, str]] = []
+        current_iface: str | None = None
+        for line in segment.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("interface "):
+                current_iface = stripped.split(None, 1)[1]
+            elif stripped.startswith("priority ") and current_iface:
+                try:
+                    members_with_prio.append((int(stripped.split()[1]), current_iface))
+                except (ValueError, IndexError):
+                    pass
+                current_iface = None
+
+        members_with_prio.sort()  # priority 1 = highest (primary WAN)
         services.append({
             "name": name,
-            "mode": mode,
-            "destinations": [],  # SonicWall WAN groups apply globally
-            "members": members,
+            "mode": "priority",
+            "destinations": [],
+            "members": [iface for _, iface in members_with_prio],
             "status": "active",
         })
-
-    # Fallback: wan-failover style — "Primary: X1  Backup: X2  Status: Primary Active"
-    if not services:
-        prim = re.search(r"Primary[:\s]+(\S+)", output, re.IGNORECASE)
-        backup = re.search(r"Backup[:\s]+(\S+)", output, re.IGNORECASE)
-        status = re.search(r"Status[:\s]+([^\n]+)", output, re.IGNORECASE)
-        if prim:
-            members = [prim.group(1)]
-            if backup:
-                members.append(backup.group(1))
-            services.append({
-                "name": "WAN Failover",
-                "mode": "failover",
-                "destinations": [],
-                "members": members,
-                "status": (status.group(1).strip() if status else "unknown"),
-            })
 
     return services
 
@@ -392,10 +395,9 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
     sdwan_services: list[dict] = []
     ssh_routes_ok = False
 
-    # ── FASE 1: SSH (deve terminar antes de abrir sessão REST) ────────────────
-    # SonicWall permite apenas uma sessão de gerenciamento por vez.
+    # ── FASE 1a: SSH exec-level — tabela de roteamento ───────────────────────
     # Gen6 exec-level: "show route" é ambíguo; "show route ipv4" pode funcionar.
-    # Se SSH não trouxer rotas, o REST fallback coleta via interfaces + route-policies.
+    # Se SSH não trouxer rotas, REST fallback coleta via interfaces + route-policies.
     try:
         ssh = get_ssh_connector(device)
         ssh_result = await asyncio.wait_for(
@@ -404,25 +406,39 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
         )
         if ssh_result.success and ssh_result.output:
             output = ssh_result.output
-            # sections[0] = banner/preamble; sections[1] = route output after echo
             sections = re.split(r"show route ipv4\s*\r?\n", output, flags=re.IGNORECASE)
             route_out = sections[1] if len(sections) > 1 else output
-
-            # Ignore output that is just a CLI error
             if "% Error" not in route_out and "Ambiguous" not in route_out:
                 parsed = _parse_sonicwall_routes(route_out)
                 if parsed:
                     routes = parsed
                     ssh_routes_ok = True
-                    log.warning("SonicWall SSH routes=%d (device %s)", len(routes), device.name)
+                    log.warning("SonicWall SSH exec: routes=%d (device %s)", len(routes), device.name)
                 else:
-                    log.warning("SonicWall SSH: 0 routes parsed from show route ipv4 (%d chars) on %s", len(route_out), device.name)
+                    log.warning("SonicWall SSH exec: 0 routes from show route ipv4 (%d chars) on %s", len(route_out), device.name)
             else:
-                log.warning("SonicWall SSH: show route ipv4 returned CLI error on %s — falling through to REST", device.name)
+                log.warning("SonicWall SSH exec: show route ipv4 CLI error on %s — will use REST", device.name)
         else:
-            log.warning("SonicWall SSH show commands failed for %s: %s", device.name, ssh_result.error)
+            log.warning("SonicWall SSH exec failed for %s: %s", device.name, ssh_result.error)
     except Exception as exc:
-        log.warning("SonicWall SSH phase exception for %s: %s", device.name, exc)
+        log.warning("SonicWall SSH exec exception for %s: %s", device.name, exc)
+
+    # ── FASE 1b: SSH configure-mode — SD-WAN groups ──────────────────────────
+    # Gen6/Gen7: "show sdwan groups" funciona em configure mode.
+    # Executa ANTES do REST (SonicWall: SSH antes de abrir sessão REST).
+    try:
+        ssh_cfg = get_ssh_connector(device)
+        cfg_result = await asyncio.wait_for(
+            ssh_cfg.execute_commands(["show sdwan groups"]),
+            timeout=60,
+        )
+        if cfg_result.success and cfg_result.output:
+            sdwan_services = _parse_sonicwall_sdwan_groups(cfg_result.output)
+            log.warning("SonicWall SSH config: sdwan_groups=%d (device %s)", len(sdwan_services), device.name)
+        else:
+            log.warning("SonicWall SSH config SD-WAN failed for %s: %s", device.name, cfg_result.error)
+    except Exception as exc:
+        log.warning("SonicWall SSH config SD-WAN exception for %s: %s", device.name, exc)
 
     # ── FASE 2: REST (SSH já fechou — seguro abrir nova sessão) ───────────────
     creds = decrypt_credentials(device.encrypted_credentials)
