@@ -394,46 +394,33 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
 
     # ── FASE 1: SSH (deve terminar antes de abrir sessão REST) ────────────────
     # SonicWall permite apenas uma sessão de gerenciamento por vez.
-    # Idêntico ao padrão usado em bookstack_service._collect_live_data.
+    # Gen6 exec-level: "show route" é ambíguo; "show route ipv4" pode funcionar.
+    # Se SSH não trouxer rotas, o REST fallback coleta via interfaces + route-policies.
     try:
         ssh = get_ssh_connector(device)
         ssh_result = await asyncio.wait_for(
-            ssh.execute_show_commands_full([
-                "show route",
-                "show ospf neighbor",
-                "show sdwan-groups",
-            ]),
-            timeout=90,
+            ssh.execute_show_commands_full(["show route ipv4"]),
+            timeout=60,
         )
         if ssh_result.success and ssh_result.output:
             output = ssh_result.output
-            log.warning("SonicWall SSH raw output (first 800): %r", output[:800])
-            # After splitting on command echoes, sections are:
-            # [0] = preamble/banner (before first command echo)
-            # [1] = route output (after "show route" echo)
-            # [2] = ospf output (after "show ospf neighbor" echo)
-            # [3] = sdwan output (after "show sdwan-groups" echo)
-            sections = re.split(r"(?:show route|show ospf neighbor|show sdwan-groups)\s*\r?\n", output, flags=re.IGNORECASE)
+            # sections[0] = banner/preamble; sections[1] = route output after echo
+            sections = re.split(r"show route ipv4\s*\r?\n", output, flags=re.IGNORECASE)
             route_out = sections[1] if len(sections) > 1 else output
-            ospf_out  = sections[2] if len(sections) > 2 else ""
-            sdwan_out = sections[3] if len(sections) > 3 else ""
 
-            log.warning("SonicWall SSH sections count=%d route_out (first 500): %r", len(sections), route_out[:500])
-            parsed = _parse_sonicwall_routes(route_out)
-            if parsed:
-                routes = parsed
-                ssh_routes_ok = True
+            # Ignore output that is just a CLI error
+            if "% Error" not in route_out and "Ambiguous" not in route_out:
+                parsed = _parse_sonicwall_routes(route_out)
+                if parsed:
+                    routes = parsed
+                    ssh_routes_ok = True
+                    log.warning("SonicWall SSH routes=%d (device %s)", len(routes), device.name)
+                else:
+                    log.warning("SonicWall SSH: 0 routes parsed from show route ipv4 (%d chars) on %s", len(route_out), device.name)
             else:
-                log.warning("SonicWall SSH: show route parsed 0 routes from %d chars — regex may not match Gen6 format", len(route_out))
-
-            ospf_neighbors = _parse_sonicwall_ospf(ospf_out)
-            sdwan_services = _parse_sonicwall_sdwan(sdwan_out)
-
-            log.info("SonicWall SSH routes=%d ospf=%d sdwan=%d",
-                     len(routes), len(ospf_neighbors), len(sdwan_services))
+                log.warning("SonicWall SSH: show route ipv4 returned CLI error on %s — falling through to REST", device.name)
         else:
-            log.warning("SonicWall SSH show commands failed for %s: success=%s error=%s",
-                        device.name, ssh_result.success, ssh_result.error)
+            log.warning("SonicWall SSH show commands failed for %s: %s", device.name, ssh_result.error)
     except Exception as exc:
         log.warning("SonicWall SSH phase exception for %s: %s", device.name, exc)
 
@@ -444,13 +431,28 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
     username = creds.get("username", "")
     password = creds.get("password", "")
 
-    # Gen6 rejects {"override": True} body — same logic as SonicWallConnector._session()
+    # Gen6 rejects {"override": True} body — mirrors SonicWallConnector._session() logic:
+    # os_version credential is authoritative; firmware_version is secondary signal.
     _os_raw = creds.get("os_version") or "7"
     try:
         _os_version = int(str(_os_raw)[0])
     except (ValueError, TypeError, IndexError):
         _os_version = 7
-    _auth_kwargs: dict = {} if _os_version <= 6 else {"json": {"override": True}}
+
+    _v6_from_fw = False
+    _fw_str = (getattr(device, "firmware_version", "") or "").strip()
+    if _fw_str:
+        try:
+            # e.g. "SonicOS 6.5.4.4-44v" → split()[1] = "6.5.4.4-44v" → split(".")[0] = "6"
+            _v6_from_fw = int(_fw_str.split()[1].split(".")[0]) <= 6
+        except (IndexError, ValueError):
+            pass
+
+    _is_v6 = _os_version <= 6 or _v6_from_fw
+    _auth_kwargs: dict = {} if _is_v6 else {"json": {"override": True}}
+    log.warning("SonicWall REST auth for %s: os_version=%d fw=%r v6_from_fw=%s is_v6=%s → %s",
+                device.name, _os_version, _fw_str[:40], _v6_from_fw, _is_v6,
+                "no body (Gen6)" if _is_v6 else "{override:True} (Gen7)")
 
     async with httpx.AsyncClient(
         base_url=base,

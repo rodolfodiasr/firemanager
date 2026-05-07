@@ -191,7 +191,7 @@ async def inspect_device(
             _SSH_CMD = {
                 "rules":  "show access-rules",
                 "nat":    "show nat-policies",
-                "routes": "show route",
+                "routes": "show route ipv4",
             }
             ssh_cmd = _SSH_CMD[resource]
             ssh = get_ssh_connector(device)
