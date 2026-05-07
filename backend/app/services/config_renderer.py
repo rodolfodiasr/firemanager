@@ -12,6 +12,26 @@ from __future__ import annotations
 from typing import Any
 
 
+# ── LAG helpers ───────────────────────────────────────────────────────────────
+
+import re as _re
+
+_LAG_IFACE_RE = _re.compile(
+    r"^(lag|port-channel|port\s+channel|bridge-aggregation|aggregation)\s*\d+$",
+    _re.I,
+)
+
+
+def _is_lag_iface(name: str) -> bool:
+    return bool(_LAG_IFACE_RE.match(name.strip()))
+
+
+def _lag_num(tgt_name: str) -> str:
+    """Extract trailing integer from a LAG target name: 'Port-Channel5' → '5'."""
+    m = _re.search(r"\d+$", tgt_name)
+    return m.group() if m else "1"
+
+
 # ── Sorting helpers ───────────────────────────────────────────────────────────
 
 def _vlan_key(v: str) -> int:
@@ -47,11 +67,25 @@ def _render_edgeswitch(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
         cmds += ["exit", ""]
 
     for iface in ir.get("interfaces", []):
+        # Member ports are rendered inline when processing the LAG interface
+        if iface.get("lag_member_of"):
+            continue
+
         src = iface["name"]
         tgt = port_mapping.get(src)
         if not tgt:
             warns.append(f"Porta '{src}' sem mapeamento — ignorada")
             continue
+
+        # LAG: render member ports first, then the LAG interface itself
+        if iface.get("members"):
+            lag_n = _lag_num(tgt)
+            for member_src in iface["members"]:
+                member_tgt = port_mapping.get(member_src)
+                if not member_tgt:
+                    warns.append(f"Membro '{member_src}' do LAG '{src}' sem mapeamento — ignorado")
+                    continue
+                cmds += [f"interface {member_tgt}", f" lag {lag_n}", "exit", ""]
 
         mode    = iface.get("mode", "access")
         pvid    = iface.get("pvid")
@@ -93,11 +127,25 @@ def _render_dell_n(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str
         cmds += ["exit", "!"]
 
     for iface in ir.get("interfaces", []):
+        if iface.get("lag_member_of"):
+            continue
+
         src = iface["name"]
         tgt = port_mapping.get(src)
         if not tgt:
             warns.append(f"Porta '{src}' sem mapeamento — ignorada")
             continue
+
+        # LAG: render member ports (channel-group) before the port-channel interface
+        if iface.get("members"):
+            lag_n = _lag_num(tgt)
+            lag_mode = iface.get("lag_mode", "active")
+            for member_src in iface["members"]:
+                member_tgt = port_mapping.get(member_src)
+                if not member_tgt:
+                    warns.append(f"Membro '{member_src}' do LAG '{src}' sem mapeamento — ignorado")
+                    continue
+                cmds += [f"interface {member_tgt}", f" channel-group {lag_n} mode {lag_mode}", "exit", "!"]
 
         mode   = iface.get("mode", "access")
         pvid   = iface.get("pvid")
@@ -136,11 +184,25 @@ def _render_cisco_ios(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[
         cmds += ["!", ""]
 
     for iface in ir.get("interfaces", []):
+        if iface.get("lag_member_of"):
+            continue
+
         src = iface["name"]
         tgt = port_mapping.get(src)
         if not tgt:
             warns.append(f"Porta '{src}' sem mapeamento — ignorada")
             continue
+
+        # LAG: render member ports (channel-group) before the Port-Channel interface
+        if iface.get("members"):
+            lag_n = _lag_num(tgt)
+            lag_mode = iface.get("lag_mode", "active")
+            for member_src in iface["members"]:
+                member_tgt = port_mapping.get(member_src)
+                if not member_tgt:
+                    warns.append(f"Membro '{member_src}' do LAG '{src}' sem mapeamento — ignorado")
+                    continue
+                cmds += [f"interface {member_tgt}", f" channel-group {lag_n} mode {lag_mode}", "!", ""]
 
         mode   = iface.get("mode", "access")
         pvid   = iface.get("pvid")
@@ -179,11 +241,24 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
         cmds += ["quit", ""]
 
     for iface in ir.get("interfaces", []):
+        if iface.get("lag_member_of"):
+            continue
+
         src = iface["name"]
         tgt = port_mapping.get(src)
         if not tgt:
             warns.append(f"Porta '{src}' sem mapeamento — ignorada")
             continue
+
+        # LAG: render member ports (port link-aggregation group) before Bridge-Aggregation
+        if iface.get("members"):
+            lag_n = _lag_num(tgt)
+            for member_src in iface["members"]:
+                member_tgt = port_mapping.get(member_src)
+                if not member_tgt:
+                    warns.append(f"Membro '{member_src}' do LAG '{src}' sem mapeamento — ignorado")
+                    continue
+                cmds += [f"interface {member_tgt}", f" port link-aggregation group {lag_n}", "quit", ""]
 
         mode   = iface.get("mode", "access")
         pvid   = iface.get("pvid")
@@ -192,6 +267,10 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
         cmds.append(f"interface {tgt}")
         if iface.get("description"):
             cmds.append(f" description {iface['description']}")
+        # LACP mode on the Bridge-Aggregation interface
+        lag_mode = iface.get("lag_mode", "")
+        if lag_mode in ("active", "passive"):
+            cmds.append(" link-aggregation mode dynamic")
         cmds.append(f" port link-type {mode}")
         if mode == "trunk":
             if pvid:

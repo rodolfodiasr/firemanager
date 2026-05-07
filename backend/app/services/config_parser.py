@@ -22,6 +22,9 @@ IR structure:
             "pvid":         str | None,    # native / untagged VLAN id
             "tagged_vlans": [str],         # list of tagged VLAN ids
             "description":  str | None,
+            "members":      [str],         # physical port names in this LAG ([] for non-LAG)
+            "lag_member_of": str | None,   # LAG interface name if this is a member port
+            "lag_mode":     str | None,    # "active"|"passive"|"on" (LACP mode from source)
         }, ...
     ],
     "warnings":   [str],
@@ -31,6 +34,63 @@ from __future__ import annotations
 
 import re
 from typing import Any
+
+
+# ── LAG helpers ──────────────────────────────────────────────────────────────
+
+_LAG_IFACE_RE = re.compile(
+    r"^(lag|port-channel|port\s+channel|bridge-aggregation|aggregation)\s*\d+$",
+    re.I,
+)
+
+
+def _is_lag_iface(name: str) -> bool:
+    """True if the interface name represents a LAG/port-channel/bridge-aggregation."""
+    return bool(_LAG_IFACE_RE.match(name.strip()))
+
+
+def _normalize_lag_key(name: str) -> str:
+    """Normalize LAG name for index lookup — collapse spaces, lowercase.
+
+    Handles mismatches like 'Port-Channel1' vs 'port-channel 1'
+    or 'Bridge-Aggregation1' vs 'bridge-aggregation 1'.
+    """
+    return re.sub(r"\s+", "", name.lower())
+
+
+def _build_lag_members(interfaces: list[dict]) -> None:
+    """
+    Post-process interface list to link member ports to their LAG.
+
+    Reads temporary _lag_member_of / _lag_mode keys set during parsing, removes
+    them, and populates the stable IR fields:
+      - iface["lag_member_of"] = "lag 1" / "port-channel 1" / …
+      - lag_iface["members"].append(port_name)
+      - lag_iface["lag_mode"] = "active" / "passive" / "on"
+    """
+    # Index LAG interfaces by normalized key (no spaces, lowercase)
+    lag_by_key: dict[str, dict] = {}
+    for iface in interfaces:
+        iface.setdefault("members", [])
+        iface.setdefault("lag_member_of", None)
+        if _is_lag_iface(iface["name"]):
+            lag_by_key[_normalize_lag_key(iface["name"])] = iface
+
+    for iface in interfaces:
+        lag_ref = iface.pop("_lag_member_of", None)
+        lag_mode = iface.pop("_lag_mode", None)
+        if not lag_ref:
+            continue
+        iface["lag_member_of"] = lag_ref
+        if lag_mode:
+            iface["lag_mode"] = lag_mode
+        # Normalize lookup: "port-channel 1" → "port-channel1" matches "Port-Channel1"
+        lag_iface = lag_by_key.get(_normalize_lag_key(lag_ref))
+        if lag_iface:
+            if iface["name"] not in lag_iface["members"]:
+                lag_iface["members"].append(iface["name"])
+            if lag_mode and "lag_mode" not in lag_iface:
+                lag_iface["lag_mode"] = lag_mode
 
 
 # ── VLAN range expansion ──────────────────────────────────────────────────────
@@ -179,10 +239,13 @@ def _parse_edgeswitch(config: str) -> dict[str, Any]:
                 if _TOP_LEVEL_KW.match(ils):
                     break
 
+                # EdgeSwitch LAG membership: "lag 1" alone on a line inside a physical port block
+                m_lag = re.match(r"^lag\s+(\d+)$", ils, re.I)
+                if m_lag:
+                    cur_iface["_lag_member_of"] = f"lag {m_lag.group(1)}"
                 # IOS-style switchport
-                m2 = re.match(r"switchport mode (\S+)", ils, re.I)
-                if m2:
-                    cur_iface["mode"] = m2.group(1).lower()
+                elif re.match(r"switchport mode (\S+)", ils, re.I):
+                    cur_iface["mode"] = re.match(r"switchport mode (\S+)", ils, re.I).group(1).lower()
                 elif re.match(r"switchport access vlan (\d+)", ils, re.I):
                     cur_iface["pvid"] = re.match(r"switchport access vlan (\d+)", ils, re.I).group(1)
                 elif re.match(r"switchport trunk native vlan (\d+)", ils, re.I):
@@ -226,6 +289,7 @@ def _parse_edgeswitch(config: str) -> dict[str, Any]:
             if vu and iface["pvid"] is None:
                 iface["pvid"] = sorted(vu, key=lambda v: int(v) if v.isdigit() else 9999)[0]
 
+    _build_lag_members(ir["interfaces"])
     return ir
 
 
@@ -311,9 +375,13 @@ def _parse_ios_style(config: str) -> dict[str, Any]:
                 if ils and not il[0:1].isspace():
                     break
 
-                m2 = re.match(r"switchport mode (\S+)", ils, re.I)
-                if m2:
-                    cur_iface["mode"] = m2.group(1).lower()
+                # LAG membership: "channel-group 1 mode active" / "channel-group 1"
+                m_lag = re.match(r"channel-group\s+(\d+)(?:\s+mode\s+(\S+))?", ils, re.I)
+                if m_lag:
+                    cur_iface["_lag_member_of"] = f"port-channel {m_lag.group(1)}"
+                    cur_iface["_lag_mode"] = (m_lag.group(2) or "on").lower()
+                elif re.match(r"switchport mode (\S+)", ils, re.I):
+                    cur_iface["mode"] = re.match(r"switchport mode (\S+)", ils, re.I).group(1).lower()
                 elif re.match(r"switchport access vlan (\d+)", ils, re.I):
                     cur_iface["pvid"] = re.match(r"switchport access vlan (\d+)", ils, re.I).group(1)
                 elif re.match(r"switchport trunk native vlan (\d+)", ils, re.I):
@@ -331,6 +399,7 @@ def _parse_ios_style(config: str) -> dict[str, Any]:
 
     if cur_iface:
         ir["interfaces"].append(cur_iface)
+    _build_lag_members(ir["interfaces"])
     return ir
 
 
@@ -395,9 +464,12 @@ def _parse_hp_comware(config: str) -> dict[str, Any]:
                         i += 1
                     break
 
-                m2 = re.match(r"port link-type (\S+)", ils, re.I)
-                if m2:
-                    mode = m2.group(1).lower()
+                # LAG membership: "port link-aggregation group 1"
+                m_lag = re.match(r"port link-aggregation group\s+(\d+)", ils, re.I)
+                if m_lag:
+                    cur_iface["_lag_member_of"] = f"bridge-aggregation {m_lag.group(1)}"
+                elif re.match(r"port link-type (\S+)", ils, re.I):
+                    mode = re.match(r"port link-type (\S+)", ils, re.I).group(1).lower()
                     cur_iface["mode"] = mode if mode in ("trunk", "access", "hybrid") else "access"
                 elif re.match(r"port access vlan (\d+)", ils, re.I):
                     cur_iface["pvid"] = re.match(r"port access vlan (\d+)", ils, re.I).group(1)
@@ -408,7 +480,6 @@ def _parse_hp_comware(config: str) -> dict[str, Any]:
                     if raw.lower() == "all":
                         cur_iface["tagged_vlans"] = ["all"]
                     else:
-                        # HP uses space-separated VLAN IDs
                         cur_iface["tagged_vlans"].extend(
                             v for v in raw.split() if v.isdigit()
                         )
@@ -422,6 +493,7 @@ def _parse_hp_comware(config: str) -> dict[str, Any]:
 
     if cur_iface:
         ir["interfaces"].append(cur_iface)
+    _build_lag_members(ir["interfaces"])
     return ir
 
 
