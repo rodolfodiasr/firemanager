@@ -325,8 +325,8 @@ function AutoFillPanel({
   const isCisco   = targetVendor === "cisco_ios" || targetVendor === "cisco_nxos";
   const isDell    = targetVendor === "dell_n";
 
-  const defaultEthPrefix   = isComware ? "GigabitEthernet1/0/" : isCisco ? "GigabitEthernet0/" : isDell ? "ethernet 1/g" : "";
-  const defaultFiberPrefix  = isComware ? "GigabitEthernet1/0/" : isCisco ? "TenGigabitEthernet0/" : "";
+  const defaultEthPrefix   = isComware ? "GigabitEthernet1/0/" : isCisco ? "GigabitEthernet1/0/" : isDell ? "Gi1/0/" : "";
+  const defaultFiberPrefix  = isComware ? "GigabitEthernet1/0/" : isCisco ? "TenGigabitEthernet1/0/" : isDell ? "Te1/0/" : "";
   const defaultFiberStart   = isComware ? 25 : 1;
   const defaultLagPrefix    = isComware ? "Bridge-Aggregation" : isCisco ? "port-channel" : isDell ? "port-channel" : "lag ";
 
