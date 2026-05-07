@@ -89,6 +89,14 @@ class SonicWallConnector(BaseConnector):
                 auth=httpx.DigestAuth(self.username, self.password),
             )
             if not resp.is_success:
+                logger.warning(
+                    "SonicWall auth HTTP %s | is_v6=%s os_version=%s | "
+                    "req_headers=%s | resp_headers=%s | body=%r",
+                    resp.status_code, is_v6_hint, self.os_version,
+                    dict(resp.request.headers),
+                    dict(resp.headers),
+                    resp.text[:500],
+                )
                 raise Exception(
                     f"SonicWall auth failed: HTTP {resp.status_code} — {resp.text[:200]}"
                 )

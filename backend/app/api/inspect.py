@@ -1,9 +1,12 @@
 import dataclasses
+import logging
 import re
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -183,6 +186,31 @@ async def inspect_device(
             return {"resource": resource, "items": items}
 
         # ── REST API resources ────────────────────────────────────────────────
+        # SonicWall: SSH-first for read operations (single-session constraint + Gen6 auth quirks)
+        if device.vendor == VendorEnum.sonicwall:
+            _SSH_CMD = {
+                "rules":  "show access-rules",
+                "nat":    "show nat-policies",
+                "routes": "show route",
+            }
+            ssh_cmd = _SSH_CMD[resource]
+            ssh = get_ssh_connector(device)
+            try:
+                if resource == "routes":
+                    ssh_result = await ssh.execute_show_commands_full([ssh_cmd])
+                else:
+                    ssh_result = await ssh.execute_show_commands([ssh_cmd])
+                if ssh_result.success and ssh_result.output:
+                    raw = _ANSI_RE.sub("", ssh_result.output).strip()
+                    return {
+                        "resource": resource,
+                        "items": [{"type": "Raw", "name": ssh_cmd, "details": raw}],
+                    }
+                logger.warning("inspect SSH for %s/%s: %s", device_id, resource, ssh_result.error)
+            except Exception as exc_ssh:
+                logger.warning("inspect SSH exception for %s/%s: %s", device_id, resource, exc_ssh)
+            # SSH failed — fall through to REST
+
         connector = get_connector(device)
 
         if resource == "rules":
