@@ -23,6 +23,7 @@ import type {
   ConnectivityAnalysisSummary,
   ConnectivityAnomalySeverity,
   ConnectivityStatus,
+  SdwanService,
 } from "../types/connectivity";
 import type { Device } from "../types/device";
 
@@ -50,6 +51,17 @@ const SEVERITY_STYLE: Record<string, string> = {
 
 const SEVERITY_LABEL: Record<string, string> = {
   high: "Alta", medium: "Média", low: "Baixa",
+};
+
+const ANOMALY_TYPE_LABEL: Record<string, string> = {
+  no_default_route:       "Sem Rota Padrão",
+  static_dynamic_conflict:"Conflito Estático × Dinâmico",
+  redundant_no_failover:  "Rotas Redundantes s/ Failover",
+  bgp_not_established:    "Peer BGP Não Estabelecido",
+  ospf_not_full:          "Vizinho OSPF Não-FULL",
+  cidr_overlap:           "Sobreposição de CIDR",
+  multi_protocol_conflict:"Conflito Multi-Protocolo",
+  sdwan_routing_conflict: "Conflito SD-WAN × Roteamento",
 };
 
 function fmtDate(iso: string) {
@@ -154,7 +166,9 @@ function AnomaliesTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
                 <span className="text-xs font-semibold uppercase tracking-wide">
                   {SEVERITY_LABEL[a.severity] ?? a.severity}
                 </span>
-                <span className="text-xs opacity-70">{a.type}</span>
+                <span className="text-xs opacity-70">
+                  {ANOMALY_TYPE_LABEL[a.type] ?? a.type}
+                </span>
               </div>
               <p className="text-sm">{a.description}</p>
             </div>
@@ -168,9 +182,10 @@ function AnomaliesTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
 function BgpOspfTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
   const bgp = analysis.bgp_peers ?? [];
   const ospf = analysis.ospf_neighbors ?? [];
+  const sdwan = analysis.sdwan_services ?? [];
 
-  if (!bgp.length && !ospf.length) {
-    return <p className="text-sm text-gray-500 py-4">BGP e OSPF não detectados neste dispositivo.</p>;
+  if (!bgp.length && !ospf.length && !sdwan.length) {
+    return <p className="text-sm text-gray-500 py-4">BGP, OSPF e SD-WAN não detectados neste dispositivo.</p>;
   }
 
   return (
@@ -246,6 +261,51 @@ function BgpOspfTab({ analysis }: { analysis: ConnectivityAnalysisRead }) {
           </table>
         </div>
       )}
+
+      {sdwan.length > 0 && (
+        <div>
+          <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+            <Shield size={14} /> Políticas SD-WAN
+          </h4>
+          <div className="space-y-2">
+            {sdwan.map((svc: SdwanService, i: number) => (
+              <div key={i} className="border border-gray-200 rounded-lg p-3 text-xs">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="font-semibold text-gray-800">{svc.name || `Política ${i + 1}`}</span>
+                  {svc.mode && (
+                    <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-medium">
+                      {svc.mode}
+                    </span>
+                  )}
+                  <span className={`px-1.5 py-0.5 rounded font-medium ${svc.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                    {svc.status}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-gray-500 block mb-0.5">Destinos</span>
+                    {svc.destinations.length > 0
+                      ? svc.destinations.map((d, di) => (
+                          <span key={di} className="font-mono block">{d}</span>
+                        ))
+                      : <span className="text-gray-400">Qualquer</span>
+                    }
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block mb-0.5">Interfaces WAN</span>
+                    {svc.members.length > 0
+                      ? svc.members.map((m, mi) => (
+                          <span key={mi} className="font-mono block">{m}</span>
+                        ))
+                      : <span className="text-gray-400">—</span>
+                    }
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -311,7 +371,7 @@ function DetailModal({
   const TABS: { id: Tab; label: string }[] = [
     { id: "anomalies", label: "Anomalias" },
     { id: "routes",    label: "Rotas" },
-    { id: "bgp_ospf",  label: "BGP / OSPF" },
+    { id: "bgp_ospf",  label: "BGP / OSPF / SD-WAN" },
     { id: "ai",        label: "Análise IA" },
   ];
 

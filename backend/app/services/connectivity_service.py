@@ -7,11 +7,25 @@ AI summary via Claude.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import re
 from datetime import datetime, timezone
 from uuid import UUID
+
+# Administrative Distance por protocolo (menor = maior prioridade)
+_AD: dict[str, int] = {
+    "connected": 0,
+    "static":    1,
+    "eigrp":     90,
+    "ospf":      110,
+    "isis":      115,
+    "rip":       120,
+    "bgp":       200,
+    "sdwan":     5,    # SD-WAN policy tem precedência sobre tudo exceto connected
+    "unknown":   999,
+}
 
 log = logging.getLogger(__name__)
 
@@ -167,8 +181,7 @@ def _parse_ospf_neighbors(vendor: str, output: str) -> list[dict]:
 
 # ── Fortinet routes via REST ───────────────────────────────────────────────────
 
-async def _fetch_fortinet_routes(device) -> tuple[list[dict], list[dict], list[dict]]:
-    from app.connectors.factory import get_connector
+async def _fetch_fortinet_routes(device) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     from app.utils.crypto import decrypt_credentials
 
     creds = decrypt_credentials(device.encrypted_credentials)
@@ -179,14 +192,13 @@ async def _fetch_fortinet_routes(device) -> tuple[list[dict], list[dict], list[d
 
     import httpx
     verify = device.verify_ssl if device.verify_ssl is not None else False
-    routes, bgp_peers, ospf_neighbors = [], [], []
+    routes, bgp_peers, ospf_neighbors, sdwan_services = [], [], [], []
 
     async with httpx.AsyncClient(verify=verify, timeout=30) as client:
         try:
             r = await client.get(f"{base}/api/v2/monitor/router/ipv4?vdom={vdom}", headers=headers)
             if r.status_code == 200:
-                data = r.json()
-                for entry in data.get("results", []):
+                for entry in r.json().get("results", []):
                     routes.append({
                         "destination": entry.get("ip", ""),
                         "prefix_len": _mask_to_plen(entry.get("mask", 0)),
@@ -225,10 +237,42 @@ async def _fetch_fortinet_routes(device) -> tuple[list[dict], list[dict], list[d
         except Exception as e:
             log.debug("Fortinet OSPF fetch error: %s", e)
 
-    return routes, bgp_peers, ospf_neighbors
+        # SD-WAN services — cada service define destinos e membros WAN
+        try:
+            r = await client.get(f"{base}/api/v2/cmdb/system/sdwan?vdom={vdom}", headers=headers)
+            if r.status_code == 200:
+                results = r.json().get("results", [])
+                cfg = results[0] if results else {}
+                members_info = {
+                    str(m.get("seq-num", "")): m.get("interface", "")
+                    for m in cfg.get("members", [])
+                }
+                for svc in cfg.get("service", []):
+                    dsts = []
+                    for d in svc.get("dst", []):
+                        subnet = d.get("subnet", "")
+                        if subnet and subnet != "0.0.0.0 0.0.0.0":
+                            parts = subnet.split()
+                            if len(parts) == 2:
+                                dsts.append(f"{parts[0]}/{_mask_to_plen(parts[1])}")
+                            else:
+                                dsts.append(subnet)
+                    member_ifaces = [members_info.get(str(m.get("seq-num", "")), str(m.get("seq-num", "")))
+                                     for m in svc.get("members", [])]
+                    sdwan_services.append({
+                        "name": svc.get("name", ""),
+                        "mode": svc.get("mode", ""),
+                        "destinations": dsts,
+                        "members": member_ifaces,
+                        "status": "active",
+                    })
+        except Exception as e:
+            log.debug("Fortinet SD-WAN fetch error: %s", e)
+
+    return routes, bgp_peers, ospf_neighbors, sdwan_services
 
 
-async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[dict]]:
+async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     from app.utils.crypto import decrypt_credentials
     import httpx
 
@@ -237,7 +281,7 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
     verify = device.verify_ssl if device.verify_ssl is not None else False
     username = creds.get("username", "")
     password = creds.get("password", "")
-    routes, bgp_peers, ospf_neighbors = [], [], []
+    routes, bgp_peers, ospf_neighbors, sdwan_services = [], [], [], []
 
     async with httpx.AsyncClient(verify=verify, timeout=30) as client:
         try:
@@ -277,10 +321,10 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
             log.debug("SonicWall route fetch error: %s", e)
             raise ValueError(f"SonicWall REST: {e}") from e
 
-    return routes, bgp_peers, ospf_neighbors
+    return routes, bgp_peers, ospf_neighbors, sdwan_services
 
 
-async def _fetch_mikrotik_routes(device) -> tuple[list[dict], list[dict], list[dict]]:
+async def _fetch_mikrotik_routes(device) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     from app.utils.crypto import decrypt_credentials
 
     creds = decrypt_credentials(device.encrypted_credentials)
@@ -289,7 +333,7 @@ async def _fetch_mikrotik_routes(device) -> tuple[list[dict], list[dict], list[d
     verify = device.verify_ssl if device.verify_ssl is not None else False
 
     import httpx
-    routes, bgp_peers, ospf_neighbors = [], [], []
+    routes, bgp_peers, ospf_neighbors, sdwan_services = [], [], [], []
 
     async with httpx.AsyncClient(verify=verify, timeout=30, auth=auth) as client:
         try:
@@ -321,12 +365,12 @@ async def _fetch_mikrotik_routes(device) -> tuple[list[dict], list[dict], list[d
         except Exception as e:
             log.debug("MikroTik BGP fetch error: %s", e)
 
-    return routes, bgp_peers, ospf_neighbors
+    return routes, bgp_peers, ospf_neighbors, sdwan_services
 
 
 # ── CLI-based data collection ──────────────────────────────────────────────────
 
-async def _fetch_cli_routes(device) -> tuple[list[dict], list[dict], list[dict]]:
+async def _fetch_cli_routes(device) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     from app.connectors.factory import get_ssh_connector
 
     vendor = device.vendor.value
@@ -363,15 +407,151 @@ async def _fetch_cli_routes(device) -> tuple[list[dict], list[dict], list[dict]]
     bgp_peers       = _parse_bgp_summary(vendor, bgp_output)
     ospf_neighbors  = _parse_ospf_neighbors(vendor, ospf_output)
 
-    return routes, bgp_peers, ospf_neighbors
+    return routes, bgp_peers, ospf_neighbors, []
 
 
 # ── Anomaly detection ─────────────────────────────────────────────────────────
+
+def _detect_cidr_overlaps(routes: list[dict]) -> list[dict]:
+    anomalies: list[dict] = []
+    nets: list[tuple[ipaddress.IPv4Network, dict]] = []
+
+    for r in routes:
+        if r.get("protocol") == "connected":
+            continue
+        try:
+            net = ipaddress.ip_network(f"{r['destination']}/{r.get('prefix_len', 32)}", strict=False)
+            nets.append((net, r))
+        except ValueError:
+            continue
+
+    checked: set[tuple[int, int]] = set()
+    for i, (net_a, route_a) in enumerate(nets):
+        for j, (net_b, route_b) in enumerate(nets):
+            if i >= j or (i, j) in checked:
+                continue
+            checked.add((i, j))
+            if net_a == net_b:
+                continue
+            # One contains the other
+            if net_a.supernet_of(net_b) or net_b.supernet_of(net_a):
+                parent, pr = (net_a, route_a) if net_a.supernet_of(net_b) else (net_b, route_b)
+                child,  cr = (net_b, route_b) if net_a.supernet_of(net_b) else (net_a, route_a)
+                if pr.get("next_hop") != cr.get("next_hop"):
+                    winner_proto = cr.get("protocol", "unknown")  # more specific always wins
+                    anomalies.append({
+                        "type": "cidr_overlap",
+                        "severity": "medium",
+                        "description": (
+                            f"Prefixo {child} está contido em {parent}, mas com gateway diferente "
+                            f"({cr.get('next_hop')} vs {pr.get('next_hop')}). "
+                            f"Tráfego para {child} seguirá via {cr.get('next_hop')} "
+                            f"(rota mais específica via {winner_proto} tem prioridade)."
+                        ),
+                        "details": {
+                            "parent_prefix": str(parent),
+                            "parent_gateway": pr.get("next_hop"),
+                            "parent_protocol": pr.get("protocol"),
+                            "child_prefix": str(child),
+                            "child_gateway": cr.get("next_hop"),
+                            "child_protocol": cr.get("protocol"),
+                        },
+                    })
+    return anomalies
+
+
+def _detect_multi_protocol_conflicts(routes: list[dict]) -> list[dict]:
+    anomalies: list[dict] = []
+    prefix_map: dict[str, list[dict]] = {}
+
+    for r in routes:
+        key = f"{r.get('destination')}/{r.get('prefix_len', 0)}"
+        prefix_map.setdefault(key, []).append(r)
+
+    for prefix, route_list in prefix_map.items():
+        protocols = {r.get("protocol", "unknown") for r in route_list}
+        gateways  = {r.get("next_hop", "") for r in route_list}
+
+        if len(protocols) < 2 or len(gateways) < 2:
+            continue
+
+        sorted_routes = sorted(route_list, key=lambda r: _AD.get(r.get("protocol", "unknown"), 999))
+        winner = sorted_routes[0]
+        loser_protos = [r.get("protocol") for r in sorted_routes[1:]]
+
+        anomalies.append({
+            "type": "multi_protocol_conflict",
+            "severity": "high",
+            "description": (
+                f"Prefixo {prefix} aprendido simultaneamente via {', '.join(protocols)}. "
+                f"Rota ativa: {winner.get('protocol')} → {winner.get('next_hop')} "
+                f"(AD={_AD.get(winner.get('protocol','unknown'), 999)}). "
+                f"Dormindo: {', '.join(loser_protos)}. Confirme se a redundância é intencional."
+            ),
+            "details": {
+                "prefix": prefix,
+                "active": {"protocol": winner.get("protocol"), "gateway": winner.get("next_hop"),
+                           "ad": _AD.get(winner.get("protocol", "unknown"), 999)},
+                "standby": [{"protocol": r.get("protocol"), "gateway": r.get("next_hop"),
+                             "ad": _AD.get(r.get("protocol", "unknown"), 999)}
+                            for r in sorted_routes[1:]],
+            },
+        })
+    return anomalies
+
+
+def _detect_sdwan_conflicts(routes: list[dict], sdwan_services: list[dict]) -> list[dict]:
+    anomalies: list[dict] = []
+
+    for svc in sdwan_services:
+        for dst_str in svc.get("destinations", []):
+            if not dst_str:
+                continue
+            try:
+                sdwan_net = ipaddress.ip_network(dst_str, strict=False)
+            except ValueError:
+                continue
+
+            conflicts: list[dict] = []
+            for r in routes:
+                if r.get("protocol") == "connected":
+                    continue
+                try:
+                    route_net = ipaddress.ip_network(
+                        f"{r['destination']}/{r.get('prefix_len', 32)}", strict=False
+                    )
+                except ValueError:
+                    continue
+                if sdwan_net.overlaps(route_net):
+                    conflicts.append(r)
+
+            if conflicts:
+                protos = list({r.get("protocol", "unknown") for r in conflicts})
+                anomalies.append({
+                    "type": "sdwan_routing_conflict",
+                    "severity": "high",
+                    "description": (
+                        f"SD-WAN policy '{svc.get('name')}' ({svc.get('mode', '')}) cobre {dst_str} "
+                        f"que também existe na tabela de roteamento via {', '.join(protos)}. "
+                        f"A policy SD-WAN tem precedência (AD=5) — verifique se o failover para a rota "
+                        f"estática/OSPF ocorre corretamente quando o SD-WAN detectar falha."
+                    ),
+                    "details": {
+                        "sdwan_service": svc.get("name"),
+                        "sdwan_mode": svc.get("mode"),
+                        "sdwan_members": svc.get("members", []),
+                        "sdwan_destination": dst_str,
+                        "conflicting_routes": conflicts,
+                    },
+                })
+    return anomalies
+
 
 def detect_anomalies(
     routes: list[dict],
     bgp_peers: list[dict],
     ospf_neighbors: list[dict],
+    sdwan_services: list[dict] | None = None,
 ) -> list[dict]:
     anomalies: list[dict] = []
 
@@ -437,6 +617,16 @@ def detect_anomalies(
                 "details": {"neighbor": nb},
             })
 
+    # CIDR overlap: rota mais específica com gateway diferente da genérica
+    anomalies.extend(_detect_cidr_overlaps(routes))
+
+    # Multi-protocol: mesmo prefixo aprendido via estático + OSPF + BGP simultaneamente
+    anomalies.extend(_detect_multi_protocol_conflicts(routes))
+
+    # SD-WAN policy cobrindo mesma rede que rota estática/OSPF
+    if sdwan_services:
+        anomalies.extend(_detect_sdwan_conflicts(routes, sdwan_services))
+
     return anomalies
 
 
@@ -448,6 +638,7 @@ async def _claude_analysis(
     routes: list[dict],
     bgp_peers: list[dict],
     ospf_neighbors: list[dict],
+    sdwan_services: list[dict],
     anomalies: list[dict],
 ) -> tuple[str, list[str]]:
     import anthropic
@@ -461,7 +652,9 @@ async def _claude_analysis(
         "routes_sample": routes[:20],
         "bgp_peers": bgp_peers,
         "ospf_neighbors": ospf_neighbors,
+        "sdwan_services": sdwan_services,
         "anomalies": anomalies,
+        "administrative_distances": _AD,
     }
 
     msg = await client.messages.create(
@@ -501,17 +694,17 @@ async def run_analysis(analysis_id: str) -> None:
             vendor = device.vendor
 
             if vendor == VendorEnum.fortinet:
-                routes, bgp_peers, ospf_neighbors = await _fetch_fortinet_routes(device)
+                routes, bgp_peers, ospf_neighbors, sdwan_services = await _fetch_fortinet_routes(device)
             elif vendor == VendorEnum.sonicwall:
-                routes, bgp_peers, ospf_neighbors = await _fetch_sonicwall_routes(device)
+                routes, bgp_peers, ospf_neighbors, sdwan_services = await _fetch_sonicwall_routes(device)
             elif vendor == VendorEnum.mikrotik:
-                routes, bgp_peers, ospf_neighbors = await _fetch_mikrotik_routes(device)
+                routes, bgp_peers, ospf_neighbors, sdwan_services = await _fetch_mikrotik_routes(device)
             elif vendor in CLI_VENDORS:
-                routes, bgp_peers, ospf_neighbors = await _fetch_cli_routes(device)
+                routes, bgp_peers, ospf_neighbors, sdwan_services = await _fetch_cli_routes(device)
             else:
                 raise ValueError(f"Vendor '{vendor.value}' não suportado para análise de conectividade ainda.")
 
-            anomalies = detect_anomalies(routes, bgp_peers, ospf_neighbors)
+            anomalies = detect_anomalies(routes, bgp_peers, ospf_neighbors, sdwan_services)
 
             ai_summary, ai_recs = "", []
             try:
@@ -521,6 +714,7 @@ async def run_analysis(analysis_id: str) -> None:
                     routes=routes,
                     bgp_peers=bgp_peers,
                     ospf_neighbors=ospf_neighbors,
+                    sdwan_services=sdwan_services,
                     anomalies=anomalies,
                 )
             except Exception as exc:
@@ -531,7 +725,7 @@ async def run_analysis(analysis_id: str) -> None:
             record.routes          = routes
             record.bgp_peers       = bgp_peers
             record.ospf_neighbors  = ospf_neighbors
-            record.sdwan_services  = []
+            record.sdwan_services  = sdwan_services
             record.anomalies       = anomalies
             record.ai_summary      = ai_summary
             record.ai_recommendations = ai_recs

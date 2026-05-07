@@ -43,6 +43,14 @@ export interface ConnectivityAnalysisSummary {
   error: string | null;
 }
 
+export interface SdwanService {
+  name: string;
+  mode: string;
+  destinations: string[];
+  members: string[];
+  status: string;
+}
+
 export interface ConnectivityAnalysisRead {
   id: string;
   tenant_id: string | null;
@@ -51,7 +59,7 @@ export interface ConnectivityAnalysisRead {
   routes: RouteEntry[] | null;
   bgp_peers: BgpPeer[] | null;
   ospf_neighbors: OspfNeighbor[] | null;
-  sdwan_services: unknown[] | null;
+  sdwan_services: SdwanService[] | null;
   anomalies: ConnectivityAnomalySeverity[] | null;
   ai_summary: string | null;
   ai_recommendations: string[] | null;
