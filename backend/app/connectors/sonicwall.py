@@ -80,8 +80,8 @@ class SonicWallConnector(BaseConnector):
             timeout=30.0,
         ) as client:
             # Gen6 rejects {"override": True} body (406) — that parameter is Gen7+ only.
-            # Use os_version hint before firmware is known; _v6 is resolved after auth.
-            is_v6_hint = self._v6 is True or (self._v6 is None and self.os_version <= 6)
+            # os_version (explicit user choice) is authoritative; firmware detection is secondary.
+            is_v6_hint = self.os_version <= 6 or self._v6 is True
             auth_kwargs: dict = {} if is_v6_hint else {"json": {"override": True}}
             resp = await client.post(
                 "/api/sonicos/auth",
