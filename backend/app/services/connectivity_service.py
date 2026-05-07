@@ -333,6 +333,93 @@ def _parse_sonicwall_ospf(output: str) -> list[dict]:
     return neighbors
 
 
+def _parse_sonicwall_address_objects_ssh(output: str) -> dict[str, tuple[str, int]]:
+    """Parse configure-mode 'show address-objects' into name→(ip, prefix_len) map."""
+    addr_map: dict[str, tuple[str, int]] = {}
+    clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", output)
+
+    obj_re = re.compile(r'address-object\s+ipv4\s+"?([^"\n]+?)"?\s*\r?\n', re.IGNORECASE)
+    for obj_m in obj_re.finditer(clean):
+        name = obj_m.group(1).strip()
+        start = obj_m.end()
+        next_obj = obj_re.search(clean, start)
+        segment = clean[start: next_obj.start() if next_obj else len(clean)]
+
+        host_m = re.search(r'^\s+host\s+([\d.]+)', segment, re.MULTILINE)
+        if host_m:
+            addr_map[name] = (host_m.group(1), 32)
+            continue
+
+        net_m  = re.search(r'^\s+network\s+([\d.]+)', segment, re.MULTILINE)
+        mask_m = re.search(r'^\s+mask\s+([\d.]+)', segment, re.MULTILINE)
+        if net_m and mask_m:
+            try:
+                net = ipaddress.ip_network(f"{net_m.group(1)}/{mask_m.group(1)}", strict=False)
+                addr_map[name] = (str(net.network_address), net.prefixlen)
+            except ValueError:
+                pass
+
+    return addr_map
+
+
+def _parse_sonicwall_route_policies_ssh(
+    output: str, addr_map: dict[str, tuple[str, int]]
+) -> list[dict]:
+    """Parse configure-mode 'show route-policies' into normalized route dicts.
+
+    Resolves destination name references using addr_map built from show address-objects.
+    """
+    routes: list[dict] = []
+    clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", output)
+
+    policy_re = re.compile(r"route-policy\s+ipv4\b", re.IGNORECASE)
+    for pol_m in policy_re.finditer(clean):
+        start = pol_m.end()
+        next_pol = policy_re.search(clean, start)
+        segment = clean[pol_m.start(): next_pol.start() if next_pol else len(clean)]
+
+        iface_m  = re.search(r'^\s+interface\s+(\S+)', segment, re.MULTILINE)
+        dst_m    = re.search(r'destination\s+(?:name\s+)?"?([^"\n]+?)"?\s*$', segment, re.MULTILINE)
+        gw_m     = re.search(r'^\s+gateway\s+(\S+)', segment, re.MULTILINE)
+        no_dis_m = re.search(r'^\s+no\s+disable-on-interface-down\b', segment, re.MULTILINE)
+
+        iface   = iface_m.group(1) if iface_m else ""
+        dst_raw = dst_m.group(1).strip() if dst_m else ""
+        gw_raw  = gw_m.group(1).strip() if gw_m else "default"
+
+        # Resolve destination name → IP/prefix
+        if dst_raw in addr_map:
+            dest_ip, plen = addr_map[dst_raw]
+        elif dst_raw.lower() in ("any", ""):
+            dest_ip, plen = "0.0.0.0", 0
+        else:
+            try:
+                net = ipaddress.ip_network(dst_raw, strict=False)
+                dest_ip, plen = str(net.network_address), net.prefixlen
+            except ValueError:
+                continue  # unresolvable — skip
+
+        # Resolve gateway
+        nexthop = "0.0.0.0"
+        if gw_raw.lower() not in ("default", ""):
+            try:
+                ipaddress.ip_address(gw_raw)
+                nexthop = gw_raw
+            except ValueError:
+                pass
+
+        routes.append({
+            "destination": dest_ip,
+            "prefix_len": plen,
+            "next_hop": nexthop,
+            "interface": iface,
+            "protocol": "static",
+            "active": no_dis_m is not None,
+        })
+
+    return routes
+
+
 def _parse_sonicwall_sdwan_groups(output: str) -> list[dict]:
     """Parse SonicOS configure-mode 'show sdwan groups' output.
 
@@ -423,22 +510,48 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
     except Exception as exc:
         log.warning("SonicWall SSH exec exception for %s: %s", device.name, exc)
 
-    # ── FASE 1b: SSH configure-mode — SD-WAN groups ──────────────────────────
-    # Gen6/Gen7: "show sdwan groups" funciona em configure mode.
-    # Executa ANTES do REST (SonicWall: SSH antes de abrir sessão REST).
+    # ── FASE 1b: SSH configure-mode — rotas + SD-WAN ─────────────────────────
+    # Gen6 REST retorna 406 quando há sessão ativa (sem override no Gen6).
+    # SSH configure-mode é o canal confiável para ambos rotas e SD-WAN.
+    # Ordem dos comandos: route-policies → address-objects → sdwan groups
+    # (seções após split por echo do comando)
     try:
         ssh_cfg = get_ssh_connector(device)
         cfg_result = await asyncio.wait_for(
-            ssh_cfg.execute_commands(["show sdwan groups"]),
-            timeout=60,
+            ssh_cfg.execute_commands([
+                "show route-policies",
+                "show address-objects",
+                "show sdwan groups",
+            ]),
+            timeout=90,
         )
         if cfg_result.success and cfg_result.output:
-            sdwan_services = _parse_sonicwall_sdwan_groups(cfg_result.output)
-            log.warning("SonicWall SSH config: sdwan_groups=%d (device %s)", len(sdwan_services), device.name)
+            cfg_out = cfg_result.output
+            # sections[0] = banner; [1]=route-policies; [2]=address-objects; [3]=sdwan groups
+            cfg_sections = re.split(
+                r"(?:show route-policies|show address-objects|show sdwan groups)\s*\r?\n",
+                cfg_out, flags=re.IGNORECASE,
+            )
+            rp_out   = cfg_sections[1] if len(cfg_sections) > 1 else ""
+            ao_out   = cfg_sections[2] if len(cfg_sections) > 2 else ""
+            sdwan_out = cfg_sections[3] if len(cfg_sections) > 3 else ""
+
+            cfg_addr_map = _parse_sonicwall_address_objects_ssh(ao_out)
+            cfg_routes   = _parse_sonicwall_route_policies_ssh(rp_out, cfg_addr_map)
+
+            if cfg_routes and not ssh_routes_ok:
+                routes = cfg_routes
+                ssh_routes_ok = True
+
+            sdwan_services = _parse_sonicwall_sdwan_groups(sdwan_out)
+            log.warning(
+                "SonicWall SSH config: routes=%d addr_map=%d sdwan=%d (device %s)",
+                len(cfg_routes), len(cfg_addr_map), len(sdwan_services), device.name,
+            )
         else:
-            log.warning("SonicWall SSH config SD-WAN failed for %s: %s", device.name, cfg_result.error)
+            log.warning("SonicWall SSH config failed for %s: %s", device.name, cfg_result.error)
     except Exception as exc:
-        log.warning("SonicWall SSH config SD-WAN exception for %s: %s", device.name, exc)
+        log.warning("SonicWall SSH config exception for %s: %s", device.name, exc)
 
     # ── FASE 2: REST (SSH já fechou — seguro abrir nova sessão) ───────────────
     creds = decrypt_credentials(device.encrypted_credentials)
