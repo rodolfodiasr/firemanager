@@ -15,14 +15,20 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE connectivity_status AS ENUM ('pending', 'running', 'completed', 'failed')")
+    # Use DO block to avoid error if type was already created by SQLAlchemy ORM
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE connectivity_status AS ENUM ('pending', 'running', 'completed', 'failed');
+        EXCEPTION WHEN duplicate_object THEN null;
+        END $$;
+    """)
 
     op.create_table(
         "connectivity_analyses",
         sa.Column("id",            UUID(as_uuid=True), primary_key=True),
         sa.Column("tenant_id",     UUID(as_uuid=True), sa.ForeignKey("tenants.id",  ondelete="CASCADE"), nullable=True,  index=True),
         sa.Column("device_id",     UUID(as_uuid=True), sa.ForeignKey("devices.id",  ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("status",        sa.Enum("pending", "running", "completed", "failed", name="connectivity_status"), nullable=False, server_default="pending"),
+        sa.Column("status",        sa.Enum("pending", "running", "completed", "failed", name="connectivity_status", create_type=False), nullable=False, server_default="pending"),
         sa.Column("routes",        JSONB, nullable=True),
         sa.Column("bgp_peers",     JSONB, nullable=True),
         sa.Column("ospf_neighbors",JSONB, nullable=True),
