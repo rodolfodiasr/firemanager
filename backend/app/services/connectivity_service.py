@@ -351,7 +351,7 @@ def _parse_sonicwall_address_objects_ssh(output: str) -> dict[str, tuple[str, in
             continue
 
         net_m  = re.search(r'^\s+network\s+([\d.]+)', segment, re.MULTILINE)
-        mask_m = re.search(r'^\s+mask\s+([\d.]+)', segment, re.MULTILINE)
+        mask_m = re.search(r'^\s+(?:net)?mask\s+([\d.]+)', segment, re.MULTILINE)
         if net_m and mask_m:
             try:
                 net = ipaddress.ip_network(f"{net_m.group(1)}/{mask_m.group(1)}", strict=False)
@@ -378,14 +378,15 @@ def _parse_sonicwall_route_policies_ssh(
         next_pol = policy_re.search(clean, start)
         segment = clean[pol_m.start(): next_pol.start() if next_pol else len(clean)]
 
-        iface_m  = re.search(r'^\s+interface\s+(\S+)', segment, re.MULTILINE)
-        dst_m    = re.search(r'destination\s+(?:name\s+)?"?([^"\n]+?)"?\s*$', segment, re.MULTILINE)
-        gw_m     = re.search(r'^\s+gateway\s+(\S+)', segment, re.MULTILINE)
-        no_dis_m = re.search(r'^\s+no\s+disable-on-interface-down\b', segment, re.MULTILINE)
+        iface_m      = re.search(r'^\s+interface\s+(\S+)', segment, re.MULTILINE)
+        dst_m        = re.search(r'destination\s+(?:name\s+)?"?([^"\n]+?)"?\s*$', segment, re.MULTILINE)
+        gw_name_m    = re.search(r'^\s+gateway\s+name\s+"?([^"\n]+?)"?\s*$', segment, re.MULTILINE)
+        gw_default_m = re.search(r'^\s+gateway\s+default\b', segment, re.MULTILINE)
+        gw_ip_m      = re.search(r'^\s+gateway\s+([\d.]+)', segment, re.MULTILINE)
+        no_dis_m     = re.search(r'^\s+no\s+disable-on-interface-down\b', segment, re.MULTILINE)
 
         iface   = iface_m.group(1) if iface_m else ""
         dst_raw = dst_m.group(1).strip() if dst_m else ""
-        gw_raw  = gw_m.group(1).strip() if gw_m else "default"
 
         # Resolve destination name → IP/prefix
         if dst_raw in addr_map:
@@ -399,14 +400,15 @@ def _parse_sonicwall_route_policies_ssh(
             except ValueError:
                 continue  # unresolvable — skip
 
-        # Resolve gateway
+        # Resolve gateway: explicit IP > named address-object > default (0.0.0.0)
         nexthop = "0.0.0.0"
-        if gw_raw.lower() not in ("default", ""):
-            try:
-                ipaddress.ip_address(gw_raw)
-                nexthop = gw_raw
-            except ValueError:
-                pass
+        if gw_ip_m:
+            nexthop = gw_ip_m.group(1)
+        elif gw_name_m:
+            gw_obj_name = gw_name_m.group(1).strip()
+            if gw_obj_name in addr_map:
+                nexthop, _ = addr_map[gw_obj_name]
+        # gw_default_m or no match → nexthop stays 0.0.0.0
 
         routes.append({
             "destination": dest_ip,
@@ -425,15 +427,19 @@ def _parse_sonicwall_interfaces_ssh(output: str) -> list[dict]:
     routes: list[dict] = []
     clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", output)
 
-    iface_re = re.compile(r"^interface\s+(\S+)", re.MULTILINE)
+    # Capture physical (X0) and VLAN subinterfaces (X0 vlan 152); skip ipv6 blocks
+    iface_re = re.compile(r"^interface\s+(?!ipv6)(X\d+(?:\s+vlan\s+\d+)?)", re.MULTILINE)
     for iface_m in iface_re.finditer(clean):
-        iface_name = iface_m.group(1).strip()
+        raw_name   = iface_m.group(1).strip()
+        # Normalize "X0 vlan 152" → "X0:V152" (consistent with REST API format)
+        vlan_m = re.match(r'^(X\d+)\s+vlan\s+(\d+)$', raw_name, re.IGNORECASE)
+        iface_name = f"{vlan_m.group(1)}:V{vlan_m.group(2)}" if vlan_m else raw_name
         start = iface_m.end()
         next_iface = iface_re.search(clean, start)
         segment = clean[start: next_iface.start() if next_iface else len(clean)]
 
         ip_m   = re.search(r'^\s+ip\s+([\d.]+)', segment, re.MULTILINE)
-        mask_m = re.search(r'^\s+mask\s+([\d.]+)', segment, re.MULTILINE)
+        mask_m = re.search(r'^\s+(?:net)?mask\s+([\d.]+)', segment, re.MULTILINE)
 
         if not ip_m or not mask_m:
             continue
