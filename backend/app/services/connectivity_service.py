@@ -228,6 +228,58 @@ async def _fetch_fortinet_routes(device) -> tuple[list[dict], list[dict], list[d
     return routes, bgp_peers, ospf_neighbors
 
 
+async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[dict]]:
+    from app.utils.crypto import decrypt_credentials
+    import httpx
+
+    creds = decrypt_credentials(device.encrypted_credentials)
+    base = f"{'https' if device.use_ssl else 'http'}://{device.host}:{device.port}"
+    verify = device.verify_ssl if device.verify_ssl is not None else False
+    username = creds.get("username", "")
+    password = creds.get("password", "")
+    routes, bgp_peers, ospf_neighbors = [], [], []
+
+    async with httpx.AsyncClient(verify=verify, timeout=30) as client:
+        try:
+            # Authenticate (Digest)
+            auth_r = await client.post(
+                f"{base}/api/sonicos/auth",
+                auth=httpx.DigestAuth(username, password),
+            )
+            if auth_r.status_code not in (200, 201):
+                raise ValueError(f"SonicWall auth falhou: HTTP {auth_r.status_code}")
+
+            cookies = auth_r.cookies
+
+            # Static / connected routes
+            r = await client.get(f"{base}/api/sonicos/route/ipv4", cookies=cookies)
+            if r.status_code == 200:
+                data = r.json()
+                for entry in data.get("route_ipv4", {}).get("route", []):
+                    dst = entry.get("destination", {})
+                    ip   = dst.get("ip", "0.0.0.0")
+                    mask = dst.get("mask", "0.0.0.0")
+                    plen = _mask_to_plen(mask)
+                    gw   = entry.get("gateway", "0.0.0.0")
+                    routes.append({
+                        "destination": ip,
+                        "prefix_len": plen,
+                        "next_hop": gw,
+                        "interface": entry.get("interface", None),
+                        "protocol": entry.get("type", "static").lower(),
+                        "active": True,
+                    })
+
+            # Logout
+            await client.delete(f"{base}/api/sonicos/auth", cookies=cookies)
+
+        except Exception as e:
+            log.debug("SonicWall route fetch error: %s", e)
+            raise ValueError(f"SonicWall REST: {e}") from e
+
+    return routes, bgp_peers, ospf_neighbors
+
+
 async def _fetch_mikrotik_routes(device) -> tuple[list[dict], list[dict], list[dict]]:
     from app.utils.crypto import decrypt_credentials
 
@@ -450,13 +502,14 @@ async def run_analysis(analysis_id: str) -> None:
 
             if vendor == VendorEnum.fortinet:
                 routes, bgp_peers, ospf_neighbors = await _fetch_fortinet_routes(device)
+            elif vendor == VendorEnum.sonicwall:
+                routes, bgp_peers, ospf_neighbors = await _fetch_sonicwall_routes(device)
             elif vendor == VendorEnum.mikrotik:
                 routes, bgp_peers, ospf_neighbors = await _fetch_mikrotik_routes(device)
             elif vendor in CLI_VENDORS:
                 routes, bgp_peers, ospf_neighbors = await _fetch_cli_routes(device)
             else:
-                # Best-effort SSH for other vendors
-                routes, bgp_peers, ospf_neighbors = await _fetch_cli_routes(device)
+                raise ValueError(f"Vendor '{vendor.value}' não suportado para análise de conectividade ainda.")
 
             anomalies = detect_anomalies(routes, bgp_peers, ospf_neighbors)
 
