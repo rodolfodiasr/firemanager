@@ -55,9 +55,6 @@ def _render_edgeswitch(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
     cmds: list[str] = []
     warns: list[str] = []
 
-    if ir.get("hostname"):
-        cmds += [f"hostname {ir['hostname']}", ""]
-
     vlans = ir.get("vlans", {})
     if vlans:
         cmds.append("vlan database")
@@ -69,6 +66,10 @@ def _render_edgeswitch(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
     for iface in ir.get("interfaces", []):
         # Member ports are rendered inline when processing the LAG interface
         if iface.get("lag_member_of"):
+            continue
+
+        # Skip L3/management interfaces — they carry IP config, not switching config
+        if iface.get("port_type") == "vlan":
             continue
 
         src = iface["name"]
@@ -117,9 +118,6 @@ def _render_dell_n(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str
     cmds: list[str] = []
     warns: list[str] = []
 
-    if ir.get("hostname"):
-        cmds += [f"hostname {ir['hostname']}", "!"]
-
     for vid, vinfo in sorted(ir.get("vlans", {}).items(), key=lambda kv: _vlan_key(kv[0])):
         cmds.append(f"vlan {vid}")
         if vinfo.get("name"):
@@ -128,6 +126,9 @@ def _render_dell_n(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str
 
     for iface in ir.get("interfaces", []):
         if iface.get("lag_member_of"):
+            continue
+
+        if iface.get("port_type") == "vlan":
             continue
 
         src = iface["name"]
@@ -174,9 +175,6 @@ def _render_cisco_ios(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[
     cmds: list[str] = []
     warns: list[str] = []
 
-    if ir.get("hostname"):
-        cmds += [f"hostname {ir['hostname']}", "!"]
-
     for vid, vinfo in sorted(ir.get("vlans", {}).items(), key=lambda kv: _vlan_key(kv[0])):
         cmds.append(f"vlan {vid}")
         if vinfo.get("name"):
@@ -185,6 +183,9 @@ def _render_cisco_ios(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[
 
     for iface in ir.get("interfaces", []):
         if iface.get("lag_member_of"):
+            continue
+
+        if iface.get("port_type") == "vlan":
             continue
 
         src = iface["name"]
@@ -231,9 +232,6 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
     cmds: list[str] = []
     warns: list[str] = []
 
-    if ir.get("hostname"):
-        cmds += [f"sysname {ir['hostname']}", ""]
-
     for vid, vinfo in sorted(ir.get("vlans", {}).items(), key=lambda kv: _vlan_key(kv[0])):
         cmds.append(f"vlan {vid}")
         if vinfo.get("name"):
@@ -242,6 +240,9 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
 
     for iface in ir.get("interfaces", []):
         if iface.get("lag_member_of"):
+            continue
+
+        if iface.get("port_type") == "vlan":
             continue
 
         src = iface["name"]
@@ -303,9 +304,6 @@ def _render_juniper(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[st
     cmds: list[str] = []
     warns: list[str] = []
 
-    if ir.get("hostname"):
-        cmds += ["system {", f"    host-name {ir['hostname']};", "}", ""]
-
     vlans = ir.get("vlans", {})
     if vlans:
         cmds.append("vlans {")
@@ -320,6 +318,9 @@ def _render_juniper(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[st
 
     for iface in ir.get("interfaces", []):
         if iface.get("lag_member_of"):
+            continue
+
+        if iface.get("port_type") == "vlan":
             continue
 
         src = iface["name"]
@@ -385,9 +386,6 @@ def _render_aruba(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str,
     cmds: list[str] = []
     warns: list[str] = []
 
-    if ir.get("hostname"):
-        cmds += [f'hostname "{ir["hostname"]}"', "!"]
-
     for vid, vinfo in sorted(ir.get("vlans", {}).items(), key=lambda kv: _vlan_key(kv[0])):
         cmds.append(f"vlan {vid}")
         if vinfo.get("name"):
@@ -417,6 +415,9 @@ def _render_aruba(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str,
     # Interface VLAN config
     for iface in ir.get("interfaces", []):
         if iface.get("lag_member_of"):
+            continue
+
+        if iface.get("port_type") == "vlan":
             continue
 
         src = iface["name"]

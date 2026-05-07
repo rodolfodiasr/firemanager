@@ -20,10 +20,20 @@ Sua tarefa:
 - Compare o config de origem com o IR e os comandos gerados
 - Preencha VLANs, modos de porta, PVIDs e LAGs que o parser não conseguiu extrair
 - Corrija sintaxe incorreta para o vendor alvo
-- Adicione comandos obrigatórios ausentes (ex: undo shutdown, return, save force para Comware; write memory para IOS/Dell)
+- Adicione comandos obrigatórios ausentes (ex: undo shutdown para Comware; write memory para IOS/Dell)
 - Remova duplicatas ou comandos conflitantes
 - Para LAGs/port-channels: recrie manualmente com os membros corretos se conseguir identificá-los no config de origem
 - Se não conseguir traduzir algo, explique em warnings
+
+PROIBIDO — NUNCA inclua os seguintes tipos de comando:
+- IP address / netmask em qualquer interface (ip address, ipv4 address, ip-address)
+- Rotas estáticas (ip route, ipv4 route, ip default-gateway)
+- Interfaces L3: Vlan-interface, interface vlan (somente interfaces de porta física/LAG)
+- Hostname / sysname do switch (não renomeie o switch de destino)
+- Configurações de gerência, SNMP, NTP, AAA, RADIUS, SSH, telnet, console
+- Qualquer configuração de roteamento ou endereçamento IP
+
+Apenas migre: VLANs (IDs e nomes), modos de porta (trunk/access), PVIDs, VLANs permitidas, LAGs.
 
 Retorne SOMENTE JSON válido, sem texto adicional:
 {
