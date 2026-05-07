@@ -398,12 +398,12 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
     try:
         ssh = get_ssh_connector(device)
         ssh_result = await asyncio.wait_for(
-            ssh.execute_show_commands([
+            ssh.execute_show_commands_full([
                 "show route",
                 "show ospf neighbor",
                 "show sdwan-groups",
             ]),
-            timeout=60,
+            timeout=90,
         )
         if ssh_result.success and ssh_result.output:
             output = ssh_result.output
@@ -424,9 +424,10 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
             log.info("SonicWall SSH routes=%d ospf=%d sdwan=%d",
                      len(routes), len(ospf_neighbors), len(sdwan_services))
         else:
-            log.debug("SonicWall SSH show failed: %s", ssh_result.error)
+            log.warning("SonicWall SSH show commands failed for %s: success=%s error=%s",
+                        device.name, ssh_result.success, ssh_result.error)
     except Exception as exc:
-        log.debug("SonicWall SSH phase skipped: %s", exc)
+        log.warning("SonicWall SSH phase exception for %s: %s", device.name, exc)
 
     # ── FASE 2: REST (SSH já fechou — seguro abrir nova sessão) ───────────────
     creds = decrypt_credentials(device.encrypted_credentials)
