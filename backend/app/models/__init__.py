@@ -1,4 +1,5 @@
 from app.models.analysis_session import AnalysisSession
+from app.models.connectivity import ConnectivityAnalysis, ConnectivityStatus
 from app.models.config_migration import ConfigMigration, MigrationStatus
 from app.models.firewall_migration import FirewallMigration, FirewallMigrationStatus
 from app.models.golden_template import GoldenTemplate, GoldenTemplateVersion
@@ -29,6 +30,8 @@ from app.models.variable import TenantVariable, DeviceVariable
 
 __all__ = [
     "AnalysisSession",
+    "ConnectivityAnalysis",
+    "ConnectivityStatus",
     "ConfigMigration",
     "MigrationStatus",
     "FirewallMigration",
