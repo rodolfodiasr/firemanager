@@ -407,16 +407,24 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
         )
         if ssh_result.success and ssh_result.output:
             output = ssh_result.output
-            # Split output by command echo
-            sections = re.split(r"(?:show route|show ospf neighbor|show sdwan-groups)\s*\n", output, flags=re.IGNORECASE)
-            route_out = sections[0] if sections else output
-            ospf_out  = sections[1] if len(sections) > 1 else ""
-            sdwan_out = sections[2] if len(sections) > 2 else ""
+            log.info("SonicWall SSH raw output (first 800): %r", output[:800])
+            # After splitting on command echoes, sections are:
+            # [0] = preamble/banner (before first command echo)
+            # [1] = route output (after "show route" echo)
+            # [2] = ospf output (after "show ospf neighbor" echo)
+            # [3] = sdwan output (after "show sdwan-groups" echo)
+            sections = re.split(r"(?:show route|show ospf neighbor|show sdwan-groups)\s*\r?\n", output, flags=re.IGNORECASE)
+            route_out = sections[1] if len(sections) > 1 else output
+            ospf_out  = sections[2] if len(sections) > 2 else ""
+            sdwan_out = sections[3] if len(sections) > 3 else ""
 
+            log.info("SonicWall SSH route_out (first 500): %r", route_out[:500])
             parsed = _parse_sonicwall_routes(route_out)
             if parsed:
                 routes = parsed
                 ssh_routes_ok = True
+            else:
+                log.warning("SonicWall SSH: show route parsed 0 routes from %d chars — regex may not match Gen6 format", len(route_out))
 
             ospf_neighbors = _parse_sonicwall_ospf(ospf_out)
             sdwan_services = _parse_sonicwall_sdwan(sdwan_out)
@@ -542,7 +550,7 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
                 pass
 
         except Exception as exc:
-            log.debug("SonicWall REST phase error: %s", exc)
+            log.warning("SonicWall REST phase error (device %s): %s", device.name, exc)
             if not ssh_routes_ok and not routes:
                 raise ValueError(f"SonicWall: SSH e REST falharam — {exc}") from exc
 
