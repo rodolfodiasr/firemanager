@@ -16,8 +16,11 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("""
-        CREATE TYPE firewall_migration_status AS ENUM
-        ('pending','analyzing','ready','applying','completed','failed')
+        DO $$ BEGIN
+            CREATE TYPE firewall_migration_status AS ENUM
+            ('pending','analyzing','ready','applying','completed','failed');
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
     """)
     op.create_table(
         "firewall_migrations",
