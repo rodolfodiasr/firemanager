@@ -407,7 +407,7 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
         )
         if ssh_result.success and ssh_result.output:
             output = ssh_result.output
-            log.info("SonicWall SSH raw output (first 800): %r", output[:800])
+            log.warning("SonicWall SSH raw output (first 800): %r", output[:800])
             # After splitting on command echoes, sections are:
             # [0] = preamble/banner (before first command echo)
             # [1] = route output (after "show route" echo)
@@ -418,7 +418,7 @@ async def _fetch_sonicwall_routes(device) -> tuple[list[dict], list[dict], list[
             ospf_out  = sections[2] if len(sections) > 2 else ""
             sdwan_out = sections[3] if len(sections) > 3 else ""
 
-            log.info("SonicWall SSH route_out (first 500): %r", route_out[:500])
+            log.warning("SonicWall SSH sections count=%d route_out (first 500): %r", len(sections), route_out[:500])
             parsed = _parse_sonicwall_routes(route_out)
             if parsed:
                 routes = parsed
