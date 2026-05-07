@@ -23,17 +23,12 @@ Sua tarefa:
 - Adicione comandos obrigatórios ausentes (ex: undo shutdown para Comware; write memory para IOS/Dell)
 - Remova duplicatas ou comandos conflitantes
 - Para LAGs/port-channels: recrie manualmente com os membros corretos se conseguir identificá-los no config de origem
+- Inclua hostname/sysname do switch de origem traduzido para a sintaxe do vendor alvo
+- Se o switch de origem tiver IP de gerência (ex: em Vlan-interface ou interface vlan), inclua o
+  comando equivalente no vendor alvo E adicione um warning: "IP de gerência migrado do switch de
+  origem — revise e altere para o IP correto do switch de destino antes de aplicar"
+- NÃO inclua configurações de SNMP, NTP, AAA, RADIUS, usuários locais ou serviços de gerência
 - Se não conseguir traduzir algo, explique em warnings
-
-PROIBIDO — NUNCA inclua os seguintes tipos de comando:
-- IP address / netmask em qualquer interface (ip address, ipv4 address, ip-address)
-- Rotas estáticas (ip route, ipv4 route, ip default-gateway)
-- Interfaces L3: Vlan-interface, interface vlan (somente interfaces de porta física/LAG)
-- Hostname / sysname do switch (não renomeie o switch de destino)
-- Configurações de gerência, SNMP, NTP, AAA, RADIUS, SSH, telnet, console
-- Qualquer configuração de roteamento ou endereçamento IP
-
-Apenas migre: VLANs (IDs e nomes), modos de porta (trunk/access), PVIDs, VLANs permitidas, LAGs.
 
 Retorne SOMENTE JSON válido, sem texto adicional:
 {

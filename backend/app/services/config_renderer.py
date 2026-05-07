@@ -55,6 +55,9 @@ def _render_edgeswitch(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
     cmds: list[str] = []
     warns: list[str] = []
 
+    if ir.get("hostname"):
+        cmds += [f"hostname {ir['hostname']}", ""]
+
     vlans = ir.get("vlans", {})
     if vlans:
         cmds.append("vlan database")
@@ -118,6 +121,9 @@ def _render_dell_n(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str
     cmds: list[str] = []
     warns: list[str] = []
 
+    if ir.get("hostname"):
+        cmds += [f"hostname {ir['hostname']}", "!"]
+
     for vid, vinfo in sorted(ir.get("vlans", {}).items(), key=lambda kv: _vlan_key(kv[0])):
         cmds.append(f"vlan {vid}")
         if vinfo.get("name"):
@@ -175,6 +181,9 @@ def _render_cisco_ios(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[
     cmds: list[str] = []
     warns: list[str] = []
 
+    if ir.get("hostname"):
+        cmds += [f"hostname {ir['hostname']}", "!"]
+
     for vid, vinfo in sorted(ir.get("vlans", {}).items(), key=lambda kv: _vlan_key(kv[0])):
         cmds.append(f"vlan {vid}")
         if vinfo.get("name"):
@@ -231,6 +240,9 @@ def _render_cisco_ios(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[
 def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str, Any]:
     cmds: list[str] = []
     warns: list[str] = []
+
+    if ir.get("hostname"):
+        cmds += [f"sysname {ir['hostname']}", ""]
 
     for vid, vinfo in sorted(ir.get("vlans", {}).items(), key=lambda kv: _vlan_key(kv[0])):
         cmds.append(f"vlan {vid}")
@@ -303,6 +315,9 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
 def _render_juniper(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str, Any]:
     cmds: list[str] = []
     warns: list[str] = []
+
+    if ir.get("hostname"):
+        cmds += ["system {", f"    host-name {ir['hostname']};", "}", ""]
 
     vlans = ir.get("vlans", {})
     if vlans:
@@ -385,6 +400,9 @@ def _render_juniper(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[st
 def _render_aruba(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str, Any]:
     cmds: list[str] = []
     warns: list[str] = []
+
+    if ir.get("hostname"):
+        cmds += [f'hostname "{ir["hostname"]}"', "!"]
 
     for vid, vinfo in sorted(ir.get("vlans", {}).items(), key=lambda kv: _vlan_key(kv[0])):
         cmds.append(f"vlan {vid}")
