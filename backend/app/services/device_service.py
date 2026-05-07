@@ -4,9 +4,10 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.connectors.base import ConnectionResult
 from app.connectors.factory import CLI_VENDORS, get_connector, get_ssh_connector
 from app.models.audit_log import AuditLog
-from app.models.device import Device, DeviceStatus
+from app.models.device import Device, DeviceStatus, VendorEnum
 from app.models.document import Document
 from app.models.operation import Operation
 from app.models.snapshot import Snapshot
@@ -136,6 +137,16 @@ async def health_check_device(
         else:
             connector = get_connector(device)
         result = await connector.test_connection()
+
+        # SonicWall REST 403 → REST API disabled on device; fall back to SSH health check
+        if not result.success and device.vendor == VendorEnum.sonicwall and (
+            "403" in (result.error or "") or "auth failed" in (result.error or "").lower()
+        ):
+            ssh = get_ssh_connector(device)
+            ssh_result = await ssh.execute_show_commands(["show version"])
+            if ssh_result.success:
+                result = ConnectionResult(success=True)
+
         if result.success:
             device.status = DeviceStatus.online
             device.last_error = None
