@@ -20,6 +20,7 @@ import {
   BarChart3,
   MessageSquare,
   ShieldBan,
+  BookMarked,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -51,6 +52,7 @@ const navSections: NavSection[] = [
       { to: "/devices",     icon: Server,          label: "Dispositivos" },
       { to: "/migrations",           icon: ArrowRightLeft, label: "Migração Switches"   },
       { to: "/firewall-migrations",  icon: ShieldBan,      label: "Migração Firewall"   },
+      { to: "/golden-templates",     icon: BookMarked,     label: "Golden Config"        },
     ],
   },
   {

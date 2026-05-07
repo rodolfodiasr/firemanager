@@ -20,6 +20,7 @@ import { Governance } from "./pages/Governance";
 import { GlpiAnalyses } from "./pages/GlpiAnalyses";
 import { Migrations } from "./pages/Migrations";
 import { FirewallMigrations } from "./pages/FirewallMigrations";
+import { GoldenTemplates } from "./pages/GoldenTemplates";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -70,6 +71,7 @@ export function AppRouter() {
       <Route path="/glpi"       element={<ProtectedLayout><GlpiAnalyses /></ProtectedLayout>} />
       <Route path="/migrations"          element={<ProtectedLayout><Migrations /></ProtectedLayout>} />
       <Route path="/firewall-migrations" element={<ProtectedLayout><FirewallMigrations /></ProtectedLayout>} />
+      <Route path="/golden-templates"    element={<ProtectedLayout><GoldenTemplates /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
