@@ -1,5 +1,6 @@
 from app.models.analysis_session import AnalysisSession
 from app.models.config_migration import ConfigMigration, MigrationStatus
+from app.models.firewall_migration import FirewallMigration, FirewallMigrationStatus
 from app.models.audit_log import AuditLog
 from app.models.glpi_integration import GlpiIntegration
 from app.models.glpi_ticket_analysis import GlpiTicketAnalysis, GlpiAnalysisStatus
@@ -29,6 +30,8 @@ __all__ = [
     "AnalysisSession",
     "ConfigMigration",
     "MigrationStatus",
+    "FirewallMigration",
+    "FirewallMigrationStatus",
     "GlpiIntegration",
     "GlpiTicketAnalysis",
     "GlpiAnalysisStatus",

@@ -8,6 +8,7 @@ export type VendorEnum =
   | "opnsense"
   | "mikrotik"
   | "endian"
+  | "sophos"
   // Routers / Switches
   | "cisco_ios"
   | "cisco_nxos"

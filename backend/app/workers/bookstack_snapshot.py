@@ -1,5 +1,6 @@
 """Celery task: periodic BookStack snapshot for all devices."""
 import asyncio
+import json
 from datetime import datetime, timezone
 
 import structlog
@@ -25,7 +26,9 @@ async def _async_run_snapshots() -> dict[str, int]:
     from app.utils.crypto import decrypt_credentials
 
     results = {"processed": 0, "updated": 0, "skipped": 0, "errors": 0}
-    current_hour = datetime.now(timezone.utc).hour
+    now_utc = datetime.now(timezone.utc)
+    current_hour = now_utc.hour
+    current_weekday = now_utc.weekday()  # 0=Monday … 6=Sunday
 
     async with AsyncSessionLocal() as db:
         bs_result = await db.execute(
@@ -43,18 +46,38 @@ async def _async_run_snapshots() -> dict[str, int]:
         eligible_tenant_ids: set = set()
         for intg in integrations:
             config = decrypt_credentials(intg.encrypted_config)
+
             snapshot_enabled = config.get("snapshot_enabled", True)
-            # snapshot_enabled may be stored as bool or string "true"/"false"
             if isinstance(snapshot_enabled, str):
                 snapshot_enabled = snapshot_enabled.lower() not in ("false", "0", "")
             if not snapshot_enabled:
                 log.debug("bookstack_snapshot_disabled", tenant_id=str(intg.tenant_id))
                 results["skipped"] += 1
                 continue
+
             snapshot_hour = int(config.get("snapshot_hour", 2))
             if current_hour != snapshot_hour:
                 results["skipped"] += 1
                 continue
+
+            # Weekly frequency check — default is "daily"
+            snapshot_frequency = config.get("snapshot_frequency", "daily")
+            if snapshot_frequency == "weekly":
+                raw_days = config.get("snapshot_weekday", 1)  # default Tuesday
+                if isinstance(raw_days, str):
+                    try:
+                        raw_days = json.loads(raw_days)
+                    except (ValueError, TypeError):
+                        try:
+                            raw_days = int(raw_days)
+                        except (ValueError, TypeError):
+                            raw_days = 1
+                # Accept both int (single day) and list
+                allowed_days = [raw_days] if isinstance(raw_days, int) else [int(d) for d in raw_days]
+                if current_weekday not in allowed_days:
+                    results["skipped"] += 1
+                    continue
+
             if intg.tenant_id:
                 eligible_tenant_ids.add(intg.tenant_id)
 

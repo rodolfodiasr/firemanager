@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TenantContext, get_tenant_context, require_tenant_admin
+from app.models.user_tenant_role import TenantRole
 from app.database import get_db
 from app.schemas.device import BookstackPageInfo, DeviceBookstackLink, DeviceCreate, DeviceRead, DeviceUpdate, DocDraftResult
 from app.services.device_service import (
@@ -27,7 +28,11 @@ async def get_devices(
     ctx:   Annotated[TenantContext, Depends(get_tenant_context)] = None,
     db:    Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> list[DeviceRead]:
-    devices, _ = await list_devices(db, tenant_id=ctx.tenant.id, skip=skip, limit=limit)
+    is_admin = ctx.role == TenantRole.admin or ctx.user.is_super_admin
+    devices, _ = await list_devices(
+        db, tenant_id=ctx.tenant.id, skip=skip, limit=limit,
+        user_id=ctx.user.id, user_is_admin=is_admin,
+    )
     return [DeviceRead.model_validate(d) for d in devices]
 
 

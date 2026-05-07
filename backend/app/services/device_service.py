@@ -54,9 +54,30 @@ async def get_device(db: AsyncSession, device_id: UUID, tenant_id: UUID | None =
 
 
 async def list_devices(
-    db: AsyncSession, tenant_id: UUID, skip: int = 0, limit: int = 100
+    db: AsyncSession,
+    tenant_id: UUID,
+    skip: int = 0,
+    limit: int = 100,
+    user_id: UUID | None = None,
+    user_is_admin: bool = False,
 ) -> tuple[list[Device], int]:
-    result = await db.execute(select(Device).where(Device.tenant_id == tenant_id))
+    from app.models.user_device_category_role import UserDeviceCategoryRole
+
+    query = select(Device).where(Device.tenant_id == tenant_id)
+
+    # If user has category-specific restrictions (and is not an admin), apply them
+    if user_id is not None and not user_is_admin:
+        cat_result = await db.execute(
+            select(UserDeviceCategoryRole.category).where(
+                UserDeviceCategoryRole.user_id == user_id,
+                UserDeviceCategoryRole.tenant_id == tenant_id,
+            )
+        )
+        categories = list(cat_result.scalars().all())
+        if categories:
+            query = query.where(Device.category.in_(categories))
+
+    result = await db.execute(query)
     all_devices = list(result.scalars().all())
     total = len(all_devices)
     return all_devices[skip : skip + limit], total

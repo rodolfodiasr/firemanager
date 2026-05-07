@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.config_migration import ConfigMigration, MigrationStatus
 from app.models.device import Device
 from app.schemas.migration import (
+    CommandsUpdate,
     MigrationCreate,
     MigrationListItem,
     MigrationRead,
@@ -109,6 +110,26 @@ async def update_port_mapping(
     row.warnings = existing + rendered["warnings"]
     row.status = MigrationStatus.ready
 
+    await db.commit()
+    await db.refresh(row)
+    return MigrationRead.model_validate(row)
+
+
+@router.patch("/{migration_id}/commands", response_model=MigrationRead)
+async def update_commands(
+    migration_id: UUID,
+    data: CommandsUpdate,
+    ctx: Annotated[TenantContext, Depends(require_reviewer)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> MigrationRead:
+    row = await db.get(ConfigMigration, migration_id)
+    if not row or row.tenant_id != ctx.tenant.id:
+        raise HTTPException(404, "Migração não encontrada")
+    if row.status not in (MigrationStatus.ready, MigrationStatus.failed):
+        raise HTTPException(400, "Comandos só podem ser editados quando status é 'ready' ou 'failed'")
+
+    row.commands_preview = data.commands_preview
+    row.status = MigrationStatus.ready
     await db.commit()
     await db.refresh(row)
     return MigrationRead.model_validate(row)

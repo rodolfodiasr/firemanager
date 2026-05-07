@@ -14,6 +14,9 @@ export const migrationApi = {
   updatePortMapping: (id: string, data: PortMappingUpdate) =>
     apiClient.patch<Migration>(`/config-migrations/${id}/port-mapping`, data).then((r) => r.data),
 
+  updateCommands: (id: string, commands_preview: string) =>
+    apiClient.patch<Migration>(`/config-migrations/${id}/commands`, { commands_preview }).then((r) => r.data),
+
   apply: (id: string) =>
     apiClient.post<{ queued: boolean; migration_id: string }>(`/config-migrations/${id}/apply`, {}).then((r) => r.data),
 

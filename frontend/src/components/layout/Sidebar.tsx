@@ -19,6 +19,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   MessageSquare,
+  ShieldBan,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -48,7 +49,8 @@ const navSections: NavSection[] = [
       { to: "/direct-mode", icon: Terminal,        label: "Modo Técnico" },
       { to: "/inspector",   icon: Radar,           label: "Inspetor"     },
       { to: "/devices",     icon: Server,          label: "Dispositivos" },
-      { to: "/migrations",  icon: ArrowRightLeft,  label: "Migração"     },
+      { to: "/migrations",           icon: ArrowRightLeft, label: "Migração Switches"   },
+      { to: "/firewall-migrations",  icon: ShieldBan,      label: "Migração Firewall"   },
     ],
   },
   {

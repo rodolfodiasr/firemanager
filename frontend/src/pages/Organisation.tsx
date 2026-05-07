@@ -937,8 +937,20 @@ const INTEGRATION_META: Record<IntegrationType, {
       { key: "token_secret",     label: "Token Secret",             type: "password", placeholder: "Secret do token de API" },
       { key: "book_id",          label: "ID do Livro (book_id)",    placeholder: "1" },
       { key: "chapter_id",       label: "ID do Chapter (opcional)", placeholder: "Deixe vazio para indexar o livro inteiro" },
-      { key: "snapshot_enabled", label: "Snapshot automático",      type: "checkbox" },
-      { key: "snapshot_hour",    label: "Horário do snapshot (UTC)", type: "select", defaultValue: "2",
+      { key: "snapshot_enabled",   label: "Snapshot automático",       type: "checkbox" },
+      { key: "snapshot_frequency", label: "Frequência do snapshot",    type: "select", defaultValue: "daily",
+        options: [{ value: "daily", label: "Diário" }, { value: "weekly", label: "Semanal" }] },
+      { key: "snapshot_weekday",   label: "Dia da semana (se semanal)", type: "select", defaultValue: "1",
+        options: [
+          { value: "0", label: "Segunda-feira" },
+          { value: "1", label: "Terça-feira" },
+          { value: "2", label: "Quarta-feira" },
+          { value: "3", label: "Quinta-feira" },
+          { value: "4", label: "Sexta-feira" },
+          { value: "5", label: "Sábado" },
+          { value: "6", label: "Domingo" },
+        ] },
+      { key: "snapshot_hour",      label: "Horário do snapshot (UTC)",  type: "select", defaultValue: "2",
         options: Array.from({ length: 24 }, (_, i) => ({ value: String(i), label: `${String(i).padStart(2, "0")}:00 UTC` })) },
     ],
   },
@@ -978,7 +990,8 @@ function IntegrationCard({ type, existing, tenantId, isSuperAdmin }: {
         else if (f.key === "port")     config[f.key] = parseInt(formData[f.key]) || 9390;
         else if (f.key === "book_id")  config[f.key] = parseInt(formData[f.key]) || 1;
         else if (f.key === "chapter_id") { const v = parseInt(formData[f.key]); if (v) config[f.key] = v; }
-        else if (f.key === "snapshot_hour") config[f.key] = parseInt(formData[f.key]) || 2;
+        else if (f.key === "snapshot_hour")    config[f.key] = parseInt(formData[f.key]) || 2;
+        else if (f.key === "snapshot_weekday") config[f.key] = parseInt(formData[f.key]) ?? 1;
         else config[f.key] = formData[f.key];
       });
       if (existing) return integrationsApi.update(existing.id, { config });
