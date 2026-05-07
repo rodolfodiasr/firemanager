@@ -112,22 +112,40 @@ class HPComwareConnector(BaseSSHConnector):
 
     # ── Overridden sync methods ───────────────────────────────────────────────
 
+    def _connect_params(self) -> dict:
+        params = super()._connect_params()
+        # Migration apply can take several minutes (many interface cmds + save force)
+        params["session_timeout"] = 300
+        params["timeout"] = 60
+        return params
+
     def _config_sync(self, commands: list[str]) -> SSHResult:
         # Redirect show-only batches to _show_sync (display/ping in config mode = error)
         if all(self._is_comware_show(c) for c in commands):
             return self._show_sync(commands)
 
+        # Strip commands that conflict with send_config_set's implicit system-view management:
+        #   "system-view"  — send_config_set already enters system-view; duplicate causes nesting
+        #   "return"       — exits all the way to user-view; if sent mid-batch the next exit_config
+        #                    call would send 'quit' in user-view → closes the SSH session
+        #   "save force" / "save" — handled explicitly after config set
+        _STRIP = {"system-view", "return", "save force", "save"}
+        cfg_cmds = [c for c in commands if c.strip().lower() not in _STRIP]
+
         try:
             with self._connect_handler() as conn:
                 self._enter_cmdline_mode(conn)
-                # exit_config_mode=False because AI commands include 'quit' at end of each block
-                raw = conn.send_config_set(commands, exit_config_mode=False, read_timeout=60)
+                # exit_config_mode=False — Claude commands include 'quit' after each block;
+                # we exit cleanly below with an explicit 'return'
+                raw = conn.send_config_set(cfg_cmds, exit_config_mode=False, read_timeout=60)
                 combined = self._clean(raw)
-                conn.exit_config_mode()  # sends 'quit' back to user-view
-                display_only = all(c.strip().lower().startswith("display ") for c in commands)
+                # Return to user-view in one step (avoids 'quit' closing the session)
+                conn.send_command_timing("return", last_read=2.0)
+                # Save explicitly — save force can take up to ~30s on older models
+                display_only = all(c.strip().lower().startswith("display ") for c in cfg_cmds)
                 if not display_only:
                     try:
-                        save_out = conn.save_config()
+                        save_out = conn.send_command_timing("save force", last_read=30.0)
                         combined += "\n" + self._clean(save_out)
                     except Exception:
                         pass
