@@ -6,12 +6,18 @@ Create Date: 2026-05-06
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID, ENUM as PgEnum
 
 revision = "0026"
 down_revision = "0025"
 branch_labels = None
 depends_on = None
+
+fw_status = PgEnum(
+    "pending", "analyzing", "ready", "applying", "completed", "failed",
+    name="firewall_migration_status",
+    create_type=False,
+)
 
 
 def upgrade() -> None:
@@ -30,14 +36,12 @@ def upgrade() -> None:
         sa.Column("target_device_id", UUID(as_uuid=True), sa.ForeignKey("devices.id",  ondelete="SET NULL"), nullable=True),
         sa.Column("source_vendor",    sa.String(50),  nullable=False),
         sa.Column("target_vendor",    sa.String(50),  nullable=False),
-        sa.Column("status",           sa.Enum("pending","analyzing","ready","applying","completed","failed",
-                                              name="firewall_migration_status", create_type=False),
-                  nullable=False, server_default="pending"),
-        sa.Column("source_rules_raw", sa.Text,   nullable=True),
-        sa.Column("migration_plan",   JSONB,      nullable=True),
-        sa.Column("commands_preview", sa.Text,   nullable=True),
-        sa.Column("warnings",         JSONB,      nullable=True),
-        sa.Column("error_message",    sa.Text,   nullable=True),
+        sa.Column("status",           fw_status,      nullable=False, server_default="pending"),
+        sa.Column("source_rules_raw", sa.Text,        nullable=True),
+        sa.Column("migration_plan",   JSONB,           nullable=True),
+        sa.Column("commands_preview", sa.Text,        nullable=True),
+        sa.Column("warnings",         JSONB,           nullable=True),
+        sa.Column("error_message",    sa.Text,        nullable=True),
         sa.Column("created_at",       sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at",       sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
     )
