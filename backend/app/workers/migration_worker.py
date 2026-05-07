@@ -103,18 +103,19 @@ async def _async_analyze(migration_id: str) -> dict:
             ir = parse_config(src_dev.vendor.value, source_config)
             row.migration_plan = ir
 
-            # Build identity port mapping as initial placeholder
-            placeholder: dict[str, str] = {
-                iface["name"]: iface["name"]
-                for iface in ir.get("interfaces", [])
-            }
-            row.port_mapping = placeholder
-
-            # Determine target vendor
+            # Determine target vendor (needed for smart port mapping)
             tgt_dev = await db.get(Device, row.target_device_id)
             target_vendor = tgt_dev.vendor.value if tgt_dev else row.target_vendor
 
-            # Render initial commands with identity mapping
+            # Build port mapping — smart conversion for known vendor pairs
+            placeholder: dict[str, str] = _build_port_mapping(
+                ir.get("interfaces", []),
+                src_dev.vendor.value,
+                target_vendor,
+            )
+            row.port_mapping = placeholder
+
+            # Render initial commands with port mapping
             rendered = render_config(ir, target_vendor, placeholder)
             cmds = rendered["commands"]
             warns = list(ir.get("warnings", [])) + rendered["warnings"]
@@ -195,6 +196,59 @@ async def _async_apply(migration_id: str) -> dict:
             row.error_message = str(exc)
             await db.commit()
             return {"error": str(exc)}
+
+
+def _build_port_mapping(
+    interfaces: list[dict],
+    source_vendor: str,
+    target_vendor: str,
+) -> dict[str, str]:
+    """Convert source port names to target vendor format where possible.
+
+    EdgeSwitch uses 0/X and lag X.
+    HP Comware uses GigabitEthernetX/Y/Z and Bridge-AggregationN.
+    Cisco IOS uses GigabitEthernetX/X and Port-channelN.
+    """
+    mapping: dict[str, str] = {}
+    for iface in interfaces:
+        src = iface["name"]
+        tgt = _convert_port_name(src, source_vendor, target_vendor)
+        mapping[src] = tgt
+    return mapping
+
+
+def _convert_port_name(src: str, source_vendor: str, target_vendor: str) -> str:
+    """Best-effort port name conversion between vendors."""
+    s = src.strip().lower()
+
+    # EdgeSwitch → HP Comware
+    if source_vendor == "edgeswitch" and target_vendor == "hp_comware":
+        m = re.match(r"^0/(\d+)$", s)
+        if m:
+            return f"GigabitEthernet1/0/{m.group(1)}"
+        m = re.match(r"^lag\s*(\d+)$", s)
+        if m:
+            return f"Bridge-Aggregation{m.group(1)}"
+
+    # EdgeSwitch → Cisco IOS / Dell N
+    if source_vendor == "edgeswitch" and target_vendor in ("cisco_ios", "dell_n"):
+        m = re.match(r"^0/(\d+)$", s)
+        if m:
+            return f"GigabitEthernet0/0/{m.group(1)}"
+        m = re.match(r"^lag\s*(\d+)$", s)
+        if m:
+            return f"Port-channel{m.group(1)}"
+
+    # Dell N → HP Comware
+    if source_vendor == "dell_n" and target_vendor == "hp_comware":
+        m = re.match(r"^te(\d+)/(\d+)/(\d+)$", s)
+        if m:
+            return f"GigabitEthernet{m.group(1)}/0/{m.group(3)}"
+        m = re.match(r"^po(\d+)$", s)
+        if m:
+            return f"Bridge-Aggregation{m.group(1)}"
+
+    return src  # fallback: keep source name
 
 
 async def _claude_review(
