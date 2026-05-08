@@ -21,7 +21,7 @@ import {
 import toast from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { databaseApi, type ConnectorPayload } from "../api/database";
-import type { AuditReport, AuditSummary, DatabaseConnector, DbFinding } from "../types/database";
+import type { AuditReport, AuditSummary, DatabaseConnector, DbFinding, DbType } from "../types/database";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -88,7 +88,7 @@ function ConnectorModal({ initial, onClose, onSaved }: ConnectorModalProps) {
   const [password, setPassword] = useState("");
   const [ssl, setSsl]           = useState(false);
 
-  function handleTypeChange(t: string) {
+  function handleTypeChange(t: DbType) {
     setDbType(t);
     const def = DB_TYPES.find((d) => d.value === t);
     if (def && !initial) setPort(def.port);
@@ -132,7 +132,7 @@ function ConnectorModal({ initial, onClose, onSaved }: ConnectorModalProps) {
             </div>
             <div>
               <label className={labelCls}>Tipo *</label>
-              <select required value={dbType} onChange={(e) => handleTypeChange(e.target.value)} className={inputCls + " bg-white"}>
+              <select required value={dbType} onChange={(e) => handleTypeChange(e.target.value as DbType)} className={inputCls + " bg-white"}>
                 {DB_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
