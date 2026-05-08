@@ -5,6 +5,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -156,18 +157,19 @@ async def get_document(
 
 # ── Delete ────────────────────────────────────────────────────────────────────
 
-@router.delete("/{document_id}", status_code=204)
+@router.delete("/{document_id}")
 async def delete_document(
     document_id: UUID,
     ctx: Annotated[TenantContext, Depends(require_reviewer)],
     db:  Annotated[AsyncSession, Depends(get_db)],
-) -> None:
+) -> Response:
     from app.models.knowledge_document import KnowledgeDocument
     doc = await db.get(KnowledgeDocument, document_id)
     if not doc or doc.tenant_id != ctx.tenant.id:
         raise HTTPException(404, "Documento não encontrado")
     await db.delete(doc)
     await db.commit()
+    return Response(status_code=204)
 
 
 # ── Reindex ───────────────────────────────────────────────────────────────────
