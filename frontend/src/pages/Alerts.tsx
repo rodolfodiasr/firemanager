@@ -203,13 +203,13 @@ function RuleModal({ rule, channels, onClose }: { rule: AlertRule | null; channe
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Gatilho</label>
-              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={trigger} onChange={e => setTrigger(e.target.value)}>
+              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={trigger} onChange={e => setTrigger(e.target.value as typeof trigger)}>
                 {Object.entries(TRIGGER_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Severidade</label>
-              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={severity} onChange={e => setSeverity(e.target.value)}>
+              <select className="w-full border rounded-lg px-3 py-2 text-sm" value={severity} onChange={e => setSeverity(e.target.value as typeof severity)}>
                 <option value="info">Info</option>
                 <option value="warning">Warning</option>
                 <option value="critical">Critical</option>

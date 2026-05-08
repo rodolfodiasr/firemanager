@@ -515,7 +515,7 @@ export function Onboarding() {
                 </div>
                 {a.tasks.length > 0 && (
                   <div className="mt-3 space-y-1">
-                    {a.tasks.map((t: { id: string; status: string; system_name: string; result?: string; error?: string }) => (
+                    {a.tasks.map((t) => (
                       <div key={t.id} className="flex items-center gap-2 text-xs text-gray-600">
                         {t.status === "success" ? <CheckCircle size={12} className="text-green-500" /> :
                          t.status === "failed" ? <XCircle size={12} className="text-red-500" /> :

@@ -46,7 +46,7 @@ export interface LifecycleTask {
 
 export interface LifecycleAction {
   id: string;
-  action_type: "offboard";
+  action_type: "offboard" | "onboard";
   target_username: string;
   display_name: string | null;
   email: string | null;
