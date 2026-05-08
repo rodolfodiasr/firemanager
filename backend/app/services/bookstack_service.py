@@ -49,7 +49,7 @@ async def fetch_bookstack_context(
         except Exception:
             pass
 
-    # 2. Semantic search — knowledge base (policies, ISO flows, procedures, etc.)
+    # 2. Semantic search — BookStack knowledge base
     if query and device.tenant_id:
         from app.services.embedding_service import semantic_search
         semantic_ctx = await semantic_search(
@@ -59,6 +59,18 @@ async def fetch_bookstack_context(
             parts.append(
                 "## Base de conhecimento (busca semântica BookStack)\n\n" + semantic_ctx
             )
+
+    # 3. Semantic search — custom uploaded documents (Fase 19)
+    if query and device.tenant_id:
+        try:
+            from app.services.knowledge_service import semantic_search_documents
+            doc_ctx = await semantic_search_documents(db, device.tenant_id, query, top_k=3)
+            if doc_ctx:
+                parts.append(
+                    "## Documentos da base de conhecimento IA\n\n" + doc_ctx
+                )
+        except Exception:
+            pass
 
     return "\n\n---\n\n".join(parts)
 

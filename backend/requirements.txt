@@ -28,3 +28,4 @@ pywinrm==0.4.3
 openai>=1.0.0
 pgvector>=0.3.0
 openpyxl==3.1.5
+pypdf>=4.0.0

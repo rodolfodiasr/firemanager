@@ -22,6 +22,7 @@ import {
   ShieldBan,
   BookMarked,
   Network,
+  Database,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -55,6 +56,7 @@ const navSections: NavSection[] = [
       { to: "/firewall-migrations",  icon: ShieldBan,      label: "Migração Firewall"   },
       { to: "/golden-templates",     icon: BookMarked,     label: "Golden Config"        },
       { to: "/connectivity",         icon: Network,        label: "Conectividade"        },
+      { to: "/knowledge",            icon: Database,       label: "Base de Conhecimento" },
     ],
   },
   {
