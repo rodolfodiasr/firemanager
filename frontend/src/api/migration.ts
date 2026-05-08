@@ -1,5 +1,12 @@
 import apiClient from "./client";
-import type { Migration, MigrationCreate, MigrationListItem, PortMappingUpdate } from "../types/migration";
+import type {
+  InterfaceAdd,
+  Migration,
+  MigrationCreate,
+  MigrationListItem,
+  PortMappingUpdate,
+  RegenerateRequest,
+} from "../types/migration";
 
 export const migrationApi = {
   list: () =>
@@ -16,6 +23,15 @@ export const migrationApi = {
 
   updateCommands: (id: string, commands_preview: string) =>
     apiClient.patch<Migration>(`/config-migrations/${id}/commands`, { commands_preview }).then((r) => r.data),
+
+  regenerate: (id: string, data?: RegenerateRequest) =>
+    apiClient.post<{ queued: boolean; migration_id: string }>(
+      `/config-migrations/${id}/regenerate`,
+      data ?? {},
+    ).then((r) => r.data),
+
+  addInterface: (id: string, data: InterfaceAdd) =>
+    apiClient.post<Migration>(`/config-migrations/${id}/add-interface`, data).then((r) => r.data),
 
   apply: (id: string) =>
     apiClient.post<{ queued: boolean; migration_id: string }>(`/config-migrations/${id}/apply`, {}).then((r) => r.data),

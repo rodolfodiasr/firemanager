@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Enum, ForeignKey, String, Text, TIMESTAMP
+from sqlalchemy import Enum, ForeignKey, Integer, String, Text, TIMESTAMP
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -54,6 +54,8 @@ class ConfigMigration(Base):
     # List of warnings from parser / renderer / claude
     warnings: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 1 = deterministic only, 2 = hybrid (renderer + Claude review), 3 = full LLM
+    ai_level: Mapped[int] = mapped_column(Integer, nullable=False, server_default="2")
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

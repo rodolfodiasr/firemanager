@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class MigrationCreate(BaseModel):
     source_device_id: str
     target_device_id: str
+    ai_level: int = 2
 
 
 class PortMappingUpdate(BaseModel):
@@ -15,6 +16,20 @@ class PortMappingUpdate(BaseModel):
 
 class CommandsUpdate(BaseModel):
     commands_preview: str
+
+
+class RegenerateRequest(BaseModel):
+    port_mapping: dict[str, str] | None = None
+
+
+class InterfaceAdd(BaseModel):
+    name: str
+    target_name: str
+    mode: str = "access"
+    pvid: str | None = None
+    tagged_vlans: list[str] = []
+    description: str | None = None
+    port_type: str = "ethernet"
 
 
 class MigrationRead(BaseModel):
@@ -32,6 +47,7 @@ class MigrationRead(BaseModel):
     commands_preview: str | None
     warnings: list | None
     error_message: str | None
+    ai_level: int
     created_at: datetime
     updated_at: datetime
 
@@ -45,6 +61,7 @@ class MigrationListItem(BaseModel):
     source_vendor: str
     target_vendor: str
     status: str
+    ai_level: int
     created_at: datetime
     updated_at: datetime
 

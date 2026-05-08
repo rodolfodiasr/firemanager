@@ -77,8 +77,10 @@ def _render_edgeswitch(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
 
         src = iface["name"]
         tgt = port_mapping.get(src)
-        if not tgt:
+        if tgt is None:
             warns.append(f"Porta '{src}' sem mapeamento — ignorada")
+            continue
+        if not tgt:  # empty string = explicitly excluded
             continue
 
         # LAG: render member ports first, then the LAG interface itself
@@ -86,8 +88,10 @@ def _render_edgeswitch(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
             lag_n = _lag_num(tgt)
             for member_src in iface["members"]:
                 member_tgt = port_mapping.get(member_src)
-                if not member_tgt:
+                if member_tgt is None:
                     warns.append(f"Membro '{member_src}' do LAG '{src}' sem mapeamento — ignorado")
+                    continue
+                if not member_tgt:
                     continue
                 cmds += [f"interface {member_tgt}", f" lag {lag_n}", "exit", ""]
 
@@ -147,8 +151,10 @@ def _render_dell_n(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str
 
         src = iface["name"]
         tgt = port_mapping.get(src)
-        if not tgt:
+        if tgt is None:
             warns.append(f"Porta '{src}' sem mapeamento — ignorada")
+            continue
+        if not tgt:
             continue
 
         # LAG: render member ports (channel-group) before the port-channel interface
@@ -157,8 +163,10 @@ def _render_dell_n(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str
             lag_mode = iface.get("lag_mode", "active")
             for member_src in iface["members"]:
                 member_tgt = port_mapping.get(member_src)
-                if not member_tgt:
+                if member_tgt is None:
                     warns.append(f"Membro '{member_src}' do LAG '{src}' sem mapeamento — ignorado")
+                    continue
+                if not member_tgt:
                     continue
                 cmds += [f"interface {member_tgt}", f" channel-group {lag_n} mode {lag_mode}", "exit", "!"]
 
@@ -207,8 +215,10 @@ def _render_cisco_ios(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[
 
         src = iface["name"]
         tgt = port_mapping.get(src)
-        if not tgt:
+        if tgt is None:
             warns.append(f"Porta '{src}' sem mapeamento — ignorada")
+            continue
+        if not tgt:
             continue
 
         # LAG: render member ports (channel-group) before the Port-Channel interface
@@ -217,8 +227,10 @@ def _render_cisco_ios(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[
             lag_mode = iface.get("lag_mode", "active")
             for member_src in iface["members"]:
                 member_tgt = port_mapping.get(member_src)
-                if not member_tgt:
+                if member_tgt is None:
                     warns.append(f"Membro '{member_src}' do LAG '{src}' sem mapeamento — ignorado")
+                    continue
+                if not member_tgt:
                     continue
                 cmds += [f"interface {member_tgt}", f" channel-group {lag_n} mode {lag_mode}", "!", ""]
 
@@ -275,8 +287,10 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
 
         src = iface["name"]
         tgt = port_mapping.get(src)
-        if not tgt:
+        if tgt is None:
             warns.append(f"Porta '{src}' sem mapeamento — ignorada")
+            continue
+        if not tgt:
             continue
 
         # LAG: render member ports (port link-aggregation group) before Bridge-Aggregation
@@ -284,8 +298,10 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
             lag_n = _lag_num(tgt)
             for member_src in iface["members"]:
                 member_tgt = port_mapping.get(member_src)
-                if not member_tgt:
+                if member_tgt is None:
                     warns.append(f"Membro '{member_src}' do LAG '{src}' sem mapeamento — ignorado")
+                    continue
+                if not member_tgt:
                     continue
                 cmds += [f"interface {member_tgt}", f" port link-aggregation group {lag_n}", "quit", ""]
 
@@ -364,8 +380,10 @@ def _render_juniper(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[st
 
         src = iface["name"]
         tgt = port_mapping.get(src)
-        if not tgt:
+        if tgt is None:
             warns.append(f"Porta '{src}' sem mapeamento — ignorada")
+            continue
+        if not tgt:
             continue
 
         # LAG: render member ether-options blocks before the aggregated interface
@@ -373,8 +391,10 @@ def _render_juniper(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[st
             lag_mode = iface.get("lag_mode", "active")
             for member_src in iface["members"]:
                 member_tgt = port_mapping.get(member_src)
-                if not member_tgt:
+                if member_tgt is None:
                     warns.append(f"Membro '{member_src}' do LAG '{src}' sem mapeamento — ignorado")
+                    continue
+                if not member_tgt:
                     continue
                 cmds += [
                     f"    {member_tgt} {{",
@@ -440,16 +460,18 @@ def _render_aruba(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str,
             continue
         src = iface["name"]
         tgt = port_mapping.get(src)
-        if not tgt:
+        if tgt is None:
             warns.append(f"LAG '{src}' sem mapeamento — ignorado")
+            continue
+        if not tgt:
             continue
         member_tgts = []
         for ms in iface["members"]:
             mt = port_mapping.get(ms)
-            if mt:
-                member_tgts.append(mt)
-            else:
+            if mt is None:
                 warns.append(f"Membro '{ms}' do LAG '{src}' sem mapeamento — ignorado")
+            elif mt:
+                member_tgts.append(mt)
         if member_tgts:
             mode_kw = " lacp" if iface.get("lag_mode") in ("active", "passive") else ""
             cmds += [f"trunk {','.join(member_tgts)} {tgt}{mode_kw}", ""]
@@ -464,8 +486,10 @@ def _render_aruba(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str,
 
         src = iface["name"]
         tgt = port_mapping.get(src)
-        if not tgt:
+        if tgt is None:
             warns.append(f"Porta '{src}' sem mapeamento — ignorada")
+            continue
+        if not tgt:
             continue
 
         mode = iface.get("mode", "access")

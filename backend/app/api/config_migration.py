@@ -12,10 +12,12 @@ from app.models.config_migration import ConfigMigration, MigrationStatus
 from app.models.device import Device
 from app.schemas.migration import (
     CommandsUpdate,
+    InterfaceAdd,
     MigrationCreate,
     MigrationListItem,
     MigrationRead,
     PortMappingUpdate,
+    RegenerateRequest,
 )
 
 router = APIRouter()
@@ -37,6 +39,8 @@ async def create_migration(
     if src.id == tgt.id:
         raise HTTPException(400, "Dispositivo de origem e destino não podem ser iguais")
 
+    ai_level = max(1, min(3, data.ai_level))  # clamp to valid range
+
     migration = ConfigMigration(
         tenant_id=ctx.tenant.id,
         source_device_id=src.id,
@@ -44,6 +48,7 @@ async def create_migration(
         source_vendor=src.vendor.value,
         target_vendor=tgt.vendor.value,
         status=MigrationStatus.analyzing,
+        ai_level=ai_level,
     )
     db.add(migration)
     await db.flush()
@@ -130,6 +135,89 @@ async def update_commands(
 
     row.commands_preview = data.commands_preview
     row.status = MigrationStatus.ready
+    await db.commit()
+    await db.refresh(row)
+    return MigrationRead.model_validate(row)
+
+
+@router.post("/{migration_id}/regenerate", status_code=202)
+async def regenerate_migration(
+    migration_id: UUID,
+    data: RegenerateRequest,
+    ctx: Annotated[TenantContext, Depends(require_reviewer)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Re-render preview from stored IR (+ optional port_mapping override) respecting ai_level."""
+    row = await db.get(ConfigMigration, migration_id)
+    if not row or row.tenant_id != ctx.tenant.id:
+        raise HTTPException(404, "Migração não encontrada")
+    if row.status not in (MigrationStatus.ready, MigrationStatus.failed):
+        raise HTTPException(400, "Regeneração disponível apenas em status 'ready' ou 'failed'")
+
+    # Update port_mapping before dispatching if provided
+    if data.port_mapping is not None:
+        row.port_mapping = data.port_mapping
+
+    row.status = MigrationStatus.analyzing
+    row.error_message = None
+    await db.commit()
+
+    from app.workers.migration_worker import regenerate_config_migration
+    regenerate_config_migration.delay(str(migration_id))
+
+    return {"queued": True, "migration_id": str(migration_id)}
+
+
+@router.post("/{migration_id}/add-interface", response_model=MigrationRead)
+async def add_interface(
+    migration_id: UUID,
+    data: InterfaceAdd,
+    ctx: Annotated[TenantContext, Depends(require_reviewer)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> MigrationRead:
+    """Add a manual interface entry to migration_plan + port_mapping, then re-render."""
+    from sqlalchemy.orm.attributes import flag_modified
+    from app.services.config_renderer import render_config
+
+    row = await db.get(ConfigMigration, migration_id)
+    if not row or row.tenant_id != ctx.tenant.id:
+        raise HTTPException(404, "Migração não encontrada")
+    if row.status not in (MigrationStatus.ready, MigrationStatus.failed):
+        raise HTTPException(400, "Interfaces só podem ser adicionadas quando status é 'ready' ou 'failed'")
+
+    # Update migration_plan
+    plan = dict(row.migration_plan or {})
+    ifaces: list = list(plan.get("interfaces", []))
+
+    # Replace existing entry with same name if present
+    ifaces = [i for i in ifaces if i.get("name") != data.name]
+    ifaces.append({
+        "name": data.name,
+        "mode": data.mode,
+        "pvid": data.pvid,
+        "tagged_vlans": data.tagged_vlans,
+        "description": data.description,
+        "port_type": data.port_type,
+        "lag_member_of": None,
+        "members": [],
+    })
+    plan["interfaces"] = ifaces
+    row.migration_plan = plan
+    flag_modified(row, "migration_plan")
+
+    # Update port_mapping
+    pm = dict(row.port_mapping or {})
+    pm[data.name] = data.target_name
+    row.port_mapping = pm
+    flag_modified(row, "port_mapping")
+
+    # Synchronous re-render (Level 1 only — no Claude for manual add)
+    rendered = render_config(plan, row.target_vendor, pm)
+    row.commands_preview = "\n".join(rendered["commands"])
+    existing_warns = [w for w in (row.warnings or []) if "sem mapeamento" not in w]
+    row.warnings = existing_warns + rendered["warnings"]
+    row.status = MigrationStatus.ready
+
     await db.commit()
     await db.refresh(row)
     return MigrationRead.model_validate(row)

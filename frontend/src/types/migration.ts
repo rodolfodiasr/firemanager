@@ -13,6 +13,7 @@ export interface MigrationListItem {
   source_vendor: string;
   target_vendor: string;
   status: MigrationStatus;
+  ai_level: number;
   created_at: string;
   updated_at: string;
 }
@@ -60,6 +61,7 @@ export interface Migration {
   commands_preview: string | null;
   warnings: string[] | null;
   error_message: string | null;
+  ai_level: number;
   created_at: string;
   updated_at: string;
 }
@@ -67,8 +69,23 @@ export interface Migration {
 export interface MigrationCreate {
   source_device_id: string;
   target_device_id: string;
+  ai_level?: number;
 }
 
 export interface PortMappingUpdate {
   port_mapping: Record<string, string>;
+}
+
+export interface RegenerateRequest {
+  port_mapping?: Record<string, string>;
+}
+
+export interface InterfaceAdd {
+  name: string;
+  target_name: string;
+  mode?: string;
+  pvid?: string | null;
+  tagged_vlans?: string[];
+  description?: string | null;
+  port_type?: string;
 }

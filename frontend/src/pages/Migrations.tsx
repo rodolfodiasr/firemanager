@@ -3,9 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRightLeft,
+  Brain,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Cpu,
+  EyeOff,
   Loader2,
   Pencil,
   Play,
@@ -17,6 +20,7 @@ import {
   Wand2,
   X,
   XCircle,
+  Zap,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
@@ -62,6 +66,42 @@ const VENDOR_LABEL: Record<string, string> = {
   dell:       "Dell OS10",
 };
 
+const AI_LEVELS = [
+  {
+    level: 1,
+    label: "Determinístico",
+    desc: "Parser + renderer — rápido, sem IA",
+    icon: Cpu,
+    color: "text-gray-600",
+    border: "border-gray-300",
+    bg: "bg-gray-50",
+    activeBorder: "border-gray-500",
+    activeBg: "bg-gray-100",
+  },
+  {
+    level: 2,
+    label: "Híbrido (padrão)",
+    desc: "Renderer + revisão Claude — recomendado",
+    icon: Zap,
+    color: "text-brand-600",
+    border: "border-brand-200",
+    bg: "bg-brand-50",
+    activeBorder: "border-brand-500",
+    activeBg: "bg-brand-100",
+  },
+  {
+    level: 3,
+    label: "IA Completa",
+    desc: "Claude gera tudo do zero — máxima qualidade",
+    icon: Brain,
+    color: "text-purple-600",
+    border: "border-purple-200",
+    bg: "bg-purple-50",
+    activeBorder: "border-purple-500",
+    activeBg: "bg-purple-100",
+  },
+];
+
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit", month: "2-digit", year: "numeric",
@@ -71,6 +111,12 @@ function fmtDate(iso: string) {
 
 function vendorLabel(v: string) {
   return VENDOR_LABEL[v] ?? v;
+}
+
+function aiLevelBadge(level: number) {
+  if (level === 1) return { label: "Determinístico", cls: "bg-gray-100 text-gray-600" };
+  if (level === 3) return { label: "IA Completa", cls: "bg-purple-100 text-purple-700" };
+  return { label: "Híbrido", cls: "bg-brand-100 text-brand-700" };
 }
 
 // ── Port type badges ──────────────────────────────────────────────────────────
@@ -118,10 +164,11 @@ function NewMigrationModal({
 }: {
   devices: Device[];
   onClose: () => void;
-  onCreate: (sourceId: string, targetId: string) => void;
+  onCreate: (sourceId: string, targetId: string, aiLevel: number) => void;
 }) {
   const [sourceId, setSourceId] = useState("");
   const [targetId, setTargetId] = useState("");
+  const [aiLevel, setAiLevel] = useState(2);
   const switchDevices = devices.filter((d) =>
     d.category === "switch" || d.category === "routing" || d.category === "l3_switch"
   );
@@ -129,19 +176,19 @@ function NewMigrationModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!sourceId || !targetId) return;
-    onCreate(sourceId, targetId);
+    onCreate(sourceId, targetId, aiLevel);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold">Nova Migração de Configuração</h2>
           <button onClick={onClose}><X size={20} /></button>
         </div>
         <p className="text-sm text-gray-500 mb-4">
-          O FireManager irá buscar a configuração do switch de origem, analisar com IA e gerar
-          os comandos equivalentes para o switch de destino.
+          O FireManager irá buscar a configuração do switch de origem e gerar os comandos
+          equivalentes para o switch de destino.
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -182,6 +229,34 @@ function NewMigrationModal({
                 ))}
             </select>
           </div>
+
+          {/* AI Level selector */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Modo de análise
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {AI_LEVELS.map(({ level, label, desc, icon: Icon, color, activeBorder, activeBg }) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setAiLevel(level)}
+                  className={`flex flex-col items-center text-center p-2.5 rounded-lg border-2 transition-all ${
+                    aiLevel === level
+                      ? `${activeBorder} ${activeBg}`
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <Icon size={18} className={aiLevel === level ? color : "text-gray-400"} />
+                  <span className={`text-xs font-semibold mt-1 ${aiLevel === level ? color : "text-gray-600"}`}>
+                    {label}
+                  </span>
+                  <span className="text-[10px] text-gray-400 mt-0.5 leading-tight">{desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
@@ -209,11 +284,15 @@ function NewMigrationModal({
 function PortMappingTable({
   interfaces,
   portMapping,
+  excludedPorts,
   onChange,
+  onToggleExclude,
 }: {
   interfaces: ParsedInterface[];
   portMapping: Record<string, string>;
+  excludedPorts: Set<string>;
   onChange: (mapping: Record<string, string>) => void;
+  onToggleExclude: (portName: string) => void;
 }) {
   const handleChange = (srcPort: string, tgtPort: string) => {
     onChange({ ...portMapping, [srcPort]: tgtPort });
@@ -235,6 +314,9 @@ function PortMappingTable({
     <table className="w-full text-sm border-collapse">
       <thead>
         <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <th className="px-2 py-2 border-b w-8" title="Incluir na migração">
+            <EyeOff size={11} className="text-gray-400" />
+          </th>
           <th className="px-3 py-2 border-b">Porta origem</th>
           <th className="px-3 py-2 border-b">Modo</th>
           <th className="px-3 py-2 border-b">PVID</th>
@@ -247,7 +329,7 @@ function PortMappingTable({
           // Group separator
           <tr key={`sep-${group.type}`}>
             <td
-              colSpan={5}
+              colSpan={6}
               className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 border-t border-b"
             >
               {group.label}{" "}
@@ -257,14 +339,31 @@ function PortMappingTable({
           // Interface rows
           ...group.ifaces.map((iface) => {
             const badge = PORT_TYPE_BADGE[iface.port_type ?? "unknown"] ?? PORT_TYPE_BADGE.unknown;
+            const excluded = excludedPorts.has(iface.name);
             return (
-              <tr key={iface.name} className="border-b last:border-0 hover:bg-gray-50">
+              <tr
+                key={iface.name}
+                className={`border-b last:border-0 transition-colors ${
+                  excluded ? "bg-gray-50 opacity-50" : "hover:bg-gray-50"
+                }`}
+              >
+                <td className="px-2 py-2 text-center">
+                  <input
+                    type="checkbox"
+                    checked={!excluded}
+                    onChange={() => onToggleExclude(iface.name)}
+                    className="rounded border-gray-300 text-brand-600 cursor-pointer"
+                    title={excluded ? "Incluir interface" : "Excluir interface"}
+                  />
+                </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1.5">
                     <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-semibold ${badge.cls}`}>
                       {badge.label}
                     </span>
-                    <span className="font-mono text-xs">{iface.name}</span>
+                    <span className={`font-mono text-xs ${excluded ? "line-through text-gray-400" : ""}`}>
+                      {iface.name}
+                    </span>
                   </div>
                   {iface.description && (
                     <div
@@ -292,10 +391,11 @@ function PortMappingTable({
                 </td>
                 <td className="px-3 py-2">
                   <input
-                    value={portMapping[iface.name] ?? ""}
+                    value={excluded ? "" : (portMapping[iface.name] ?? "")}
                     onChange={(e) => handleChange(iface.name, e.target.value)}
-                    placeholder={iface.name}
-                    className="w-full border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    disabled={excluded}
+                    placeholder={excluded ? "Excluída" : iface.name}
+                    className="w-full border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-100 disabled:text-gray-400"
                   />
                 </td>
               </tr>
@@ -320,7 +420,6 @@ function AutoFillPanel({
   onApply: (mapping: Record<string, string>) => void;
   onClose: () => void;
 }) {
-  // Smart defaults based on target vendor
   const isComware = targetVendor === "hp_comware";
   const isCisco   = targetVendor === "cisco_ios" || targetVendor === "cisco_nxos";
   const isDell    = targetVendor === "dell_n";
@@ -367,7 +466,6 @@ function AutoFillPanel({
         </button>
       </div>
 
-      {/* Header row */}
       <div className="grid grid-cols-[100px_1fr_56px] gap-x-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-0.5">
         <span>Tipo</span><span>Prefixo destino</span><span>Início</span>
       </div>
@@ -378,72 +476,43 @@ function AutoFillPanel({
             <span className="bg-gray-100 text-gray-600 text-[10px] px-1.5 py-0.5 rounded font-semibold mr-1">Eth</span>
             {ethPorts.length}x
           </span>
-          <input
-            value={ethPrefix}
-            onChange={(e) => setEthPrefix(e.target.value)}
-            placeholder="prefixo"
-            className="border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
-          <input
-            type="number"
-            value={ethStart}
-            onChange={(e) => setEthStart(Number(e.target.value))}
-            className="border rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
+          <input value={ethPrefix} onChange={(e) => setEthPrefix(e.target.value)} placeholder="prefixo"
+            className="border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          <input type="number" value={ethStart} onChange={(e) => setEthStart(Number(e.target.value))}
+            className="border rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-brand-500" />
         </div>
       )}
-
       {hasFiber && (
         <div className="grid grid-cols-[100px_1fr_56px] gap-x-2 items-center">
           <span className="text-xs text-gray-600 font-medium">
             <span className="bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0.5 rounded font-semibold mr-1">Fibra</span>
             {fiberPorts.length}x
           </span>
-          <input
-            value={fiberPrefix}
-            onChange={(e) => setFiberPrefix(e.target.value)}
-            placeholder="prefixo"
-            className="border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
-          <input
-            type="number"
-            value={fiberStart}
-            onChange={(e) => setFiberStart(Number(e.target.value))}
-            className="border rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
+          <input value={fiberPrefix} onChange={(e) => setFiberPrefix(e.target.value)} placeholder="prefixo"
+            className="border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          <input type="number" value={fiberStart} onChange={(e) => setFiberStart(Number(e.target.value))}
+            className="border rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-brand-500" />
         </div>
       )}
-
       {hasLag && (
         <div className="grid grid-cols-[100px_1fr_56px] gap-x-2 items-center">
           <span className="text-xs text-gray-600 font-medium">
             <span className="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded font-semibold mr-1">LAG</span>
             {lagPorts.length}x
           </span>
-          <input
-            value={lagPrefix}
-            onChange={(e) => setLagPrefix(e.target.value)}
-            placeholder="prefixo"
-            className="border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
-          <input
-            type="number"
-            value={lagStart}
-            onChange={(e) => setLagStart(Number(e.target.value))}
-            className="border rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
+          <input value={lagPrefix} onChange={(e) => setLagPrefix(e.target.value)} placeholder="prefixo"
+            className="border rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          <input type="number" value={lagStart} onChange={(e) => setLagStart(Number(e.target.value))}
+            className="border rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-brand-500" />
         </div>
       )}
 
       <p className="text-[10px] text-gray-400">
-        Cada porta recebe <code className="font-mono">prefixo + número sequencial</code>. Ajuste prefixo e início conforme o modelo exato.
+        Cada porta recebe <code className="font-mono">prefixo + número sequencial</code>. Ajuste conforme o modelo exato.
       </p>
-
       <div className="flex justify-end">
-        <button
-          onClick={handleApply}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700"
-        >
+        <button onClick={handleApply}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700">
           <Wand2 size={12} /> Aplicar sugestão
         </button>
       </div>
@@ -451,10 +520,109 @@ function AutoFillPanel({
   );
 }
 
+// ── Add Interface Form ────────────────────────────────────────────────────────
+
+function AddInterfaceForm({
+  onAdd,
+  onClose,
+  isPending,
+}: {
+  onAdd: (data: { name: string; target_name: string; mode: string; pvid: string; tagged_vlans: string[]; port_type: string }) => void;
+  onClose: () => void;
+  isPending: boolean;
+}) {
+  const [name, setName]           = useState("");
+  const [targetName, setTargetName] = useState("");
+  const [mode, setMode]           = useState("access");
+  const [pvid, setPvid]           = useState("");
+  const [tagged, setTagged]       = useState("");
+  const [portType, setPortType]   = useState("ethernet");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !targetName.trim()) return;
+    onAdd({
+      name: name.trim(),
+      target_name: targetName.trim(),
+      mode,
+      pvid: pvid.trim() || "",
+      tagged_vlans: tagged.split(",").map((v) => v.trim()).filter(Boolean),
+      port_type: portType,
+    });
+  };
+
+  return (
+    <div className="border border-dashed border-gray-300 rounded-lg px-4 py-3 bg-gray-50 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-600 flex items-center gap-1.5">
+          <Plus size={13} /> Adicionar interface manualmente
+        </span>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Nome (origem)</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="ex: 0/25"
+              className="w-full border rounded px-2 py-1 text-xs font-mono mt-0.5 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Nome (destino)</label>
+            <input value={targetName} onChange={(e) => setTargetName(e.target.value)} required placeholder="ex: GigabitEthernet1/0/25"
+              className="w-full border rounded px-2 py-1 text-xs font-mono mt-0.5 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Tipo</label>
+            <select value={portType} onChange={(e) => setPortType(e.target.value)}
+              className="w-full border rounded px-2 py-1 text-xs mt-0.5 focus:outline-none focus:ring-1 focus:ring-brand-500">
+              <option value="ethernet">Ethernet</option>
+              <option value="fiber">Fibra</option>
+              <option value="lag">LAG</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Modo</label>
+            <select value={mode} onChange={(e) => setMode(e.target.value)}
+              className="w-full border rounded px-2 py-1 text-xs mt-0.5 focus:outline-none focus:ring-1 focus:ring-brand-500">
+              <option value="access">Access</option>
+              <option value="trunk">Trunk</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">PVID</label>
+            <input value={pvid} onChange={(e) => setPvid(e.target.value)} placeholder="ex: 100"
+              className="w-full border rounded px-2 py-1 text-xs font-mono mt-0.5 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          </div>
+        </div>
+        {mode === "trunk" && (
+          <div>
+            <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">VLANs Tagged (separadas por vírgula)</label>
+            <input value={tagged} onChange={(e) => setTagged(e.target.value)} placeholder="ex: 100,200,300"
+              className="w-full border rounded px-2 py-1 text-xs font-mono mt-0.5 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          </div>
+        )}
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose}
+            className="text-xs px-3 py-1.5 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">
+            Cancelar
+          </button>
+          <button type="submit" disabled={isPending || !name.trim() || !targetName.trim()}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50">
+            {isPending ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+            Adicionar
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ── Warnings Accordion ────────────────────────────────────────────────────────
 
 function WarningsAccordion({ warnings }: { warnings: string[] }) {
-  // Start with "action" and "translation" expanded; others collapsed
   const [open, setOpen] = useState<Set<WarnCategory>>(new Set(["action", "translation"]));
 
   const toggle = (cat: WarnCategory) => {
@@ -467,12 +635,10 @@ function WarningsAccordion({ warnings }: { warnings: string[] }) {
 
   const grouped: Record<WarnCategory, string[]> = { action: [], translation: [], feature: [], info: [] };
   warnings.forEach((w) => grouped[categorizeWarning(w)].push(w));
-
   const activeCategories = WARN_ORDER.filter((cat) => grouped[cat].length > 0);
 
   return (
     <div className="space-y-1.5">
-      {/* Summary line */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
           <AlertTriangle size={12} /> {warnings.length} avisos:
@@ -480,37 +646,27 @@ function WarningsAccordion({ warnings }: { warnings: string[] }) {
         {activeCategories.map((cat) => {
           const meta = WARN_CATEGORIES[cat];
           return (
-            <button
-              key={cat}
-              onClick={() => toggle(cat)}
-              className={`text-[10px] px-2 py-0.5 rounded-full font-semibold text-white ${meta.countBg}`}
-            >
+            <button key={cat} onClick={() => toggle(cat)}
+              className={`text-[10px] px-2 py-0.5 rounded-full font-semibold text-white ${meta.countBg}`}>
               {grouped[cat].length} {meta.label}
             </button>
           );
         })}
       </div>
-
-      {/* Accordion sections */}
       {activeCategories.map((cat) => {
         const meta = WARN_CATEGORIES[cat];
         const isOpen = open.has(cat);
         return (
           <div key={cat} className={`border rounded-lg overflow-hidden ${meta.border}`}>
-            <button
-              onClick={() => toggle(cat)}
-              className={`w-full flex items-center justify-between px-3 py-2 ${meta.headerBg} hover:brightness-95 transition-all`}
-            >
+            <button onClick={() => toggle(cat)}
+              className={`w-full flex items-center justify-between px-3 py-2 ${meta.headerBg} hover:brightness-95 transition-all`}>
               <div className="flex items-center gap-2">
                 <span className={`text-xs font-semibold ${meta.textColor}`}>{meta.label}</span>
                 <span className={`text-[10px] text-white px-1.5 py-0.5 rounded-full font-bold ${meta.countBg}`}>
                   {grouped[cat].length}
                 </span>
               </div>
-              <ChevronDown
-                size={13}
-                className={`text-gray-400 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`}
-              />
+              <ChevronDown size={13} className={`text-gray-400 transition-transform duration-150 ${isOpen ? "rotate-180" : ""}`} />
             </button>
             {isOpen && (
               <ul className="px-3 py-2 space-y-1.5 bg-white">
@@ -542,10 +698,14 @@ function MigrationDetail({
 }) {
   const qc = useQueryClient();
   const [portMapping, setPortMapping] = useState<Record<string, string> | null>(null);
+  const [excludedPorts, setExcludedPorts] = useState<Set<string>>(new Set());
   const [mappingDirty, setMappingDirty] = useState(false);
   const [editingCmds, setEditingCmds] = useState(false);
   const [cmdsDraft, setCmdsDraft] = useState("");
   const [showAutoFill, setShowAutoFill] = useState(false);
+  const [showAddIface, setShowAddIface] = useState(false);
+  // Track migration data initialization to reset local state on fresh loads
+  const [initializedFor, setInitializedFor] = useState<string | null>(null);
 
   const { data: migration, isLoading } = useQuery({
     queryKey: ["migration-detail", migrationId],
@@ -555,6 +715,20 @@ function MigrationDetail({
       return status === "analyzing" || status === "applying" ? 3000 : false;
     },
   });
+
+  // Initialize local port mapping + excluded state from migration data
+  if (migration && initializedFor !== migration.id) {
+    const pm = migration.port_mapping ?? {};
+    const excluded = new Set(
+      Object.entries(pm)
+        .filter(([, v]) => v === "")
+        .map(([k]) => k)
+    );
+    setPortMapping(pm);
+    setExcludedPorts(excluded);
+    setMappingDirty(false);
+    setInitializedFor(migration.id);
+  }
 
   const saveMapping = useMutation({
     mutationFn: (mapping: Record<string, string>) =>
@@ -575,6 +749,33 @@ function MigrationDetail({
       toast.success("Comandos salvos");
     },
     onError: () => toast.error("Erro ao salvar comandos"),
+  });
+
+  const regenerateMut = useMutation({
+    mutationFn: () => {
+      const mergedMapping = buildMergedMapping();
+      return migrationApi.regenerate(migrationId, { port_mapping: mergedMapping });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["migration-detail", migrationId] });
+      qc.invalidateQueries({ queryKey: ["migrations"] });
+      setMappingDirty(false);
+      setInitializedFor(null); // force re-init after regenerate
+      toast.success("Regeneração iniciada — aguarde conclusão");
+    },
+    onError: () => toast.error("Erro ao iniciar regeneração"),
+  });
+
+  const addIfaceMut = useMutation({
+    mutationFn: (data: Parameters<typeof migrationApi.addInterface>[1]) =>
+      migrationApi.addInterface(migrationId, data),
+    onSuccess: (updated) => {
+      qc.setQueryData(["migration-detail", migrationId], updated);
+      setShowAddIface(false);
+      setInitializedFor(null); // force re-init with new interface
+      toast.success("Interface adicionada — preview atualizado");
+    },
+    onError: () => toast.error("Erro ao adicionar interface"),
   });
 
   const applyMut = useMutation({
@@ -602,13 +803,35 @@ function MigrationDetail({
   const vlans = migration?.migration_plan?.vlans ?? {};
   const vlanCount = Object.keys(vlans).length;
 
-  // Port type counts for summary
   const ethCount   = interfaces.filter((i) => (i.port_type ?? "ethernet") === "ethernet").length;
   const fiberCount = interfaces.filter((i) => i.port_type === "fiber").length;
   const lagCount   = interfaces.filter((i) => i.port_type === "lag").length;
 
+  // Build merged mapping: excluded ports get "", included ports get their target
+  const buildMergedMapping = (): Record<string, string> => {
+    const merged = { ...currentMapping };
+    interfaces.forEach((iface) => {
+      if (excludedPorts.has(iface.name)) {
+        merged[iface.name] = "";
+      } else if (merged[iface.name] === "") {
+        // Was excluded but now included — restore the auto-mapped name or clear for user
+        delete merged[iface.name];
+      }
+    });
+    return merged;
+  };
+
   const handleMappingChange = (m: Record<string, string>) => {
     setPortMapping(m);
+    setMappingDirty(true);
+  };
+
+  const handleToggleExclude = (portName: string) => {
+    setExcludedPorts((prev) => {
+      const next = new Set(prev);
+      if (next.has(portName)) next.delete(portName); else next.add(portName);
+      return next;
+    });
     setMappingDirty(true);
   };
 
@@ -617,13 +840,22 @@ function MigrationDetail({
     setShowAutoFill(false);
   };
 
+  const handleSaveMapping = () => {
+    saveMapping.mutate(buildMergedMapping());
+  };
+
   const srcDevice = migration ? devicesById[migration.source_device_id] : null;
   const tgtDevice = migration ? devicesById[migration.target_device_id] : null;
+  const aiLvl = migration?.ai_level ?? 2;
+  const badge = aiLevelBadge(aiLvl);
+
+  const isEditable = migration?.status === "ready" || migration?.status === "failed";
+  const isBusy = migration?.status === "analyzing" || migration?.status === "applying";
 
   return (
     <div className="fixed inset-0 z-40 flex">
       <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="w-[740px] bg-white shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-[760px] bg-white shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-2">
@@ -641,8 +873,8 @@ function MigrationDetail({
 
         {migration && (
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
-            {/* Route */}
-            <div className="flex items-center gap-2 text-sm">
+            {/* Route + status + ai level */}
+            <div className="flex items-center gap-2 text-sm flex-wrap">
               <span className="font-medium">
                 {srcDevice?.name ?? migration.source_device_id.slice(0, 8)}
               </span>
@@ -652,17 +884,22 @@ function MigrationDetail({
                 {tgtDevice?.name ?? migration.target_device_id.slice(0, 8)}
               </span>
               <span className="text-gray-400">({vendorLabel(migration.target_vendor)})</span>
-              <span className={`ml-auto text-xs px-2 py-1 rounded-full font-medium ${STATUS_STYLE[migration.status]}`}>
-                {STATUS_LABEL[migration.status]}
-              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>
+                  {badge.label}
+                </span>
+                <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_STYLE[migration.status]}`}>
+                  {STATUS_LABEL[migration.status]}
+                </span>
+              </div>
             </div>
 
             {/* Analyzing / Applying spinner */}
-            {(migration.status === "analyzing" || migration.status === "applying") && (
+            {isBusy && (
               <div className="flex items-center gap-3 bg-blue-50 text-blue-700 rounded-lg px-4 py-3 text-sm">
                 <Loader2 className="animate-spin" size={16} />
                 {migration.status === "analyzing"
-                  ? "Buscando configuração e analisando com IA…"
+                  ? "Buscando configuração e analisando…"
                   : "Aplicando comandos no dispositivo de destino…"}
               </div>
             )}
@@ -679,11 +916,7 @@ function MigrationDetail({
                     disabled={retryMut.isPending || mappingDirty || editingCmds}
                     className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
                   >
-                    {retryMut.isPending ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <RefreshCw size={12} />
-                    )}
+                    {retryMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                     Tentar novamente
                   </button>
                 </div>
@@ -703,7 +936,7 @@ function MigrationDetail({
               </div>
             )}
 
-            {/* Warnings — categorized accordion */}
+            {/* Warnings */}
             {(migration.warnings ?? []).length > 0 && (
               <WarningsAccordion warnings={migration.warnings!} />
             )}
@@ -731,12 +964,12 @@ function MigrationDetail({
             {/* Port mapping */}
             {migration.migration_plan && migration.status !== "pending" && migration.status !== "analyzing" && (
               <div>
-                {/* Header row with buttons */}
-                <div className="flex items-center justify-between mb-1">
+                {/* Header row */}
+                <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
                   <h3 className="text-sm font-semibold text-gray-700">Mapeamento de portas</h3>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
-                      onClick={() => { setShowAutoFill((v) => !v); }}
+                      onClick={() => setShowAutoFill((v) => !v)}
                       className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
                         showAutoFill
                           ? "bg-brand-100 text-brand-700 border-brand-300"
@@ -745,9 +978,19 @@ function MigrationDetail({
                     >
                       <Wand2 size={12} /> Auto-mapear
                     </button>
+                    <button
+                      onClick={() => setShowAddIface((v) => !v)}
+                      className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                        showAddIface
+                          ? "bg-gray-200 text-gray-700 border-gray-400"
+                          : "text-gray-600 bg-gray-100 border-gray-300 hover:bg-gray-200"
+                      }`}
+                    >
+                      <Plus size={12} /> Adicionar
+                    </button>
                     {mappingDirty && (
                       <button
-                        onClick={() => saveMapping.mutate(currentMapping)}
+                        onClick={handleSaveMapping}
                         disabled={saveMapping.isPending}
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50"
                       >
@@ -758,7 +1001,7 @@ function MigrationDetail({
                   </div>
                 </div>
 
-                {/* Port type summary */}
+                {/* Port type summary + excluded count */}
                 <div className="flex items-center gap-1.5 flex-wrap mb-2">
                   <span className="text-[10px] text-gray-400 font-medium">Origem:</span>
                   {ethCount > 0 && (
@@ -774,6 +1017,11 @@ function MigrationDetail({
                   {lagCount > 0 && (
                     <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-mono">
                       {lagCount}× LAG
+                    </span>
+                  )}
+                  {excludedPorts.size > 0 && (
+                    <span className="text-[10px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded font-mono flex items-center gap-0.5">
+                      <EyeOff size={9} /> {excludedPorts.size} excluída{excludedPorts.size > 1 ? "s" : ""}
                     </span>
                   )}
                   <span className="text-[10px] text-gray-300 mx-0.5">→</span>
@@ -792,15 +1040,28 @@ function MigrationDetail({
                   </div>
                 )}
 
-                <p className="text-xs text-gray-400 mb-3">
-                  Edite a coluna "Porta destino" para mapear cada porta da origem ao nome correto
-                  no switch de destino. Clique em "Salvar mapeamento" para regenerar os comandos.
+                {/* Add interface form */}
+                {showAddIface && (
+                  <div className="mb-3">
+                    <AddInterfaceForm
+                      onAdd={(data) => addIfaceMut.mutate(data)}
+                      onClose={() => setShowAddIface(false)}
+                      isPending={addIfaceMut.isPending}
+                    />
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-400 mb-2">
+                  Use o checkbox para excluir interfaces da migração. Edite "Porta destino" para ajustar
+                  nomes. Clique em "Salvar mapeamento" para re-renderizar sem IA, ou "Regenerar" para aplicar IA.
                 </p>
                 <div className="border rounded-lg overflow-hidden">
                   <PortMappingTable
                     interfaces={interfaces}
                     portMapping={currentMapping}
+                    excludedPorts={excludedPorts}
                     onChange={handleMappingChange}
+                    onToggleExclude={handleToggleExclude}
                   />
                 </div>
               </div>
@@ -809,37 +1070,48 @@ function MigrationDetail({
             {/* Commands preview */}
             {migration.commands_preview && (
               <div>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <Terminal size={14} className="text-gray-500" />
                     <h3 className="text-sm font-semibold text-gray-700">Preview de comandos</h3>
                   </div>
-                  {(migration.status === "ready" || migration.status === "failed") && !editingCmds && (
-                    <button
-                      onClick={() => { setCmdsDraft(migration.commands_preview ?? ""); setEditingCmds(true); }}
-                      className="flex items-center gap-1.5 text-xs px-2.5 py-1 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
-                    >
-                      <Pencil size={12} /> Editar
-                    </button>
-                  )}
-                  {editingCmds && (
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    {/* Regenerate button */}
+                    {isEditable && !editingCmds && (
                       <button
-                        onClick={() => setEditingCmds(false)}
-                        className="text-xs px-2.5 py-1 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+                        onClick={() => regenerateMut.mutate()}
+                        disabled={regenerateMut.isPending || editingCmds}
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1 text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 disabled:opacity-50"
+                        title={`Regenerar com ${aiLvl === 1 ? "renderer" : aiLvl === 2 ? "Claude (revisão)" : "Claude (completo)"}`}
                       >
-                        Cancelar
+                        {regenerateMut.isPending
+                          ? <Loader2 size={12} className="animate-spin" />
+                          : <Brain size={12} />}
+                        Regenerar{aiLvl >= 2 ? " com IA" : ""}
                       </button>
+                    )}
+                    {isEditable && !editingCmds && (
                       <button
-                        onClick={() => saveCommands.mutate(cmdsDraft)}
-                        disabled={saveCommands.isPending}
-                        className="flex items-center gap-1.5 text-xs px-2.5 py-1 text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50"
+                        onClick={() => { setCmdsDraft(migration.commands_preview ?? ""); setEditingCmds(true); }}
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
                       >
-                        {saveCommands.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                        Salvar
+                        <Pencil size={12} /> Editar
                       </button>
-                    </div>
-                  )}
+                    )}
+                    {editingCmds && (
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setEditingCmds(false)}
+                          className="text-xs px-2.5 py-1 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">
+                          Cancelar
+                        </button>
+                        <button onClick={() => saveCommands.mutate(cmdsDraft)} disabled={saveCommands.isPending}
+                          className="flex items-center gap-1.5 text-xs px-2.5 py-1 text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50">
+                          {saveCommands.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                          Salvar
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 {editingCmds ? (
                   <textarea
@@ -856,7 +1128,7 @@ function MigrationDetail({
               </div>
             )}
 
-            {/* Apply button */}
+            {/* Apply / hints */}
             {migration.status === "ready" && (
               <div className="flex justify-end pt-2">
                 <button
@@ -864,18 +1136,14 @@ function MigrationDetail({
                   disabled={applyMut.isPending || mappingDirty || editingCmds}
                   className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 text-sm font-medium"
                 >
-                  {applyMut.isPending ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <Play size={16} />
-                  )}
+                  {applyMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                   Aplicar no switch de destino
                 </button>
               </div>
             )}
             {migration.status === "ready" && mappingDirty && (
               <p className="text-xs text-amber-600 text-right -mt-3">
-                Salve o mapeamento antes de aplicar
+                Salve o mapeamento (ou Regenere) antes de aplicar
               </p>
             )}
           </div>
@@ -906,8 +1174,8 @@ export function Migrations() {
   const devicesById = Object.fromEntries(devices.map((d) => [d.id, d]));
 
   const createMut = useMutation({
-    mutationFn: ({ sourceId, targetId }: { sourceId: string; targetId: string }) =>
-      migrationApi.create({ source_device_id: sourceId, target_device_id: targetId }),
+    mutationFn: ({ sourceId, targetId, aiLevel }: { sourceId: string; targetId: string; aiLevel: number }) =>
+      migrationApi.create({ source_device_id: sourceId, target_device_id: targetId, ai_level: aiLevel }),
     onSuccess: (m) => {
       qc.invalidateQueries({ queryKey: ["migrations"] });
       setShowNew(false);
@@ -932,7 +1200,6 @@ export function Migrations() {
       title="Migração de Configuração"
       subtitle="Migre configurações de VLAN e interfaces entre switches de diferentes fabricantes."
     >
-      {/* Header actions */}
       <div className="flex justify-end mb-4">
         <button
           onClick={() => setShowNew(true)}
@@ -943,7 +1210,6 @@ export function Migrations() {
         </button>
       </div>
 
-      {/* List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="animate-spin text-brand-600" size={28} />
@@ -960,6 +1226,7 @@ export function Migrations() {
             <thead>
               <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b">
                 <th className="px-5 py-3">Rota</th>
+                <th className="px-5 py-3">Modo IA</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3">Criado em</th>
                 <th className="px-5 py-3" />
@@ -969,6 +1236,7 @@ export function Migrations() {
               {migrations.map((m: MigrationListItem) => {
                 const src = devicesById[m.source_device_id];
                 const tgt = devicesById[m.target_device_id];
+                const lvlBadge = aiLevelBadge(m.ai_level);
                 return (
                   <tr
                     key={m.id}
@@ -983,6 +1251,11 @@ export function Migrations() {
                         <span className="font-medium">{tgt?.name ?? "—"}</span>
                         <span className="text-xs text-gray-400">({vendorLabel(m.target_vendor)})</span>
                       </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${lvlBadge.cls}`}>
+                        {lvlBadge.label}
+                      </span>
                     </td>
                     <td className="px-5 py-3">
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_STYLE[m.status]}`}>
@@ -1013,16 +1286,14 @@ export function Migrations() {
         </div>
       )}
 
-      {/* New migration modal */}
       {showNew && (
         <NewMigrationModal
           devices={devices}
           onClose={() => setShowNew(false)}
-          onCreate={(sourceId, targetId) => createMut.mutate({ sourceId, targetId })}
+          onCreate={(sourceId, targetId, aiLevel) => createMut.mutate({ sourceId, targetId, aiLevel })}
         />
       )}
 
-      {/* Detail slide-over */}
       {selectedId && (
         <MigrationDetail
           migrationId={selectedId}
