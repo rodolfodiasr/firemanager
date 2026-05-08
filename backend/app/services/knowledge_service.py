@@ -167,6 +167,7 @@ async def semantic_search_documents(
             select(KnowledgeChunk, KnowledgeDocument.name)
             .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
             .where(KnowledgeChunk.tenant_id == tenant_id)
+            .where(KnowledgeDocument.is_active.is_(True))
             .order_by(KnowledgeChunk.embedding.cosine_distance(query_vector))
             .limit(top_k)
         )

@@ -26,6 +26,9 @@ export const knowledgeApi = {
   reindex: (id: string) =>
     apiClient.post<KnowledgeDocument>(`/knowledge/documents/${id}/reindex`).then((r) => r.data),
 
+  toggleActive: (id: string, is_active: boolean) =>
+    apiClient.patch<KnowledgeDocument>(`/knowledge/documents/${id}/active`, { is_active }).then((r) => r.data),
+
   search: (q: string) =>
     apiClient.get<SearchResult>("/knowledge/documents/search/test", { params: { q } }).then((r) => r.data),
 

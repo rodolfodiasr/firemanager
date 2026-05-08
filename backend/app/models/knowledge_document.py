@@ -6,7 +6,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -35,6 +35,7 @@ class KnowledgeDocument(Base):
     content:     Mapped[str | None]  = mapped_column(Text, nullable=True)   # extracted text
     status:      Mapped[str]  = mapped_column(String(20), nullable=False, server_default="pending")
     chunk_count: Mapped[int]  = mapped_column(Integer, nullable=False, server_default="0")
+    is_active:   Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     error:       Mapped[str | None]  = mapped_column(Text, nullable=True)
     created_at:  Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at:  Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

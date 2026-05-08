@@ -328,6 +328,16 @@ export function KnowledgeBase() {
     onError: () => toast.error("Falha ao re-indexar"),
   });
 
+  const toggleMut = useMutation({
+    mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
+      knowledgeApi.toggleActive(id, is_active),
+    onSuccess: (updated) => {
+      toast.success(updated.is_active ? "Documento ativado" : "Documento desativado");
+      qc.invalidateQueries({ queryKey: ["knowledge-documents"] });
+    },
+    onError: () => toast.error("Falha ao alterar status do documento"),
+  });
+
   function handleUpload(file: File, name?: string, desc?: string) {
     uploadMut.mutate({ file, name, desc });
   }
@@ -390,7 +400,7 @@ export function KnowledgeBase() {
           {!isLoading && documents.length > 0 && (
             <div className="divide-y">
               {documents.map((doc: KnowledgeDocument) => (
-                <div key={doc.id} className="px-5 py-3 hover:bg-gray-50 flex items-start gap-3">
+                <div key={doc.id} className={`px-5 py-3 hover:bg-gray-50 flex items-start gap-3 ${!doc.is_active ? "opacity-50" : ""}`}>
                   {/* Type badge */}
                   <div className="shrink-0 mt-0.5 w-10 h-10 rounded-lg bg-brand-50 flex items-center justify-center">
                     <span className="text-xs font-bold text-brand-700">
@@ -423,7 +433,23 @@ export function KnowledgeBase() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Active toggle */}
+                    <button
+                      onClick={() => toggleMut.mutate({ id: doc.id, is_active: !doc.is_active })}
+                      disabled={toggleMut.isPending}
+                      title={doc.is_active ? "Clique para desativar (o agente não usará este doc)" : "Clique para ativar"}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                        doc.is_active ? "bg-green-500" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                          doc.is_active ? "translate-x-4.5" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+
                     {(doc.status === "indexed" || doc.status === "failed") && (
                       <button
                         onClick={() => reindexMut.mutate(doc.id)}

@@ -30,6 +30,7 @@ class DocumentRead(BaseModel):
     file_size: int | None
     status: str
     chunk_count: int
+    is_active: bool
     error: str | None
     created_at: str
     updated_at: str
@@ -45,10 +46,15 @@ class DocumentRead(BaseModel):
             file_size=d.file_size,
             status=d.status,
             chunk_count=d.chunk_count or 0,
+            is_active=d.is_active if d.is_active is not None else True,
             error=d.error,
             created_at=d.created_at.isoformat(),
             updated_at=d.updated_at.isoformat(),
         )
+
+
+class ToggleActivePayload(BaseModel):
+    is_active: bool
 
 
 class SearchResult(BaseModel):
@@ -170,6 +176,25 @@ async def delete_document(
     await db.delete(doc)
     await db.commit()
     return Response(status_code=204)
+
+
+# ── Toggle active ─────────────────────────────────────────────────────────────
+
+@router.patch("/{document_id}/active", response_model=DocumentRead)
+async def toggle_document_active(
+    document_id: UUID,
+    payload: ToggleActivePayload,
+    ctx: Annotated[TenantContext, Depends(require_reviewer)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> DocumentRead:
+    from app.models.knowledge_document import KnowledgeDocument
+    doc = await db.get(KnowledgeDocument, document_id)
+    if not doc or doc.tenant_id != ctx.tenant.id:
+        raise HTTPException(404, "Documento não encontrado")
+    doc.is_active = payload.is_active
+    await db.commit()
+    await db.refresh(doc)
+    return DocumentRead.from_orm(doc)
 
 
 # ── Reindex ───────────────────────────────────────────────────────────────────

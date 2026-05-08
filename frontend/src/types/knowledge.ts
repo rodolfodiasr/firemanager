@@ -9,6 +9,7 @@ export interface KnowledgeDocument {
   file_size: number | null;
   status: DocumentStatus;
   chunk_count: number;
+  is_active: boolean;
   error: string | null;
   created_at: string;
   updated_at: string;
