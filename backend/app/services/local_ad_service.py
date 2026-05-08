@@ -135,7 +135,7 @@ def _find_user_sync(config: dict, username: str) -> dict | None:
 
 
 def _disable_user_sync(config: dict, dn: str) -> None:
-    from ldap3 import MODIFY_REPLACE, BASE
+    from ldap3 import MODIFY_REPLACE, MODIFY_ADD, BASE
 
     conn = _connect(config)
     conn.search(dn, "(objectClass=*)", search_scope=BASE, attributes=["userAccountControl"])
@@ -179,3 +179,28 @@ async def disable_user(config: dict, dn: str) -> None:
 
 async def test_connection(config: dict) -> tuple[bool, str]:
     return await asyncio.to_thread(_test_connection_sync, config)
+
+
+def _add_user_to_groups_sync(config: dict, user_dn: str, groups: list[str]) -> None:
+    """Add a user to LDAP groups by group name (CN)."""
+    from ldap3 import MODIFY_ADD
+    conn = _connect(config)
+    base_dn = config.get("base_dn", "")
+    try:
+        for group_name in groups:
+            # Search for the group DN
+            conn.search(
+                search_base=base_dn,
+                search_filter=f"(&(objectClass=group)(cn={group_name}))",
+                attributes=["dn"],
+            )
+            if not conn.entries:
+                raise ValueError(f"Grupo '{group_name}' não encontrado no AD")
+            group_dn = conn.entries[0].entry_dn
+            conn.modify(group_dn, {"member": [(MODIFY_ADD, [user_dn])]})
+    finally:
+        conn.unbind()
+
+
+async def add_user_to_groups(config: dict, user_dn: str, groups: list[str]) -> None:
+    await asyncio.to_thread(_add_user_to_groups_sync, config, user_dn, groups)

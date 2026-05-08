@@ -25,6 +25,9 @@ import { Connectivity } from "./pages/Connectivity";
 import { KnowledgeBase } from "./pages/KnowledgeBase";
 import { DatabaseConnectors } from "./pages/DatabaseConnectors";
 import { Identity } from "./pages/Identity";
+import { Onboarding } from "./pages/Onboarding";
+import { Alerts } from "./pages/Alerts";
+import { Executive } from "./pages/Executive";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -80,6 +83,9 @@ export function AppRouter() {
       <Route path="/knowledge"           element={<ProtectedLayout><KnowledgeBase /></ProtectedLayout>} />
       <Route path="/database-connectors" element={<ProtectedLayout><DatabaseConnectors /></ProtectedLayout>} />
       <Route path="/identity" element={<ProtectedLayout><Identity /></ProtectedLayout>} />
+      <Route path="/onboarding" element={<ProtectedLayout><Onboarding /></ProtectedLayout>} />
+      <Route path="/alerts" element={<ProtectedLayout><Alerts /></ProtectedLayout>} />
+      <Route path="/executive" element={<ProtectedLayout><Executive /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

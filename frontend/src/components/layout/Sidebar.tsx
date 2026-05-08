@@ -25,6 +25,9 @@ import {
   Database,
   DatabaseZap,
   Users,
+  UserPlus,
+  Bell,
+  BarChart2,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -72,6 +75,14 @@ const navSections: NavSection[] = [
       { to: "/servers",             icon: HardDrive,    label: "Servidores"    },
       { to: "/database-connectors", icon: DatabaseZap,  label: "Bancos de Dados" },
       { to: "/identity",            icon: Users,        label: "Identidade"      },
+      { to: "/onboarding",          icon: UserPlus,     label: "Onboarding"      },
+    ],
+  },
+  {
+    title: "Automação & Relatórios",
+    items: [
+      { to: "/alerts",    icon: Bell,     label: "Alertas"             },
+      { to: "/executive", icon: BarChart2, label: "Dashboard Executivo" },
     ],
   },
   {

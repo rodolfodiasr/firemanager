@@ -63,3 +63,27 @@ async def disable_user(config: dict, external_id: str) -> None:
         r = await c.patch(f"{_GRAPH}/users/{external_id}", headers=hdrs, json={"accountEnabled": False})
         r.raise_for_status()
         await c.post(f"{_GRAPH}/users/{external_id}/revokeSignInSessions", headers=hdrs)
+
+
+async def add_user_to_groups(config: dict, user_id: str, group_names: list[str]) -> None:
+    token = await _token(config)
+    hdrs = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=15) as c:
+        for group_name in group_names:
+            escaped = group_name.replace("'", "''")
+            r = await c.get(
+                f"{_GRAPH}/groups?$filter=displayName eq '{escaped}'&$select=id",
+                headers=hdrs,
+            )
+            r.raise_for_status()
+            groups = r.json().get("value", [])
+            if not groups:
+                raise ValueError(f"Grupo '{group_name}' não encontrado no Azure AD")
+            group_id = groups[0]["id"]
+            r = await c.post(
+                f"{_GRAPH}/groups/{group_id}/members/$ref",
+                headers=hdrs,
+                json={"@odata.id": f"{_GRAPH}/directoryObjects/{user_id}"},
+            )
+            if r.status_code not in (204, 400):
+                r.raise_for_status()

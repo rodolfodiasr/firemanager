@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, audit, auth, bulk_jobs, category_roles, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, firewall_migration, glpi, golden_template, identity, inspect, integrations, invite, knowledge, module_roles, operations, recommendations, remediation, server_operations, servers, templates, tenants, variables
+from app.api import admin, alerts, audit, auth, bulk_jobs, category_roles, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, executive, firewall_migration, glpi, golden_template, identity, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, recommendations, remediation, server_operations, servers, templates, tenants, variables
 from app.config import settings
 
 log = structlog.get_logger()
@@ -68,6 +68,9 @@ app.include_router(connectivity.router,       prefix="/connectivity",           
 app.include_router(knowledge.router,           prefix="/knowledge/documents",    tags=["knowledge"])
 app.include_router(database_connectors.router, prefix="/database-connectors",    tags=["database-connectors"])
 app.include_router(identity.router,            prefix="/identity",                tags=["identity"])
+app.include_router(onboarding.router,          prefix="/onboarding",              tags=["onboarding"])
+app.include_router(alerts.router,              prefix="/alerts",                  tags=["alerts"])
+app.include_router(executive.router,           prefix="/executive",               tags=["executive"])
 
 
 class FireManagerError(Exception):

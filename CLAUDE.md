@@ -119,6 +119,9 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 19 | Base de Conhecimento IA — RAG avançado (upload PDF/DOCX/MD, pgvector, agent injection) | ✅ |
 | 20 | Conectores de Banco de Dados (PostgreSQL, MySQL, MariaDB, SQL Server, Oracle) + auditoria de usuários/privilégios + IA | ✅ |
 | 21 | Gestão de Ciclo de Vida de Usuários — Azure AD, Google Workspace, offboarding coordenado SSH/WinRM/DB, contas órfãs, webhook RH | ✅ |
+| 22 | Onboarding com 1 Clique — Perfis de cargo, grupos AD automáticos (GLPI, Docs, SysPass), Guacamole, Tactical RMM, Unifi Network | ✅ |
+| 23 | Alertas & Integrações — Slack, Teams, Email SMTP, Webhook, Jira; regras por gatilho (offboard, onboard, health check, órfãs) | ✅ |
+| 24 | Dashboard Executivo — Score de risco, métricas consolidadas, relatório PDF executivo (WeasyPrint) | ✅ |
 
 ---
 
@@ -172,7 +175,41 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 ---
 
-### Fase 22 — Planejamento de Migração de Infraestrutura
+### Fase 25 — Plataforma Enterprise e Marketplace (próxima prioridade após 22-24)
+
+---
+
+### Fase 22 — Onboarding 1 Clique (IMPLEMENTADA ✅)
+*Provisionamento automático multi-sistema por perfil de cargo*
+
+#### Sub-fases implementadas
+- **22A** — OnboardingProfile + grupos AD: perfis de cargo definem quais grupos AD adicionar → cobre automaticamente GLPI, Docs, SysPass (AD-integrados)
+- **22B** — Guacamole (REST API token) + Tactical RMM (REST API X-API-KEY): criação de usuário em sistemas externos  
+- **22C** — Unifi Network Controller: convite de admin com role configurável (legacy + UniFi OS)
+
+#### Modelo de dados
+- `ExternalConnector`: conectores Guacamole/Tactical RMM/Unifi com config criptografada
+- `OnboardingProfile`: perfil de cargo com `ad_groups` (JSONB) + `systems` (relationship)
+- `OnboardingProfileSystem`: sistema-por-sistema com config de role/senha/grupos
+
+#### Serviços
+- `guacamole_service.py`, `tactical_rmm_service.py`, `unifi_service.py`: APIs diretas
+- `onboarding_service.py`: orquestração com `build_onboarding_tasks` + `run_onboarding`
+- `local_ad_service.add_user_to_groups()`: adição de membro a grupos LDAP por CN
+- `azure_ad_service.add_user_to_groups()`: POST /groups/{id}/members/$ref via Graph API
+- `google_workspace_service.add_user_to_groups()`: POST /groups/{key}/members via Directory API
+
+---
+
+### Fase 23 — Alertas & Integrações (IMPLEMENTADA ✅)
+
+---
+
+### Fase 24 — Dashboard Executivo (IMPLEMENTADA ✅)
+
+---
+
+### Fase 22-original — Planejamento de Migração de Infraestrutura (PENDENTE)
 *Planejamento assistido por IA — sem execução automatizada*
 
 - Conectores read-only: VMware vCenter API, Proxmox API, Hyper-V (WinRM)

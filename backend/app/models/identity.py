@@ -19,6 +19,7 @@ class ProviderType(str, enum.Enum):
 
 class ActionType(str, enum.Enum):
     offboard = "offboard"
+    onboard = "onboard"
 
 
 class ActionStatus(str, enum.Enum):
@@ -46,6 +47,9 @@ class SystemType(str, enum.Enum):
     ssh_linux = "ssh_linux"
     winrm_windows = "winrm_windows"
     database = "database"
+    guacamole = "guacamole"
+    tactical_rmm = "tactical_rmm"
+    unifi = "unifi"
 
 
 class IdentityProvider(Base):

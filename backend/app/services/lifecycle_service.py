@@ -266,6 +266,12 @@ async def _execute_task(db: AsyncSession, task: LifecycleTask, username: str) ->
             ok, msg = await _revoke_winrm(db, task.system_id, username)
         elif task.system_type == SystemType.database:
             ok, msg = await _revoke_db(db, task.system_id, username)
+        elif task.system_type == SystemType.guacamole:
+            ok, msg = await _revoke_guacamole(db, task.system_id, username)
+        elif task.system_type == SystemType.tactical_rmm:
+            ok, msg = await _revoke_tactical_rmm(db, task.system_id, username)
+        elif task.system_type == SystemType.unifi:
+            ok, msg = await _revoke_unifi(db, task.system_id, username)
         else:
             ok, msg = False, "Tipo de sistema não suportado"
     except Exception as e:
@@ -443,3 +449,48 @@ async def _revoke_db(db: AsyncSession, connector_id: str, username: str) -> tupl
         return False, "Tipo de banco não suportado"
     except Exception as e:
         return False, str(e)
+
+
+async def _revoke_guacamole(db: AsyncSession, connector_id: str, username: str) -> tuple[bool, str]:
+    from uuid import UUID
+    from app.models.onboarding import ExternalConnector
+    connector = await db.get(ExternalConnector, UUID(connector_id))
+    if not connector:
+        return False, "Conector não encontrado"
+    config = decrypt_credentials(connector.encrypted_config)
+    from app.services.guacamole_service import get_user, disable_user
+    user = await get_user(config, username)
+    if not user:
+        return True, f"Usuário '{username}' não encontrado no Guacamole"
+    await disable_user(config, username)
+    return True, f"Usuário '{username}' desabilitado no Guacamole"
+
+
+async def _revoke_tactical_rmm(db: AsyncSession, connector_id: str, username: str) -> tuple[bool, str]:
+    from uuid import UUID
+    from app.models.onboarding import ExternalConnector
+    connector = await db.get(ExternalConnector, UUID(connector_id))
+    if not connector:
+        return False, "Conector não encontrado"
+    config = decrypt_credentials(connector.encrypted_config)
+    from app.services.tactical_rmm_service import get_user, disable_user
+    user = await get_user(config, username)
+    if not user:
+        return True, f"Usuário '{username}' não encontrado no Tactical RMM"
+    await disable_user(config, user["id"])
+    return True, f"Usuário '{username}' desabilitado no Tactical RMM"
+
+
+async def _revoke_unifi(db: AsyncSession, connector_id: str, username: str) -> tuple[bool, str]:
+    from uuid import UUID
+    from app.models.onboarding import ExternalConnector
+    connector = await db.get(ExternalConnector, UUID(connector_id))
+    if not connector:
+        return False, "Conector não encontrado"
+    config = decrypt_credentials(connector.encrypted_config)
+    from app.services.unifi_service import get_admin, revoke_admin
+    admin = await get_admin(config, username)
+    if not admin:
+        return True, f"Admin '{username}' não encontrado no Unifi"
+    await revoke_admin(config, admin["_id"])
+    return True, f"Admin '{username}' removido do Unifi"

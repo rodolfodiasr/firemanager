@@ -81,3 +81,24 @@ async def suspend_user(config: dict, user_key: str) -> None:
     async with httpx.AsyncClient(timeout=15) as c:
         r = await c.patch(f"{_DIR}/users/{user_key}", headers=hdrs, json={"suspended": True})
         r.raise_for_status()
+
+
+async def add_user_to_groups(config: dict, user_email: str, group_names: list[str]) -> None:
+    token = await _token(config)
+    domain = config["domain"]
+    hdrs = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=15) as c:
+        for group_name in group_names:
+            r = await c.get(f"{_DIR}/groups?domain={domain}&query=name={group_name}", headers=hdrs)
+            r.raise_for_status()
+            groups = r.json().get("groups", [])
+            if not groups:
+                raise ValueError(f"Grupo '{group_name}' não encontrado no Google Workspace")
+            group_key = groups[0]["email"]
+            r = await c.post(
+                f"{_DIR}/groups/{group_key}/members",
+                headers=hdrs,
+                json={"email": user_email, "role": "MEMBER"},
+            )
+            if r.status_code not in (200, 409):
+                r.raise_for_status()
