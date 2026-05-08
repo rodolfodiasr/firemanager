@@ -94,305 +94,163 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 ---
 
-## Fases implementadas
+## Roadmap Completo
 
-| Fase | Descrição | Status |
-|---|---|---|
-| 1 | Scaffold MVP — devices, operações, agente IA | ✅ |
-| 2 | Multi-tenant/MSSP com roles | ✅ |
-| 3 | Integrações externas (Nmap, Shodan, Wazuh, OpenVAS) | ✅ |
-| 4 | Dashboard cross-tenant Super Admin | ✅ |
-| 5 | Convites por email + self-service | ✅ |
-| 6 | pfSense, OPNsense, MikroTik, Endian | ✅ |
-| 7 | Bulk Jobs em lote | ✅ |
-| 8 | Inspetor de dispositivo ao vivo | ✅ |
-| 9 | Bulk jobs por categoria | ✅ |
-| 10 | Grupos de dispositivos | ✅ |
-| 11 | Dell N-Series (DNOS6) | ✅ |
-| 12 | HP V1910 (Comware) | ✅ |
-| 13 | Variáveis de template (herança tenant→device) | ✅ |
-| 14 | Módulo Analista de Servidores (SSH Linux, WinRM, Zabbix, Wazuh) | ✅ |
-| 15 | Migração de Switches + BookStack + Zabbix v6/v7 + Snapshot scheduling + Segmentação inventário | ✅ |
-| 16 | Migração de Regras de Firewall (Fortinet, SonicWall, Sophos) | ✅ |
-| 17 | Golden Config: Templates, Padronização e Divergência | ✅ |
-| 18 | Análise de Conectividade de Rede (rotas, BGP/OSPF, SD-WAN, anomalias, IA) | ✅ |
-| 19 | Base de Conhecimento IA — RAG avançado (upload PDF/DOCX/MD, pgvector, agent injection) | ✅ |
-| 20 | Conectores de Banco de Dados (PostgreSQL, MySQL, MariaDB, SQL Server, Oracle) + auditoria de usuários/privilégios + IA | ✅ |
-| 21 | Gestão de Ciclo de Vida de Usuários — Azure AD, Google Workspace, offboarding coordenado SSH/WinRM/DB, contas órfãs, webhook RH | ✅ |
-| 22 | Onboarding com 1 Clique — Perfis de cargo, grupos AD automáticos (GLPI, Docs, SysPass), Guacamole, Tactical RMM, Unifi Network | ✅ |
-| 23 | Alertas & Integrações — Slack, Teams, Email SMTP, Webhook, Jira; regras por gatilho (offboard, onboard, health check, órfãs) | ✅ |
-| 24 | Dashboard Executivo — Score de risco, métricas consolidadas, relatório PDF executivo (WeasyPrint) | ✅ |
+### Fases Implementadas
 
----
-
-## Roadmap — Próximas Fases
-
-### Fase 18 — Análise de Conectividade de Rede
-*Análise de rotas + Nmap internet exposure*
-
-- Coleta de tabelas de roteamento via SSH em todos os firewalls (`show route`, `show ip route`)
-- Coleta de status: SD-WAN, BGP/OSPF, rotas estáticas
-- Detector de anomalias: rotas assimétricas, redundantes sem failover, conflitos estático×dinâmico
-- Cruzamento Nmap: regras que expõem serviços a IPs públicos destacadas com exposição real
-- Mapa de topologia visual interativo
-- AI: explica anomalias, sugere correções
+| Fase | Descrição | Entregáveis principais | Status |
+|---|---|---|---|
+| 1 | Scaffold MVP | Devices, operações CRUD, agente IA (Claude), auth JWT | ✅ |
+| 2 | Multi-tenant / MSSP | Tenants, roles (admin/analyst/readonly), super admin cross-tenant | ✅ |
+| 3 | Integrações externas | Nmap, Shodan, Wazuh, OpenVAS | ✅ |
+| 4 | Dashboard Super Admin | Painel cross-tenant, health status global | ✅ |
+| 5 | Convites e self-service | Convite por email, accept invite, gestão de usuários por tenant | ✅ |
+| 6 | Novos vendors firewall | pfSense, OPNsense, MikroTik, Endian | ✅ |
+| 7 | Bulk Jobs | Operações em lote em múltiplos devices | ✅ |
+| 8 | Inspetor ao vivo | Snapshot de device em tempo real (regras, NAT, rotas, interfaces) | ✅ |
+| 9 | Bulk jobs por categoria | Roles de categoria, filtro de devices por grupo/função | ✅ |
+| 10 | Grupos de dispositivos | Device groups, operações em grupo | ✅ |
+| 11 | Dell N-Series (DNOS6) | Suporte CLI Dell N-Series via Netmiko | ✅ |
+| 12 | HP V1910 (Comware) | Suporte CLI HP Comware via Netmiko | ✅ |
+| 13 | Variáveis de template | Herança tenant → device, substituição em templates CLI | ✅ |
+| 14 | Analista de Servidores | SSH Linux, WinRM Windows, Zabbix v6/v7, Wazuh — módulo analítico N3 | ✅ |
+| 15 | Migração de Switches | Juniper EX, Aruba, Intelbras; BookStack; Zabbix dual-version; snapshot scheduling | ✅ |
+| 16 | Migração de Regras | Parser + renderer Fortinet/SonicWall/Sophos; IR normalizado; Celery worker | ✅ |
+| 17 | Golden Config | Templates com variáveis tipadas, biblioteca por vendor, divergência device×template | ✅ |
+| 18 | Conectividade de Rede | Routing tables SSH, BGP/OSPF/SD-WAN, anomalias, cruzamento Nmap, mapa topologia, IA | ✅ |
+| 19 | Base de Conhecimento IA | RAG: upload PDF/DOCX/MD, pgvector, embeddings, injeção automática no agente | ✅ |
+| 20 | Conectores de Banco | PostgreSQL, MySQL/MariaDB, SQL Server, Oracle; auditoria usuários/privilégios; IA | ✅ |
+| 21 | Ciclo de Vida — Offboarding | Azure AD, Google Workspace, AD Local (LDAP); offboard SSH/WinRM/DB; órfãs; webhook RH | ✅ |
+| 22 | Ciclo de Vida — Onboarding | Perfis de cargo; grupos AD (GLPI/Docs/SysPass automáticos); Guacamole; Tactical RMM; Unifi | ✅ |
+| 23 | Alertas & Integrações | Slack, Teams, Email SMTP, Webhook, Jira; regras por gatilho e severidade; histórico | ✅ |
+| 24 | Dashboard Executivo | Score de risco 0–100, métricas agregadas, relatório PDF executivo (WeasyPrint) | ✅ |
 
 ---
 
-### Fase 19 — Base de Conhecimento IA (RAG Avançado)
-*Infraestrutura transversal — melhora todos os módulos*
-
-- Upload de documentos por tenant: PDF, Markdown, DOCX (manuais, runbooks, contratos)
-- Chunking + embeddings com pgvector (já na stack)
-- Biblioteca embutida: docs dos vendors principais + CIS Benchmarks + ISO 27001 + LGPD
-- Agente IA injeta contexto relevante automaticamente antes de responder
-
----
-
-### Fase 20 — Conectores de Banco de Dados
-*Alimenta Fase 21*
-
-- SQL Server (aioodbc), Oracle (cx_Oracle), MySQL/MariaDB (aiomysql), PostgreSQL (asyncpg — já disponível)
-- Auditoria: usuários, último acesso, roles/privileges, senhas sem expiração
-- Detecção: privilégios excessivos, contas sem login há X dias
-- Relatório de compliance por política do tenant
-- Integração com Fase 14 (servidor lista os DBs que rodam nele)
-- WinRM CIS Windows: checklist CIS benchmark para Windows Server
-
----
-
-### Fase 21 — Gestão de Ciclo de Vida de Usuários e Identidade SaaS
-*Maior diferenciador MSSP — on-premise + cloud unificados*
-
-- **Workflow de offboarding:** 1 clique revoga acesso em SSH Linux, WinRM, firewalls VPN, DBs, Wazuh
-- **Workflow de onboarding:** cria usuários com permissões por cargo/papel em todos os sistemas
-- **Office 365 / Azure AD:** monitor de logins anômalos, criação e revogação de usuários via Graph API
-- **Google Workspace:** mesmo padrão — conector base comum com Azure AD (OAuth2 + Directory API)
-- **Offboarding por webhook de RH:** sistema de RH (ticket/webhook) sinaliza desligamento → plataforma lista todos os acessos do usuário → analista aprova revogação com 1 clique
-- Execução coordenada e auditada em N sistemas simultaneamente (on-premise + cloud)
-- Relatório de contas órfãs: usuários que existem no AD/365/Workspace mas não deveriam mais ter acesso
-- Registro de auditoria imutável: quem, quando, quais sistemas, resultado
-
----
-
-### Fase 25 — Plataforma Enterprise e Marketplace (próxima prioridade após 22-24)
-
----
-
-### Fase 22 — Onboarding 1 Clique (IMPLEMENTADA ✅)
-*Provisionamento automático multi-sistema por perfil de cargo*
-
-#### Sub-fases implementadas
-- **22A** — OnboardingProfile + grupos AD: perfis de cargo definem quais grupos AD adicionar → cobre automaticamente GLPI, Docs, SysPass (AD-integrados)
-- **22B** — Guacamole (REST API token) + Tactical RMM (REST API X-API-KEY): criação de usuário em sistemas externos  
-- **22C** — Unifi Network Controller: convite de admin com role configurável (legacy + UniFi OS)
-
-#### Modelo de dados
-- `ExternalConnector`: conectores Guacamole/Tactical RMM/Unifi com config criptografada
-- `OnboardingProfile`: perfil de cargo com `ad_groups` (JSONB) + `systems` (relationship)
-- `OnboardingProfileSystem`: sistema-por-sistema com config de role/senha/grupos
-
-#### Serviços
-- `guacamole_service.py`, `tactical_rmm_service.py`, `unifi_service.py`: APIs diretas
-- `onboarding_service.py`: orquestração com `build_onboarding_tasks` + `run_onboarding`
-- `local_ad_service.add_user_to_groups()`: adição de membro a grupos LDAP por CN
-- `azure_ad_service.add_user_to_groups()`: POST /groups/{id}/members/$ref via Graph API
-- `google_workspace_service.add_user_to_groups()`: POST /groups/{key}/members via Directory API
-
----
-
-### Fase 23 — Alertas & Integrações (IMPLEMENTADA ✅)
-
----
-
-### Fase 24 — Dashboard Executivo (IMPLEMENTADA ✅)
-
----
-
-### Fase 22-original — Planejamento de Migração de Infraestrutura (PENDENTE)
-*Planejamento assistido por IA — sem execução automatizada*
-
-- Conectores read-only: VMware vCenter API, Proxmox API, Hyper-V (WinRM)
-- Inventário de VMs: OS, recursos, serviços, dependências de rede
-- Análise de dependências: quais VMs se comunicam, ordem de migração
-- AI gera runbook: sequência, janelas de manutenção, rollback plan
-- Export automático para BookStack
-
----
-
-### Fase 23 — Alertas, Integrações e Automação de Monitoramento
-*Fechar o loop: detectar → notificar → ticketar → correlacionar*
-
-- **Webhooks de saída:** SIEM (Splunk, Elastic, Wazuh via API), chat (Slack, Microsoft Teams)
-- **Notificações por e-mail** configuráveis por tenant (SMTP próprio ou SendGrid)
-- **Integração com ticketing:** cria ticket automaticamente no Jira/ServiceNow/Freshdesk ao detectar anomalia crítica
-- **Diff visual entre snapshots** de configuração + rollback com 1 clique
-- **Agendamento de auditorias recorrentes:** cron configurável por dispositivo/grupo/tenant
-- **Correlação de regras com CVEs:** integração NVD/OSV — regras que expõem serviços com CVEs conhecidos são destacadas no inspetor
-- **Motor de alertas:** canal configurável por tipo de evento (anomalia crítica → email + Slack; drift de template → ticket Jira)
-- **Correlação identidade↔rede:** usuário bloqueado no Azure AD/365 → sugestão automática de bloquear IP no firewall (requer aprovação humana)
-- **Gatilhos cloud híbridos:** Azure Monitor / AWS CloudWatch disparam ações em infra local (ex: spike de tráfego na cloud → auditoria automática no firewall on-premise)
-
----
-
-### Fase 24 — Relatório Executivo, SLA e Compliance Avançado
-*Visibilidade C-level + frameworks enterprise*
-
-- **Dashboard executivo:** postura de segurança consolidada do ambiente inteiro (extends Trust Score)
-- **SLA de disponibilidade:** histórico de uptime por dispositivo, relatório mensal por tenant
-- **Relatório executivo em PDF:** resumo não-técnico — riscos, tendências, comparativo mês a mês
-- **Conformidade NIST SP 800-41** (firewall policy framework)
-- **Análise de superfície de ataque completa:** mapa de risco cross-vendor do ambiente inteiro
-- **Análise de movimento lateral entre zonas:** detecta paths entre DMZ/LAN/WAN que violam princípio de menor privilégio
-- **Atualização de firmware via plataforma:** Fortinet e SonicWall (com janela de manutenção e rollback)
+### Próximas Fases
 
 ---
 
 ### Fase 25 — Plataforma Enterprise e Marketplace
 *Escala MSSP: white-label, billing, SSO, API pública, grandes vendors*
 
-- **SSO** via SAML 2.0 / OIDC (Azure AD, Okta, Google Workspace)
-- **RBAC granular** por cliente/dispositivo/operação (além dos 3 papéis atuais)
-- **API pública** do FireManager com documentação OpenAPI 3.1 — permite integrações externas
-- **White-label:** tenant customiza logo, cores e domínio (parceiros MSSP que vendem sob marca própria)
-- **Multi-idioma:** i18n/l10n — pt-BR ✅, en-US, es-LA
-- **Billing/subscription por tenant:** planos, limites de dispositivos, cobrança automatizada
-- **Grandes vendors enterprise:** Cisco ASA/FTD, Palo Alto PAN-OS, Check Point R80+, Juniper SRX
-- **Marketplace de plugins:** extensões de vendor contribuídas pela comunidade / parceiros
+| Funcionalidade | Detalhe |
+|---|---|
+| SSO | SAML 2.0 / OIDC — Azure AD, Okta, Google Workspace |
+| RBAC granular | Permissões por cliente/dispositivo/operação (além dos 3 roles atuais) |
+| API pública | OpenAPI 3.1 documentada — permite integrações externas e automações |
+| White-label | Logo, cores e domínio customizados por tenant (revenda MSSP) |
+| Multi-idioma | i18n/l10n — pt-BR ✅, en-US, es-LA |
+| Billing | Planos, limites de devices, cobrança automatizada por tenant |
+| Vendors enterprise | Cisco ASA/FTD, Palo Alto PAN-OS, Check Point R80+, Juniper SRX |
+| Marketplace | Plugins de vendor contribuídos por comunidade / parceiros |
 
 ---
 
-### Fase 26 — Golden Config Avançado: Template Bundles e Políticas REST-native
-*Opção C: implantação completa de filial com 1 clique — base + regras + filtro + geo-IP*
+### Fase 26 — Golden Config Avançado: Template Bundles REST-native
+*Implantação completa de filial com 1 clique — base + regras + filtro web + geo-IP + VPN*
 
-#### Contexto e motivação
-A Fase 17 implementou Golden Config para **configuração base** (CLI SSH: hostname, VLANs, interfaces, STP, rotas).
-A Fase 26 estende isso para **políticas de segurança completas**, que nos firewalls modernos são gerenciadas via REST API (não CLI).
+**Contexto:** A Fase 17 faz Golden Config via CLI SSH (hostname, VLANs, interfaces, rotas). A Fase 26 estende para políticas de segurança completas gerenciadas via REST API nos firewalls modernos.
 
-**Limitação atual:** Fortinet apply retorna `status: "manual"` — não há REST API call para push de configuração.
-A Fase 26 adiciona o conector REST-native e o modelo de bundle que agrupa seções heterogêneas.
-
-#### Modelo de dados — GoldenBundle
+#### Modelo de dados
 
 ```
-GoldenBundle (novo modelo)
+GoldenBundle
 ├── id, tenant_id, name, description, vendor
-├── variables: JSONB  (variáveis globais do bundle)
-└── sections: List[BundleSection] (ordenadas por apply_order)
+├── variables: JSONB          (variáveis globais do bundle)
+└── sections: [BundleSection] (ordenadas por apply_order)
 
 BundleSection
-├── section_type: Enum("base_config" | "access_rules" | "content_filter" | "geo_ip" | "objects" | "vpn" | "sd_wan")
-├── template_id: FK → GoldenTemplate  (templates CLI existentes da Fase 17)
-├── rest_payload_template: Text  (template JSON para seções REST-native, com {VARIÁVEIS})
-├── apply_strategy: Enum("cli_ssh" | "rest_api" | "manual_only")
-├── apply_order: int  (ordem de execução — objects antes de rules)
-└── rollback_strategy: Enum("snapshot_restore" | "delete_objects" | "none")
+├── section_type: base_config | objects | access_rules | content_filter | geo_ip | vpn | sd_wan
+├── template_id → GoldenTemplate   (CLI — Fase 17)
+├── rest_payload_template: Text    (JSON com {VARIÁVEIS} para REST-native)
+├── apply_strategy: cli_ssh | rest_api | manual_only
+├── apply_order: int
+└── rollback_strategy: snapshot_restore | delete_objects | none
 ```
 
-**Herança de variáveis (3 níveis):**
-```
-Bundle Variables → Tenant Variables → Device Variables
-(device sempre sobrescreve)
-```
+**Herança de variáveis:** Bundle → Tenant → Device (device sempre sobrescreve)
 
-#### Seções e estratégias por vendor
+#### Estratégias por vendor e seção
 
 | section_type | Fortinet | SonicWall | pfSense | Sophos |
 |---|---|---|---|---|
 | base_config | CLI SSH | CLI SSH | CLI SSH | CLI SSH |
-| objects (addr/svc) | REST `/api/v2/cmdb/firewall/address` | REST API | — | REST API |
-| access_rules | REST `/api/v2/cmdb/firewall/policy` | REST API | pfctl rules | REST API |
-| content_filter | REST `/api/v2/cmdb/webfilter/profile` | CFS REST | Squid/pfBlockerNG | REST API |
-| geo_ip | REST `/api/v2/cmdb/firewall/country` | Geo-IP REST | pfBlockerNG | REST API |
-| vpn | REST `/api/v2/cmdb/vpn.ipsec/phase1` | REST API | CLI SSH | REST API |
-| sd_wan | REST `/api/v2/cmdb/system/virtual-wan-link` | — | — | — |
+| objects | REST `/cmdb/firewall/address` | REST API | — | REST API |
+| access_rules | REST `/cmdb/firewall/policy` | REST API | pfctl | REST API |
+| content_filter | REST `/cmdb/webfilter/profile` | CFS REST | pfBlockerNG | REST API |
+| geo_ip | REST `/cmdb/firewall/country` | Geo-IP REST | pfBlockerNG | REST API |
+| vpn | REST `/cmdb/vpn.ipsec/phase1` | REST API | CLI SSH | REST API |
+| sd_wan | REST `/cmdb/system/virtual-wan-link` | — | — | — |
 
-#### Fluxo de aplicação (BundleApplyJob)
-
-```
-1. Snapshot automático pré-apply (salva config atual como fallback)
-2. Para cada BundleSection (ordenado por apply_order):
-   a. Interpolar variáveis (device → tenant → bundle)
-   b. apply_strategy == "cli_ssh"  → SSH + comandos CLI (usa executor Fase 17)
-   c. apply_strategy == "rest_api" → REST call (novo FortinetRestConnector)
-   d. apply_strategy == "manual_only" → gera preview + aguarda confirmação humana
-3. Se qualquer seção falhar → rollback automático pela rollback_strategy da seção
-4. Registro de audit log: seção, payload enviado, resposta do device, status
-```
-
-#### Novos componentes a implementar
-
-**Backend:**
-- `app/models/golden_bundle.py` — GoldenBundle + BundleSection (SQLAlchemy)
-- `app/services/bundle_renderer.py` — interpola variáveis, resolve template_id → CLI ou rest_payload_template → JSON
-- `app/services/fortinet_rest_connector.py` — autenticação via API key Fortinet, CRUD de objetos/políticas/webfilter/geo-ip
-- `app/services/sonicwall_rest_connector.py` — SonicWall REST API (sessions + HTTPS)
-- `app/workers/bundle_worker.py` — Celery task `apply_golden_bundle` com rollback automático
-- `app/api/golden_bundle.py` — CRUD bundles/sections + endpoint `/apply`
-- Migration Alembic `0031_golden_bundle.py`
-
-**Frontend:**
-- `BundleEditor` — wizard multi-step: escolhe vendor → configura seções → define variáveis → preview
-- `BundleLibrary` — lista de bundles do tenant (templates de filial reutilizáveis)
-- `BundleApplyModal` — seleciona device alvo, sobrescreve variáveis (IPs, VDOM, senhas), preview de cada seção, progresso em tempo real via polling
-- `BundleDiffView` — compara estado atual do device vs. bundle (divergência por seção)
-
-#### Templates de filial embutidos (biblioteca padrão)
+#### Fluxo de aplicação
 
 ```
-"Filial Padrão Fortinet" (bundle)
-├── [1] base_config     → template CLI: hostname, VLANs, interfaces, rotas estáticas
-├── [2] objects         → REST: addr-objects padrão (RFC1918, trusted-nets, dns-servers)
-├── [3] access_rules    → REST: LAN→WAN allow, LAN→LAN isolado, DMZ→LAN deny, WAN→all deny
-├── [4] content_filter  → REST: webfilter profile (bloqueia P2P, adult, malware)
-├── [5] geo_ip          → REST: bloqueia países de alto risco (lista configurável por tenant)
-└── [6] vpn             → REST: IPSec site-to-site (template com {PEER_IP}, {PSK}, {SUBNET})
+1. Snapshot automático pré-apply (fallback garantido)
+2. Para cada seção (order_by apply_order):
+   cli_ssh     → SSH + comandos CLI (executor Fase 17)
+   rest_api    → FortinetRestConnector / SonicWallRestConnector
+   manual_only → gera preview + aguarda aprovação humana
+3. Falha em qualquer seção → rollback pela rollback_strategy da seção
+4. Audit log imutável: seção, payload, resposta, status
 ```
 
-#### Milestones (Etapas internas da Fase 26)
+#### Componentes a implementar
 
-| Etapa | Entregável | Pré-requisito |
-|---|---|---|
-| 26.1 | Modelos DB + migrations + CRUD API | — |
-| 26.2 | FortinetRestConnector (objects + access_rules) | 26.1 |
-| 26.3 | BundleRenderer + variáveis 3 níveis | 26.1 |
-| 26.4 | bundle_worker + rollback automático | 26.2 + 26.3 |
-| 26.5 | Frontend: BundleEditor + BundleLibrary | 26.1 |
-| 26.6 | Frontend: BundleApplyModal + polling | 26.4 + 26.5 |
-| 26.7 | Templates embutidos "Filial Padrão" (Fortinet + SonicWall) | 26.4 |
-| 26.8 | BundleDiffView (divergência por seção) | 26.6 |
-| 26.9 | SonicWallRestConnector | 26.2 |
+**Backend:** `golden_bundle.py` (model), `bundle_renderer.py`, `fortinet_rest_connector.py`, `sonicwall_rest_connector.py`, `bundle_worker.py` (Celery), `api/golden_bundle.py`
+
+**Frontend:** `BundleEditor` (wizard), `BundleLibrary`, `BundleApplyModal` (polling), `BundleDiffView`
+
+**Biblioteca embutida "Filial Padrão Fortinet":**
+```
+[1] base_config   → CLI: hostname, VLANs, interfaces, rotas
+[2] objects       → REST: addr-objects RFC1918, DNS, trusted-nets
+[3] access_rules  → REST: LAN→WAN allow, LAN→LAN isolado, WAN→all deny
+[4] content_filter→ REST: webfilter (bloqueia P2P, adult, malware)
+[5] geo_ip        → REST: bloqueia países de alto risco (lista por tenant)
+[6] vpn           → REST: IPSec site-to-site ({PEER_IP}, {PSK}, {SUBNET})
+```
+
+---
+
+### Fase 27 — Planejamento de Migração de Infraestrutura (VM Migration Planner)
+*Planejamento assistido por IA — read-only, sem execução automatizada*
+
+- Conectores read-only: VMware vCenter API, Proxmox API, Hyper-V (WinRM)
+- Inventário de VMs: OS, CPU/RAM/disco, serviços em execução, dependências de rede
+- Análise de dependências: mapa de comunicação entre VMs, ordem de migração sugerida
+- IA gera runbook: sequência, janelas de manutenção, estratégia de rollback
+- Export automático para BookStack
 
 ---
 
 ## Novos Vendors — Priorização
 
 | Vendor | Categoria | Fase alvo | Prioridade | Status |
-|--------|-----------|-----------|-----------|--------|
-| Huawei USG | Firewall | 18+ | Média | Pendente |
+|---|---|---|---|---|
 | Cisco ASA/FTD | Firewall | 25 | Alta | Pendente |
 | Palo Alto PAN-OS | Firewall | 25 | Alta | Pendente |
 | Check Point R80+ | Firewall | 25 | Alta | Pendente |
 | Juniper SRX | Firewall | 25 | Média | Pendente |
-| TP-Link | Switch | Futuro | Baixa | Pendente |
-| D-Link | Switch | Futuro | Baixa | Pendente |
+| Huawei USG | Firewall | 25+ | Média | Pendente |
+| TP-Link | Switch | 27+ | Baixa | Pendente |
+| D-Link | Switch | 27+ | Baixa | Pendente |
 
-**Implementados:** Sophos (Fase 16 ✅), Intelbras/Juniper/Aruba (Fase 15 ✅)
+**Implementados:** Sophos ✅ (F16), Intelbras/Juniper EX/Aruba ✅ (F15), HP Comware ✅ (F12), Dell N-Series ✅ (F11)
 
 ---
 
 ## Mapa de Dependências
 
 ```
-Fase 15 (switches)        ──► Fase 16 (Firewall Migration) ✅
-Fase 13 (variáveis)       ──► Fase 17 (Golden Config) ✅
-Fase 17 (Golden Config)   ──► Fase 26 (Template Bundles)
-pgvector                  ──► Fase 19 (RAG)
-Fase 14 (servidores)      ──► Fases 20 e 22
-Fases 14 + 20             ──► Fase 21 (User Lifecycle + Identidade SaaS)
-Fase 14                   ──► Fase 22 (VM Migration)
-Fases 8 + 17 + 21         ──► Fase 23 (Alertas + Diff + Correlação identidade↔rede)
-Fases 3 + 23              ──► Fase 24 (Relatório Executivo)
-Fase 24                   ──► Fase 25 (Enterprise/Marketplace)
-Fase 26 pode rodar em paralelo com Fases 18–25 (extensão vertical de Fase 17)
+Fase 1-13 (base)         ──► todas as fases subsequentes
+Fase 14 (servidores)     ──► F20 (DBs) ──► F21 (offboard) ──► F22 (onboard)
+Fase 15 (switches)       ──► F16 (firewall migration)
+Fase 13 (variáveis)      ──► F17 (golden config) ──► F26 (bundles REST)
+pgvector                 ──► F19 (RAG)
+F21 + F22 (identidade)   ──► F23 (alertas: gatilhos offboard/onboard)
+F21-23                   ──► F24 (dashboard executivo)
+F24                      ──► F25 (enterprise/marketplace)
+F26 pode rodar em paralelo com F25 (extensão vertical de F17)
+F27 pode rodar em paralelo com F25-26 (módulo independente)
 ```
