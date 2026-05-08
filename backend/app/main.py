@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, alerts, audit, auth, bulk_jobs, category_roles, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, executive, firewall_migration, glpi, golden_template, identity, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, recommendations, remediation, server_operations, servers, templates, tenants, variables
+from app.api import admin, alerts, audit, auth, bulk_jobs, category_roles, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, enterprise, executive, firewall_migration, glpi, golden_bundles, golden_template, identity, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, recommendations, remediation, server_operations, servers, templates, tenants, variables, vm_migration
 from app.config import settings
 
 log = structlog.get_logger()
@@ -71,6 +71,9 @@ app.include_router(identity.router,            prefix="/identity",              
 app.include_router(onboarding.router,          prefix="/onboarding",              tags=["onboarding"])
 app.include_router(alerts.router,              prefix="/alerts",                  tags=["alerts"])
 app.include_router(executive.router,           prefix="/executive",               tags=["executive"])
+app.include_router(enterprise.router,          prefix="/enterprise",               tags=["enterprise"])
+app.include_router(golden_bundles.router,      prefix="/golden-bundles",           tags=["golden-bundles"])
+app.include_router(vm_migration.router,        prefix="/vm-migration",              tags=["vm-migration"])
 
 
 class FireManagerError(Exception):

@@ -1,8 +1,10 @@
 from app.connectors.base import BaseConnector
+from app.connectors.checkpoint import CheckPointConnector
 from app.connectors.endian import EndianConnector
 from app.connectors.fortinet import FortinetConnector
 from app.connectors.mikrotik import MikroTikConnector
 from app.connectors.opnsense import OPNsenseConnector
+from app.connectors.palo_alto import PaloAltoConnector
 from app.connectors.pfsense import PfSenseConnector
 from app.connectors.sonicwall import SonicWallConnector
 from app.connectors.sonicwall_ssh import SonicWallSSHConnector
@@ -10,6 +12,7 @@ from app.connectors.sophos import SophosConnector
 from app.connectors.ssh import (
     ArubaConnector,
     BaseSSHConnector,
+    CiscoASAConnector,
     CiscoIOSConnector,
     CiscoNXOSConnector,
     DellNConnector,
@@ -26,6 +29,7 @@ from app.utils.crypto import decrypt_credentials
 CLI_VENDORS = frozenset({
     VendorEnum.cisco_ios,
     VendorEnum.cisco_nxos,
+    VendorEnum.cisco_asa,
     VendorEnum.juniper,
     VendorEnum.aruba,
     VendorEnum.dell,
@@ -38,6 +42,7 @@ CLI_VENDORS = frozenset({
 _SSH_CONNECTOR_MAP: dict[VendorEnum, type[BaseSSHConnector]] = {
     VendorEnum.cisco_ios:   CiscoIOSConnector,
     VendorEnum.cisco_nxos:  CiscoNXOSConnector,
+    VendorEnum.cisco_asa:   CiscoASAConnector,
     VendorEnum.juniper:     JuniperConnector,
     VendorEnum.aruba:       ArubaConnector,
     VendorEnum.dell:        DellOS10Connector,
@@ -127,6 +132,22 @@ def get_connector(device: Device) -> BaseConnector:
 
     if device.vendor == VendorEnum.sophos:
         return SophosConnector(
+            host=base_url,
+            username=creds.get("username", ""),
+            password=creds.get("password", ""),
+            verify_ssl=device.verify_ssl,
+        )
+
+    if device.vendor == VendorEnum.palo_alto:
+        return PaloAltoConnector(
+            host=base_url,
+            api_key=creds.get("token") or creds.get("api_key") or "",
+            vsys=creds.get("vsys") or "vsys1",
+            verify_ssl=device.verify_ssl,
+        )
+
+    if device.vendor == VendorEnum.checkpoint:
+        return CheckPointConnector(
             host=base_url,
             username=creds.get("username", ""),
             password=creds.get("password", ""),

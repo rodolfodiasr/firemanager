@@ -28,6 +28,9 @@ import { Identity } from "./pages/Identity";
 import { Onboarding } from "./pages/Onboarding";
 import { Alerts } from "./pages/Alerts";
 import { Executive } from "./pages/Executive";
+import { Enterprise } from "./pages/Enterprise";
+import { GoldenBundles } from "./pages/GoldenBundles";
+import { VMMigration } from "./pages/VMMigration";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -86,6 +89,9 @@ export function AppRouter() {
       <Route path="/onboarding" element={<ProtectedLayout><Onboarding /></ProtectedLayout>} />
       <Route path="/alerts" element={<ProtectedLayout><Alerts /></ProtectedLayout>} />
       <Route path="/executive" element={<ProtectedLayout><Executive /></ProtectedLayout>} />
+      <Route path="/enterprise" element={<ProtectedLayout><Enterprise /></ProtectedLayout>} />
+      <Route path="/golden-bundles" element={<ProtectedLayout><GoldenBundles /></ProtectedLayout>} />
+      <Route path="/vm-migration" element={<ProtectedLayout><VMMigration /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

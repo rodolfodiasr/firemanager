@@ -124,6 +124,9 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 22 | Ciclo de Vida — Onboarding | Perfis de cargo; grupos AD (GLPI/Docs/SysPass automáticos); Guacamole; Tactical RMM; Unifi | ✅ |
 | 23 | Alertas & Integrações | Slack, Teams, Email SMTP, Webhook, Jira; regras por gatilho e severidade; histórico | ✅ |
 | 24 | Dashboard Executivo | Score de risco 0–100, métricas agregadas, relatório PDF executivo (WeasyPrint) | ✅ |
+| 25 | Plataforma Enterprise | API Keys, White-label branding, Cisco ASA + Palo Alto + Check Point connectors; migração 0038 | ✅ |
+| 26 | Golden Config Bundles REST | GoldenBundle + BundleSection + BundleApply; BundleRenderer; FortinetRestApply; Celery worker; migração 0039 | ✅ |
+| 27 | VM Migration Planner | VMware vCenter + Proxmox read-only; inventory sync; runbook IA (Claude); migração 0040 | ✅ |
 
 ---
 
@@ -131,8 +134,19 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 ---
 
-### Fase 25 — Plataforma Enterprise e Marketplace
-*Escala MSSP: white-label, billing, SSO, API pública, grandes vendors*
+### Fase 28 — SSO / OIDC e RBAC Granular
+*Autenticação federada e permissões finas por recurso*
+
+### Fase 29 — Marketplace de Plugins
+*Contribuição de connectors por parceiros e comunidade*
+
+### Fase 30 — Billing e Multi-idioma
+*Planos, limites, cobrança automatizada; i18n pt-BR/en-US/es-LA*
+
+---
+
+### Fase 25 (Histórico) — Plataforma Enterprise e Marketplace
+*Implementado: white-label, API keys, Cisco ASA/Palo Alto/Check Point*
 
 | Funcionalidade | Detalhe |
 |---|---|

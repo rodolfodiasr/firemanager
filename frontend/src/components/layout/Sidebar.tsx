@@ -28,6 +28,9 @@ import {
   UserPlus,
   Bell,
   BarChart2,
+  Package2,
+  Monitor,
+  KeyRound,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -76,21 +79,24 @@ const navSections: NavSection[] = [
       { to: "/database-connectors", icon: DatabaseZap,  label: "Bancos de Dados" },
       { to: "/identity",            icon: Users,        label: "Identidade"      },
       { to: "/onboarding",          icon: UserPlus,     label: "Onboarding"      },
+      { to: "/vm-migration",        icon: Monitor,      label: "Migração de VMs" },
     ],
   },
   {
     title: "Automação & Relatórios",
     items: [
-      { to: "/alerts",    icon: Bell,     label: "Alertas"             },
-      { to: "/executive", icon: BarChart2, label: "Dashboard Executivo" },
+      { to: "/alerts",         icon: Bell,      label: "Alertas"             },
+      { to: "/executive",      icon: BarChart2, label: "Dashboard Executivo" },
+      { to: "/golden-bundles", icon: Package2,  label: "Golden Bundles"      },
     ],
   },
   {
     title: "Plataforma",
     items: [
-        { to: "/audit",    icon: Shield,        label: "Auditoria"     },
-      { to: "/glpi",       icon: MessageSquare,  label: "Tickets IA"    },
-      { to: "/settings", icon: Settings,      label: "Configurações" },
+      { to: "/audit",      icon: Shield,        label: "Auditoria"     },
+      { to: "/glpi",       icon: MessageSquare, label: "Tickets IA"    },
+      { to: "/enterprise", icon: KeyRound,      label: "Enterprise"    },
+      { to: "/settings",   icon: Settings,      label: "Configurações" },
     ],
   },
 ];
