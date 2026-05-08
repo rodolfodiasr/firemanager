@@ -49,6 +49,41 @@ def _space_vlans(vlans: list[str]) -> str:
     return " ".join(sorted(vlans, key=_vlan_key))
 
 
+def _compress_vlan_ranges(vlans: list[str]) -> str:
+    """Compress VLAN list to HP Comware range notation: '1 to 100 200 300 to 400'.
+
+    If the list covers 1-4094 (all valid VLANs) returns 'all'.
+    Single consecutive items stay as individual numbers.
+    """
+    if not vlans:
+        return ""
+    if vlans == ["all"]:
+        return "all"
+
+    try:
+        nums = sorted(set(int(v) for v in vlans if str(v).isdigit()))
+    except (ValueError, TypeError):
+        return _space_vlans(vlans)
+
+    if not nums:
+        return _space_vlans(vlans)
+
+    # Detect "all": covers 1–4094 with no gaps
+    if nums[0] == 1 and nums[-1] == 4094 and len(nums) == 4094:
+        return "all"
+
+    ranges: list[str] = []
+    start = end = nums[0]
+    for n in nums[1:]:
+        if n == end + 1:
+            end = n
+        else:
+            ranges.append(f"{start} to {end}" if end > start else str(start))
+            start = end = n
+    ranges.append(f"{start} to {end}" if end > start else str(start))
+    return " ".join(ranges)
+
+
 # ── EdgeSwitch renderer ───────────────────────────────────────────────────────
 
 def _render_edgeswitch(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict[str, Any]:
@@ -320,10 +355,8 @@ def _render_hp_comware(ir: dict[str, Any], port_mapping: dict[str, str]) -> dict
         if mode == "trunk":
             if pvid:
                 cmds.append(f" port trunk pvid vlan {pvid}")
-            if tagged == ["all"]:
-                cmds.append(" port trunk permit vlan all")
-            elif tagged:
-                cmds.append(f" port trunk permit vlan {_space_vlans(tagged)}")
+            if tagged:
+                cmds.append(f" port trunk permit vlan {_compress_vlan_ranges(tagged)}")
             else:
                 warns.append(
                     f"Porta '{src}' modo trunk sem VLANs tagged — adicione manualmente: "
