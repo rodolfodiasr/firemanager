@@ -20,6 +20,12 @@ export const identityApi = {
   syncProvider: (id: string) =>
     apiClient.post<IdentityProvider>(`/identity/providers/${id}/sync`).then((r) => r.data),
 
+  testProvider: (id: string) =>
+    apiClient.post<{ success: boolean; message: string }>(`/identity/providers/${id}/test`).then((r) => r.data),
+
+  testLdapConfig: (config: Record<string, unknown>) =>
+    apiClient.post<{ success: boolean; message: string }>("/identity/providers/test-ldap", config).then((r) => r.data),
+
   listUsers: (providerId: string) =>
     apiClient.get<IdentityUser[]>(`/identity/providers/${providerId}/users`).then((r) => r.data),
 

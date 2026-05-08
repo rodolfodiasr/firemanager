@@ -16,6 +16,7 @@ import {
   UserCheck,
   UserMinus,
   UserX,
+  Wifi,
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -37,16 +38,19 @@ import type {
 const PROVIDER_LABELS: Record<ProviderType, string> = {
   azure_ad: "Azure AD / Entra ID",
   google_workspace: "Google Workspace",
+  local_ad: "Active Directory Local",
 };
 
 const PROVIDER_COLORS: Record<ProviderType, string> = {
   azure_ad: "bg-blue-100 text-blue-700",
   google_workspace: "bg-red-100 text-red-700",
+  local_ad: "bg-purple-100 text-purple-700",
 };
 
 const SYSTEM_LABELS: Record<string, string> = {
   azure_ad: "Azure AD",
   google_workspace: "Google Workspace",
+  local_ad: "AD Local (LDAP)",
   ssh_linux: "Linux SSH",
   winrm_windows: "Windows WinRM",
   database: "Banco de Dados",
@@ -106,6 +110,16 @@ function ProviderModal({ onClose }: { onClose: () => void }) {
   const [adminEmail, setAdminEmail] = useState("");
   const [domain, setDomain] = useState("");
 
+  // Local AD (LDAP) fields
+  const [ldapHost, setLdapHost] = useState("");
+  const [ldapPort, setLdapPort] = useState(389);
+  const [ldapSsl, setLdapSsl] = useState(false);
+  const [ldapBaseDn, setLdapBaseDn] = useState("");
+  const [ldapUsername, setLdapUsername] = useState("");
+  const [ldapPassword, setLdapPassword] = useState("");
+  const [ldapSearchBase, setLdapSearchBase] = useState("");
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
   const mut = useMutation({
     mutationFn: (config: Record<string, unknown>) =>
       identityApi.createProvider({ name, provider_type: type, config }),
@@ -117,22 +131,41 @@ function ProviderModal({ onClose }: { onClose: () => void }) {
     onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Erro ao salvar"),
   });
 
+  const testMut = useMutation({
+    mutationFn: () => identityApi.testLdapConfig(buildConfig()),
+    onSuccess: (r) => setTestResult({ ok: r.success, msg: r.message }),
+    onError: (e: any) => setTestResult({ ok: false, msg: e?.response?.data?.detail ?? "Erro de conexão" }),
+  });
+
+  function buildConfig(): Record<string, unknown> {
+    if (type === "azure_ad") {
+      return { azure_tenant_id: azureTenantId, client_id: clientId, client_secret: clientSecret };
+    }
+    if (type === "google_workspace") {
+      let sa: unknown;
+      try { sa = JSON.parse(serviceAccountJson); } catch { sa = {}; }
+      return { service_account: sa, admin_email: adminEmail, domain };
+    }
+    return {
+      host: ldapHost,
+      port: ldapPort,
+      use_ssl: ldapSsl,
+      base_dn: ldapBaseDn,
+      username: ldapUsername,
+      password: ldapPassword,
+      ...(ldapSearchBase ? { user_search_base: ldapSearchBase } : {}),
+    };
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    let config: Record<string, unknown>;
-    if (type === "azure_ad") {
-      config = { azure_tenant_id: azureTenantId, client_id: clientId, client_secret: clientSecret };
-    } else {
-      let sa: unknown;
-      try {
-        sa = JSON.parse(serviceAccountJson);
-      } catch {
+    if (type === "google_workspace") {
+      try { JSON.parse(serviceAccountJson); } catch {
         toast.error("JSON da conta de serviço inválido");
         return;
       }
-      config = { service_account: sa, admin_email: adminEmail, domain };
     }
-    mut.mutate(config);
+    mut.mutate(buildConfig());
   }
 
   const inputCls = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none";
@@ -140,25 +173,30 @@ function ProviderModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <h2 className="text-lg font-semibold">Adicionar Provedor de Identidade</h2>
           <button onClick={onClose}><X size={20} className="text-gray-400 hover:text-gray-600" /></button>
         </div>
-        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
+        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
           <div>
             <label className={labelCls}>Nome *</label>
-            <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Ex: Azure AD Corporativo" />
+            <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} placeholder="Ex: AD Corporativo" />
           </div>
           <div>
             <label className={labelCls}>Tipo *</label>
-            <select value={type} onChange={(e) => setType(e.target.value as ProviderType)} className={inputCls + " bg-white"}>
+            <select
+              value={type}
+              onChange={(e) => { setType(e.target.value as ProviderType); setTestResult(null); }}
+              className={inputCls + " bg-white"}
+            >
               <option value="azure_ad">Azure AD / Entra ID</option>
               <option value="google_workspace">Google Workspace</option>
+              <option value="local_ad">Active Directory Local (LDAP)</option>
             </select>
           </div>
 
-          {type === "azure_ad" ? (
+          {type === "azure_ad" && (
             <>
               <div>
                 <label className={labelCls}>Azure Tenant ID *</label>
@@ -172,9 +210,11 @@ function ProviderModal({ onClose }: { onClose: () => void }) {
                 <label className={labelCls}>Client Secret *</label>
                 <input required type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} className={inputCls} />
               </div>
-              <p className="text-xs text-gray-500">Permissões necessárias: <code>User.Read.All</code>, <code>User.ReadWrite.All</code>, <code>Directory.Read.All</code></p>
+              <p className="text-xs text-gray-500">Permissões: <code>User.Read.All</code>, <code>User.ReadWrite.All</code>, <code>Directory.Read.All</code></p>
             </>
-          ) : (
+          )}
+
+          {type === "google_workspace" && (
             <>
               <div>
                 <label className={labelCls}>Service Account JSON *</label>
@@ -191,8 +231,79 @@ function ProviderModal({ onClose }: { onClose: () => void }) {
             </>
           )}
 
+          {type === "local_ad" && (
+            <>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className={labelCls}>Domain Controller (IP ou hostname) *</label>
+                  <input required value={ldapHost} onChange={(e) => setLdapHost(e.target.value)} className={inputCls} placeholder="192.168.1.10" />
+                </div>
+                <div className="w-24">
+                  <label className={labelCls}>Porta</label>
+                  <input
+                    type="number"
+                    value={ldapPort}
+                    onChange={(e) => setLdapPort(Number(e.target.value))}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="ldap-ssl"
+                  checked={ldapSsl}
+                  onChange={(e) => { setLdapSsl(e.target.checked); setLdapPort(e.target.checked ? 636 : 389); }}
+                  className="rounded border-gray-300"
+                />
+                <label htmlFor="ldap-ssl" className="text-sm text-gray-600">
+                  Usar LDAPS (SSL — porta 636)
+                </label>
+              </div>
+              <div>
+                <label className={labelCls}>Base DN *</label>
+                <input required value={ldapBaseDn} onChange={(e) => setLdapBaseDn(e.target.value)} className={inputCls} placeholder="DC=empresa,DC=com" />
+              </div>
+              <div>
+                <label className={labelCls}>Usuário de serviço (UPN ou DN) *</label>
+                <input required value={ldapUsername} onChange={(e) => setLdapUsername(e.target.value)} className={inputCls} placeholder="svc-secops@empresa.com" />
+              </div>
+              <div>
+                <label className={labelCls}>Senha *</label>
+                <input required type="password" value={ldapPassword} onChange={(e) => setLdapPassword(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Base de busca de usuários (opcional)</label>
+                <input value={ldapSearchBase} onChange={(e) => setLdapSearchBase(e.target.value)} className={inputCls} placeholder="OU=Usuarios,DC=empresa,DC=com" />
+                <p className="text-xs text-gray-400 mt-1">Se vazio, usa o Base DN. Use para restringir a busca a uma OU específica.</p>
+              </div>
+              <p className="text-xs text-gray-500 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                O usuário de serviço precisa de permissão de leitura no diretório e de escrita no atributo <code>userAccountControl</code> para desabilitar contas.
+              </p>
+
+              {/* Test result */}
+              {testResult && (
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${testResult.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                  {testResult.ok ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                  {testResult.msg}
+                </div>
+              )}
+            </>
+          )}
+
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 border border-gray-300 rounded-lg py-2 text-sm hover:bg-gray-50">Cancelar</button>
+            <button type="button" onClick={onClose} className="border border-gray-300 rounded-lg px-4 py-2 text-sm hover:bg-gray-50">Cancelar</button>
+            {type === "local_ad" && (
+              <button
+                type="button"
+                disabled={!ldapHost || !ldapBaseDn || !ldapUsername || !ldapPassword || testMut.isPending}
+                onClick={() => testMut.mutate()}
+                className="border border-purple-400 text-purple-700 rounded-lg px-4 py-2 text-sm hover:bg-purple-50 disabled:opacity-50 flex items-center gap-2"
+              >
+                {testMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Wifi size={13} />}
+                Testar conexão
+              </button>
+            )}
             <button type="submit" disabled={mut.isPending} className="flex-1 bg-brand-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-brand-700 disabled:opacity-60 flex items-center justify-center gap-2">
               {mut.isPending && <Loader2 size={14} className="animate-spin" />}Salvar
             </button>

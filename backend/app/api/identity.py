@@ -190,6 +190,24 @@ async def delete_provider(provider_id: UUID, db: DbDep, ctx: CtxDep):
     await db.delete(p)
 
 
+class LdapTestPayload(BaseModel):
+    host: str
+    port: int = 389
+    use_ssl: bool = False
+    base_dn: str
+    username: str
+    password: str
+    user_search_base: str | None = None
+
+
+@router.post("/providers/test-ldap")
+async def test_ldap_config(body: LdapTestPayload, ctx: CtxDep):
+    from app.services.local_ad_service import test_connection
+    config = body.model_dump()
+    ok, msg = await test_connection(config)
+    return {"success": ok, "message": msg}
+
+
 @router.post("/providers/{provider_id}/sync", response_model=ProviderRead)
 async def sync_provider(provider_id: UUID, db: DbDep, ctx: CtxDep):
     provider = await db.get(IdentityProvider, provider_id)
@@ -202,10 +220,14 @@ async def sync_provider(provider_id: UUID, db: DbDep, ctx: CtxDep):
         from app.services.azure_ad_service import list_users
         raw_users = await list_users(config)
         normalized = [_normalize_azure(u) for u in raw_users]
-    else:
+    elif provider.provider_type == ProviderType.google_workspace:
         from app.services.google_workspace_service import list_users
         raw_users = await list_users(config)
         normalized = [_normalize_google(u) for u in raw_users]
+    else:
+        from app.services.local_ad_service import list_users
+        raw_users = await list_users(config)
+        normalized = [_normalize_local_ad(u) for u in raw_users]
 
     await db.execute(delete(IdentityUser).where(IdentityUser.provider_id == provider_id))
     for n in normalized:
@@ -243,6 +265,32 @@ def _normalize_google(u: dict) -> dict:
         job_title=None,
         last_sign_in_raw=u.get("lastLoginTime"),
     )
+
+
+def _normalize_local_ad(u: dict) -> dict:
+    return dict(
+        external_id=u["dn"],
+        username=u.get("username", ""),
+        display_name=u.get("display_name"),
+        email=u.get("email"),
+        is_enabled=u.get("is_enabled", True),
+        department=u.get("department"),
+        job_title=u.get("job_title"),
+        last_sign_in_raw=u.get("last_logon_str"),
+    )
+
+
+@router.post("/providers/{provider_id}/test")
+async def test_provider(provider_id: UUID, db: DbDep, ctx: CtxDep):
+    provider = await db.get(IdentityProvider, provider_id)
+    if not provider or provider.tenant_id != ctx.tenant.id:
+        raise HTTPException(404)
+    config = decrypt_credentials(provider.encrypted_config)
+    if provider.provider_type == ProviderType.local_ad:
+        from app.services.local_ad_service import test_connection
+        ok, msg = await test_connection(config)
+        return {"success": ok, "message": msg}
+    raise HTTPException(400, "Teste disponível apenas para AD Local")
 
 
 @router.get("/providers/{provider_id}/users", response_model=list[UserRead])

@@ -1,4 +1,4 @@
-export type ProviderType = "azure_ad" | "google_workspace";
+export type ProviderType = "azure_ad" | "google_workspace" | "local_ad";
 export type ActionStatus =
   | "pending_discovery"
   | "pending_approval"
@@ -7,7 +7,7 @@ export type ActionStatus =
   | "failed"
   | "cancelled";
 export type TaskStatus = "pending" | "running" | "success" | "failed" | "skipped" | "not_found";
-export type SystemType = "azure_ad" | "google_workspace" | "ssh_linux" | "winrm_windows" | "database";
+export type SystemType = "azure_ad" | "google_workspace" | "local_ad" | "ssh_linux" | "winrm_windows" | "database";
 
 export interface IdentityProvider {
   id: string;

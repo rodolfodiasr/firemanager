@@ -14,6 +14,7 @@ from app.database import Base
 class ProviderType(str, enum.Enum):
     azure_ad = "azure_ad"
     google_workspace = "google_workspace"
+    local_ad = "local_ad"
 
 
 class ActionType(str, enum.Enum):
@@ -41,6 +42,7 @@ class TaskStatus(str, enum.Enum):
 class SystemType(str, enum.Enum):
     azure_ad = "azure_ad"
     google_workspace = "google_workspace"
+    local_ad = "local_ad"
     ssh_linux = "ssh_linux"
     winrm_windows = "winrm_windows"
     database = "database"

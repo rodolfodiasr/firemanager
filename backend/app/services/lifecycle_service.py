@@ -35,14 +35,16 @@ async def discover_user_accesses(
     for provider in providers:
         found = await _check_identity_provider(provider, username)
         if found:
+            if provider.provider_type == ProviderType.azure_ad:
+                stype = SystemType.azure_ad
+            elif provider.provider_type == ProviderType.google_workspace:
+                stype = SystemType.google_workspace
+            else:
+                stype = SystemType.local_ad
             tasks.append(LifecycleTask(
                 id=uuid4(),
                 action_id=action.id,
-                system_type=(
-                    SystemType.azure_ad
-                    if provider.provider_type == ProviderType.azure_ad
-                    else SystemType.google_workspace
-                ),
+                system_type=stype,
                 system_id=str(provider.id),
                 system_name=provider.name,
                 status=TaskStatus.pending,
@@ -109,12 +111,12 @@ async def _check_identity_provider(provider: IdentityProvider, username: str) ->
         config = decrypt_credentials(provider.encrypted_config)
         if provider.provider_type == ProviderType.azure_ad:
             from app.services.azure_ad_service import find_user
-            user = await find_user(config, username)
-            return user is not None
-        else:
+        elif provider.provider_type == ProviderType.google_workspace:
             from app.services.google_workspace_service import find_user
-            user = await find_user(config, username)
-            return user is not None
+        else:
+            from app.services.local_ad_service import find_user
+        user = await find_user(config, username)
+        return user is not None
     except Exception:
         return False
 
@@ -256,6 +258,8 @@ async def _execute_task(db: AsyncSession, task: LifecycleTask, username: str) ->
             ok, msg = await _revoke_azure(db, task.system_id, username)
         elif task.system_type == SystemType.google_workspace:
             ok, msg = await _revoke_google(db, task.system_id, username)
+        elif task.system_type == SystemType.local_ad:
+            ok, msg = await _revoke_local_ad(db, task.system_id, username)
         elif task.system_type == SystemType.ssh_linux:
             ok, msg = await _revoke_ssh(db, task.system_id, username)
         elif task.system_type == SystemType.winrm_windows:
@@ -273,6 +277,21 @@ async def _execute_task(db: AsyncSession, task: LifecycleTask, username: str) ->
     else:
         task.status = TaskStatus.failed
         task.error = msg
+
+
+async def _revoke_local_ad(db: AsyncSession, provider_id: str, username: str) -> tuple[bool, str]:
+    from uuid import UUID
+    provider = await db.get(IdentityProvider, UUID(provider_id))
+    if not provider:
+        return False, "Provider não encontrado"
+    config = decrypt_credentials(provider.encrypted_config)
+    from app.services.local_ad_service import find_user, disable_user
+    user = await find_user(config, username)
+    if not user:
+        return True, "Usuário não encontrado no AD Local (já removido ou inexistente)"
+    await disable_user(config, user["dn"])
+    name = user.get("display_name") or username
+    return True, f"Conta '{name}' desabilitada no Active Directory Local"
 
 
 async def _revoke_azure(db: AsyncSession, provider_id: str, username: str) -> tuple[bool, str]:
