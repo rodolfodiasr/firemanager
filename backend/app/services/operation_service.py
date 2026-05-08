@@ -198,7 +198,12 @@ async def start_or_continue_operation(
         await db.flush()
         await db.refresh(operation)
         if use_bookstack_context:
-            bookstack_context = await fetch_bookstack_context(db, device, query=user_message)
+            bookstack_context = await fetch_bookstack_context(
+                db, device,
+                query=user_message,
+                module="firewall",
+                vendor=device.vendor.value if device.vendor else None,
+            )
         else:
             bookstack_context = ""
         session = AgentSession(device, bookstack_context=bookstack_context)

@@ -22,6 +22,45 @@ import { PageWrapper } from "../components/layout/PageWrapper";
 import { knowledgeApi } from "../api/knowledge";
 import type { DocumentStatus, KnowledgeDocument } from "../types/knowledge";
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const MODULE_OPTIONS = [
+  { value: "",           label: "Geral (todos os módulos)" },
+  { value: "firewall",   label: "Firewall & Rede" },
+  { value: "servers",    label: "Servidores & Análise" },
+  { value: "compliance", label: "Conformidade" },
+  { value: "glpi",       label: "Tickets IA" },
+];
+
+const VENDOR_OPTIONS = [
+  { value: "",           label: "Todos os vendors" },
+  { value: "fortinet",   label: "Fortinet" },
+  { value: "sonicwall",  label: "SonicWall" },
+  { value: "pfsense",    label: "pfSense" },
+  { value: "opnsense",   label: "OPNsense" },
+  { value: "mikrotik",   label: "MikroTik" },
+  { value: "hp_comware", label: "HP Comware" },
+  { value: "dell_n",     label: "Dell N-Series" },
+  { value: "cisco_ios",  label: "Cisco IOS" },
+  { value: "cisco_nxos", label: "Cisco NX-OS" },
+  { value: "linux",      label: "Linux" },
+  { value: "windows",    label: "Windows" },
+];
+
+const MODULE_LABEL: Record<string, string> = {
+  firewall:   "Firewall",
+  servers:    "Servidores",
+  compliance: "Conformidade",
+  glpi:       "Tickets IA",
+};
+
+const MODULE_COLOR: Record<string, string> = {
+  firewall:   "bg-orange-100 text-orange-700",
+  servers:    "bg-blue-100 text-blue-700",
+  compliance: "bg-purple-100 text-purple-700",
+  glpi:       "bg-teal-100 text-teal-700",
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const STATUS_LABEL: Record<DocumentStatus, string> = {
@@ -80,11 +119,13 @@ function StatusBadge({ status }: { status: DocumentStatus }) {
 
 // ── Upload zone ────────────────────────────────────────────────────────────────
 
-function UploadZone({ onUpload }: { onUpload: (file: File, name?: string, desc?: string) => void }) {
+function UploadZone({ onUpload }: { onUpload: (file: File, name?: string, desc?: string, module?: string, vendor?: string) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [docName, setDocName] = useState("");
   const [docDesc, setDocDesc] = useState("");
+  const [docModule, setDocModule] = useState("");
+  const [docVendor, setDocVendor] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   function handleFile(file: File) {
@@ -101,10 +142,12 @@ function UploadZone({ onUpload }: { onUpload: (file: File, name?: string, desc?:
 
   function handleSubmit() {
     if (!selectedFile) return;
-    onUpload(selectedFile, docName || undefined, docDesc || undefined);
+    onUpload(selectedFile, docName || undefined, docDesc || undefined, docModule || undefined, docVendor || undefined);
     setSelectedFile(null);
     setDocName("");
     setDocDesc("");
+    setDocModule("");
+    setDocVendor("");
   }
 
   return (
@@ -162,6 +205,26 @@ function UploadZone({ onUpload }: { onUpload: (file: File, name?: string, desc?:
             placeholder="Descrição (opcional)"
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={docModule}
+              onChange={(e) => setDocModule(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+            >
+              {MODULE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <select
+              value={docVendor}
+              onChange={(e) => setDocVendor(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+            >
+              {VENDOR_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={handleSubmit}
@@ -299,8 +362,8 @@ export function KnowledgeBase() {
   });
 
   const uploadMut = useMutation({
-    mutationFn: ({ file, name, desc }: { file: File; name?: string; desc?: string }) =>
-      knowledgeApi.upload(file, name, desc),
+    mutationFn: ({ file, name, desc, module, vendor }: { file: File; name?: string; desc?: string; module?: string; vendor?: string }) =>
+      knowledgeApi.upload(file, name, desc, module, vendor),
     onSuccess: () => {
       toast.success("Documento enviado — indexação em andamento");
       qc.invalidateQueries({ queryKey: ["knowledge-documents"] });
@@ -338,8 +401,8 @@ export function KnowledgeBase() {
     onError: () => toast.error("Falha ao alterar status do documento"),
   });
 
-  function handleUpload(file: File, name?: string, desc?: string) {
-    uploadMut.mutate({ file, name, desc });
+  function handleUpload(file: File, name?: string, desc?: string, module?: string, vendor?: string) {
+    uploadMut.mutate({ file, name, desc, module, vendor });
   }
 
   return (
@@ -413,6 +476,16 @@ export function KnowledgeBase() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-gray-800 truncate">{doc.name}</span>
                       <StatusBadge status={doc.status} />
+                      {doc.module && (
+                        <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${MODULE_COLOR[doc.module] ?? "bg-gray-100 text-gray-600"}`}>
+                          {MODULE_LABEL[doc.module] ?? doc.module}
+                        </span>
+                      )}
+                      {doc.vendor && (
+                        <span className="inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                          {doc.vendor}
+                        </span>
+                      )}
                     </div>
                     {doc.description && (
                       <p className="text-xs text-gray-500 mt-0.5 truncate">{doc.description}</p>

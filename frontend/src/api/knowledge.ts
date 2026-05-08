@@ -2,11 +2,13 @@ import apiClient from "./client";
 import type { KnowledgeDocument, KnowledgeStats, SearchResult } from "../types/knowledge";
 
 export const knowledgeApi = {
-  upload: (file: File, name?: string, description?: string) => {
+  upload: (file: File, name?: string, description?: string, module?: string, vendor?: string) => {
     const form = new FormData();
     form.append("file", file);
     if (name) form.append("name", name);
     if (description) form.append("description", description);
+    if (module) form.append("module", module);
+    if (vendor) form.append("vendor", vendor);
     return apiClient
       .post<KnowledgeDocument>("/knowledge/documents", form, {
         headers: { "Content-Type": "multipart/form-data" },

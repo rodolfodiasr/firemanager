@@ -10,6 +10,8 @@ export interface KnowledgeDocument {
   status: DocumentStatus;
   chunk_count: number;
   is_active: boolean;
+  module: string | null;
+  vendor: string | null;
   error: string | null;
   created_at: string;
   updated_at: string;

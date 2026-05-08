@@ -146,9 +146,13 @@ async def semantic_search_documents(
     tenant_id: UUID,
     query: str,
     top_k: int = 5,
+    module: str | None = None,
+    vendor: str | None = None,
 ) -> str:
     """Return the most relevant knowledge document chunks for a query.
 
+    module/vendor filters use OR-with-null logic: a document tagged 'firewall'
+    matches module='firewall', and a document with module=null matches any module.
     Returns empty string if OpenAI key is not configured or no results found.
     Never raises.
     """
@@ -159,6 +163,7 @@ async def semantic_search_documents(
 
     try:
         from app.models.knowledge_document import KnowledgeChunk, KnowledgeDocument
+        from sqlalchemy import or_
 
         vectors = await generate_embeddings([query])
         query_vector = vectors[0]
@@ -168,9 +173,18 @@ async def semantic_search_documents(
             .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
             .where(KnowledgeChunk.tenant_id == tenant_id)
             .where(KnowledgeDocument.is_active.is_(True))
-            .order_by(KnowledgeChunk.embedding.cosine_distance(query_vector))
-            .limit(top_k)
         )
+
+        if module:
+            stmt = stmt.where(
+                or_(KnowledgeDocument.module == module, KnowledgeDocument.module.is_(None))
+            )
+        if vendor:
+            stmt = stmt.where(
+                or_(KnowledgeDocument.vendor == vendor, KnowledgeDocument.vendor.is_(None))
+            )
+
+        stmt = stmt.order_by(KnowledgeChunk.embedding.cosine_distance(query_vector)).limit(top_k)
         result = await db.execute(stmt)
         rows = result.all()
 

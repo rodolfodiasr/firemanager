@@ -196,6 +196,16 @@ async def analyze(
             [],
         )
 
+    # RAG: inject relevant knowledge base docs before calling Claude
+    try:
+        from app.services.knowledge_service import semantic_search_documents
+        doc_ctx = await semantic_search_documents(db, tenant_id, question, top_k=3, module="servers")
+        if doc_ctx:
+            context_parts.insert(0, "## Documentação técnica relevante\n\n" + doc_ctx)
+            sources_used.insert(0, "Base de Conhecimento")
+    except Exception:
+        pass
+
     context_text = "\n\n".join(context_parts)
     user_prompt = (
         f"Dados coletados:\n\n{context_text}\n\n"

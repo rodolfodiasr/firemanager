@@ -31,6 +31,8 @@ class DocumentRead(BaseModel):
     status: str
     chunk_count: int
     is_active: bool
+    module: str | None
+    vendor: str | None
     error: str | None
     created_at: str
     updated_at: str
@@ -47,6 +49,8 @@ class DocumentRead(BaseModel):
             status=d.status,
             chunk_count=d.chunk_count or 0,
             is_active=d.is_active if d.is_active is not None else True,
+            module=d.module,
+            vendor=d.vendor,
             error=d.error,
             created_at=d.created_at.isoformat(),
             updated_at=d.updated_at.isoformat(),
@@ -76,6 +80,8 @@ async def upload_document(
     file: Annotated[UploadFile, File(description="Arquivo PDF, DOCX, MD ou TXT")],
     name: Annotated[str | None, Form()] = None,
     description: Annotated[str | None, Form()] = None,
+    module: Annotated[str | None, Form()] = None,
+    vendor: Annotated[str | None, Form()] = None,
     ctx: Annotated[TenantContext, Depends(require_reviewer)] = None,
     db:  Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> DocumentRead:
@@ -111,6 +117,8 @@ async def upload_document(
         content=text_content,
         status=KnowledgeDocumentStatus.pending,
         chunk_count=0,
+        module=module or None,
+        vendor=vendor or None,
     )
     db.add(doc)
     await db.flush()

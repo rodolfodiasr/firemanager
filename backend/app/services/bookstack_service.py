@@ -21,12 +21,14 @@ async def fetch_bookstack_context(
     db: AsyncSession,
     device: Device,
     query: str = "",
+    module: str | None = None,
+    vendor: str | None = None,
 ) -> str:
     """Return BookStack context for AI: direct device page + semantic search.
 
     Phase 1 (direct fetch) is always attempted if bookstack_page_id is set.
-    Phase 4 (semantic search via pgvector) is layered on top when query is provided
-    and openai_api_key is configured, searching the full BookStack knowledge base.
+    Phase 2 (semantic search via pgvector) searches the full BookStack knowledge base.
+    Phase 3 searches custom uploaded documents, scoped by module/vendor when provided.
     Returns empty string on any failure. Never raises.
     """
     config = await resolve_integration(db, IntegrationType.bookstack, device.tenant_id)
@@ -64,7 +66,9 @@ async def fetch_bookstack_context(
     if query and device.tenant_id:
         try:
             from app.services.knowledge_service import semantic_search_documents
-            doc_ctx = await semantic_search_documents(db, device.tenant_id, query, top_k=3)
+            doc_ctx = await semantic_search_documents(
+                db, device.tenant_id, query, top_k=3, module=module, vendor=vendor
+            )
             if doc_ctx:
                 parts.append(
                     "## Documentos da base de conhecimento IA\n\n" + doc_ctx

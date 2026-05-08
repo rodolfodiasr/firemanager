@@ -264,9 +264,21 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
             integration, correlated_device_ids
         )
 
+    # ── RAG: knowledge base docs ──────────────────────────────────────────────
+    knowledge_ctx = ""
+    try:
+        from app.services.knowledge_service import semantic_search_documents
+        async with AsyncSessionLocal() as rag_db:
+            knowledge_ctx = await semantic_search_documents(
+                rag_db, integration.tenant_id,
+                f"{title} {content[:300]}", top_k=3, module="glpi",
+            )
+    except Exception:
+        pass
+
     # ── Call Claude ───────────────────────────────────────────────────────────
     try:
-        ai_result = await _call_claude(title, content, is_recurrent, recurrence_count, enrichment)
+        ai_result = await _call_claude(title, content, is_recurrent, recurrence_count, enrichment, knowledge_ctx)
     except Exception as exc:
         async with AsyncSessionLocal() as db:
             rec = await db.get(GlpiTicketAnalysis, analysis_id)
@@ -513,6 +525,7 @@ async def _call_claude(
     is_recurrent: bool,
     recurrence_count: int,
     enrichment: dict[str, str] | None = None,
+    knowledge_ctx: str = "",
 ) -> dict:
     from anthropic import AsyncAnthropic
     from app.config import settings
@@ -536,10 +549,16 @@ async def _call_claude(
             sections.append(f"\n\n--- {label} ---\n{data}")
         enrichment_block = "".join(sections)
 
+    knowledge_block = (
+        f"\n\n--- BASE DE CONHECIMENTO (documentação técnica relevante) ---\n{knowledge_ctx}"
+        if knowledge_ctx else ""
+    )
+
     user_prompt = (
         f"Título do ticket: {title}\n\n"
         f"Descrição:\n{content[:_MAX_CONTENT_CHARS]}"
         f"{recurrence_note}"
+        f"{knowledge_block}"
         f"{enrichment_block}"
     )
 
@@ -697,9 +716,21 @@ async def _async_run_manual_analysis(analysis_id: str, device_ids: list[str]) ->
     if effective_device_ids:
         enrichment = await _collect_enrichment(integration, effective_device_ids)
 
+    # RAG: knowledge base docs
+    knowledge_ctx = ""
+    try:
+        from app.services.knowledge_service import semantic_search_documents
+        async with AsyncSessionLocal() as rag_db:
+            knowledge_ctx = await semantic_search_documents(
+                rag_db, integration.tenant_id,
+                f"{title} {content[:300]}", top_k=3, module="glpi",
+            )
+    except Exception:
+        pass
+
     # Call Claude
     try:
-        ai_result = await _call_claude(title, content, is_recurrent, recurrence_count, enrichment)
+        ai_result = await _call_claude(title, content, is_recurrent, recurrence_count, enrichment, knowledge_ctx)
     except Exception as exc:
         async with AsyncSessionLocal() as db:
             rec = await db.get(GlpiTicketAnalysis, aid)
