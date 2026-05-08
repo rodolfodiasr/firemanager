@@ -28,9 +28,11 @@ def upgrade() -> None:
             last_sync_count INTEGER,
             created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
             updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
-        );
-        CREATE INDEX ix_identity_providers_tenant ON identity_providers(tenant_id);
+        )
+    """))
+    op.execute(text("CREATE INDEX ix_identity_providers_tenant ON identity_providers(tenant_id)"))
 
+    op.execute(text("""
         CREATE TABLE identity_users (
             id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id       UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -44,11 +46,13 @@ def upgrade() -> None:
             job_title       VARCHAR(256),
             last_sign_in_raw VARCHAR(64),
             synced_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
-        );
-        CREATE INDEX ix_identity_users_tenant  ON identity_users(tenant_id);
-        CREATE INDEX ix_identity_users_provider ON identity_users(provider_id);
-        CREATE UNIQUE INDEX ix_identity_users_ext ON identity_users(provider_id, external_id);
+        )
+    """))
+    op.execute(text("CREATE INDEX ix_identity_users_tenant   ON identity_users(tenant_id)"))
+    op.execute(text("CREATE INDEX ix_identity_users_provider ON identity_users(provider_id)"))
+    op.execute(text("CREATE UNIQUE INDEX ix_identity_users_ext ON identity_users(provider_id, external_id)"))
 
+    op.execute(text("""
         CREATE TABLE lifecycle_actions (
             id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
             tenant_id        UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -63,9 +67,11 @@ def upgrade() -> None:
             created_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
             approved_at      TIMESTAMPTZ,
             completed_at     TIMESTAMPTZ
-        );
-        CREATE INDEX ix_lifecycle_actions_tenant ON lifecycle_actions(tenant_id);
+        )
+    """))
+    op.execute(text("CREATE INDEX ix_lifecycle_actions_tenant ON lifecycle_actions(tenant_id)"))
 
+    op.execute(text("""
         CREATE TABLE lifecycle_tasks (
             id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
             action_id    UUID         NOT NULL REFERENCES lifecycle_actions(id) ON DELETE CASCADE,
@@ -76,15 +82,13 @@ def upgrade() -> None:
             result       TEXT,
             error        TEXT,
             executed_at  TIMESTAMPTZ
-        );
-        CREATE INDEX ix_lifecycle_tasks_action ON lifecycle_tasks(action_id);
+        )
     """))
+    op.execute(text("CREATE INDEX ix_lifecycle_tasks_action ON lifecycle_tasks(action_id)"))
 
 
 def downgrade() -> None:
-    op.execute(text("""
-        DROP TABLE IF EXISTS lifecycle_tasks;
-        DROP TABLE IF EXISTS lifecycle_actions;
-        DROP TABLE IF EXISTS identity_users;
-        DROP TABLE IF EXISTS identity_providers;
-    """))
+    op.execute(text("DROP TABLE IF EXISTS lifecycle_tasks"))
+    op.execute(text("DROP TABLE IF EXISTS lifecycle_actions"))
+    op.execute(text("DROP TABLE IF EXISTS identity_users"))
+    op.execute(text("DROP TABLE IF EXISTS identity_providers"))

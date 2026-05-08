@@ -770,7 +770,7 @@ export function Identity() {
   return (
     <PageWrapper
       title="Gestão de Identidade e Ciclo de Vida"
-      description="Provedores de diretório, offboarding coordenado e contas órfãs"
+      subtitle="Provedores de diretório, offboarding coordenado e contas órfãs"
     >
       {/* Tab bar */}
       <div className="flex border-b mb-6 gap-1">
