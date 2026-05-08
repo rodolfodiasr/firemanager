@@ -24,6 +24,7 @@ import {
   Network,
   Database,
   DatabaseZap,
+  Users,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -70,6 +71,7 @@ const navSections: NavSection[] = [
       { to: "/remediation",    icon: ShieldCheck,    label: "Remediações"   },
       { to: "/servers",             icon: HardDrive,    label: "Servidores"    },
       { to: "/database-connectors", icon: DatabaseZap,  label: "Bancos de Dados" },
+      { to: "/identity",            icon: Users,        label: "Identidade"      },
     ],
   },
   {

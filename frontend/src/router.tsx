@@ -24,6 +24,7 @@ import { GoldenTemplates } from "./pages/GoldenTemplates";
 import { Connectivity } from "./pages/Connectivity";
 import { KnowledgeBase } from "./pages/KnowledgeBase";
 import { DatabaseConnectors } from "./pages/DatabaseConnectors";
+import { Identity } from "./pages/Identity";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -78,6 +79,7 @@ export function AppRouter() {
       <Route path="/connectivity"        element={<ProtectedLayout><Connectivity /></ProtectedLayout>} />
       <Route path="/knowledge"           element={<ProtectedLayout><KnowledgeBase /></ProtectedLayout>} />
       <Route path="/database-connectors" element={<ProtectedLayout><DatabaseConnectors /></ProtectedLayout>} />
+      <Route path="/identity" element={<ProtectedLayout><Identity /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
