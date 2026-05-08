@@ -117,6 +117,7 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 17 | Golden Config: Templates, Padronização e Divergência | ✅ |
 | 18 | Análise de Conectividade de Rede (rotas, BGP/OSPF, SD-WAN, anomalias, IA) | ✅ |
 | 19 | Base de Conhecimento IA — RAG avançado (upload PDF/DOCX/MD, pgvector, agent injection) | ✅ |
+| 20 | Conectores de Banco de Dados (PostgreSQL, MySQL, MariaDB, SQL Server, Oracle) + auditoria de usuários/privilégios + IA | ✅ |
 
 ---
 
