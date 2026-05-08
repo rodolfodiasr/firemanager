@@ -1,4 +1,5 @@
 from app.models.analysis_session import AnalysisSession
+from app.models.database_connector import DatabaseConnector, DatabaseAuditReport, DbType, AuditStatus
 from app.models.knowledge_document import KnowledgeDocument, KnowledgeChunk, KnowledgeDocumentStatus
 from app.models.connectivity import ConnectivityAnalysis, ConnectivityStatus
 from app.models.config_migration import ConfigMigration, MigrationStatus
@@ -31,6 +32,10 @@ from app.models.variable import TenantVariable, DeviceVariable
 
 __all__ = [
     "AnalysisSession",
+    "DatabaseConnector",
+    "DatabaseAuditReport",
+    "DbType",
+    "AuditStatus",
     "KnowledgeDocument",
     "KnowledgeChunk",
     "KnowledgeDocumentStatus",

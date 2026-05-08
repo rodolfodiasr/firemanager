@@ -23,6 +23,7 @@ import {
   BookMarked,
   Network,
   Database,
+  DatabaseZap,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -67,7 +68,8 @@ const navSections: NavSection[] = [
       { to: "/compliance",     icon: ClipboardCheck, label: "Conformidade"  },
       { to: "/governance",     icon: BarChart3,      label: "Governança"    },
       { to: "/remediation",    icon: ShieldCheck,    label: "Remediações"   },
-      { to: "/servers",        icon: HardDrive,      label: "Servidores"    },
+      { to: "/servers",             icon: HardDrive,    label: "Servidores"    },
+      { to: "/database-connectors", icon: DatabaseZap,  label: "Bancos de Dados" },
     ],
   },
   {
