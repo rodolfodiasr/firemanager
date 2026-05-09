@@ -197,12 +197,14 @@ async def update_bundle(bundle_id: UUID, body: BundleCreate, db: DbDep, ctx: Ctx
     return BundleRead.from_orm(bundle)
 
 
-@router.delete("/{bundle_id}", status_code=204)
-async def delete_bundle(bundle_id: UUID, db: DbDep, ctx: CtxDep):
+@router.delete("/{bundle_id}")
+async def delete_bundle(bundle_id: UUID, db: DbDep, ctx: CtxDep) -> dict:
     bundle = await db.get(GoldenBundle, bundle_id)
     if not bundle or bundle.tenant_id != ctx.tenant.id:
         raise HTTPException(404)
     await db.delete(bundle)
+    await db.commit()
+    return {"ok": True}
 
 
 # ── Apply ──────────────────────────────────────────────────────────────────────

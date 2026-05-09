@@ -155,12 +155,14 @@ async def create_hypervisor(body: HypervisorCreate, db: DbDep, ctx: CtxDep) -> H
     return HypervisorRead.from_orm(h)
 
 
-@router.delete("/hypervisors/{hypervisor_id}", status_code=204)
-async def delete_hypervisor(hypervisor_id: UUID, db: DbDep, ctx: CtxDep) -> None:
+@router.delete("/hypervisors/{hypervisor_id}")
+async def delete_hypervisor(hypervisor_id: UUID, db: DbDep, ctx: CtxDep) -> dict:
     h = await db.get(VmHypervisor, hypervisor_id)
     if not h or h.tenant_id != ctx.tenant.id:
         raise HTTPException(404, "Hypervisor não encontrado")
     await db.delete(h)
+    await db.commit()
+    return {"ok": True}
 
 
 @router.post("/hypervisors/{hypervisor_id}/test")

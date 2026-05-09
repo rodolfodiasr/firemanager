@@ -185,14 +185,15 @@ async def create_api_key(body: ApiKeyCreate, db: DbDep, ctx: CtxDep):
     return result
 
 
-@router.delete("/api-keys/{key_id}", status_code=204)
-async def delete_api_key(key_id: UUID, db: DbDep, ctx: CtxDep):
+@router.delete("/api-keys/{key_id}")
+async def delete_api_key(key_id: UUID, db: DbDep, ctx: CtxDep) -> dict:
     """Soft-delete an API key (sets is_active=False)."""
     key = await db.get(ApiKey, key_id)
     if not key or key.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="API key not found")
     key.is_active = False
-    await db.flush()
+    await db.commit()
+    return {"ok": True}
 
 
 @router.post("/api-keys/{key_id}/rotate", response_model=ApiKeyCreated)
