@@ -5,6 +5,7 @@ import { Toaster } from "react-hot-toast";
 import { AppRouter } from "./router";
 import { useAuthStore } from "./store/authStore";
 import { StagingBanner } from "./components/layout/StagingBanner";
+import { AgentDrawer } from "./components/layout/AgentDrawer";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +33,7 @@ export default function App() {
         <StagingBanner />
         <AuthInit />
         <AppRouter />
+        <AgentDrawer />
         <Toaster position="top-right" />
       </BrowserRouter>
     </QueryClientProvider>

@@ -31,6 +31,12 @@ import {
   Package2,
   Monitor,
   KeyRound,
+  Lock,
+  ShieldHalf,
+  Coins,
+  FileCheck2,
+  Cpu,
+  Store,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -40,6 +46,7 @@ interface NavItem {
   icon: LucideIcon;
   label: string;
   badge?: boolean;
+  upcoming?: string; // ex: "F28" — renderiza como item bloqueado
 }
 
 interface NavSection {
@@ -142,6 +149,18 @@ const navSections: NavSection[] = [
       { to: "/audit",      icon: Shield,   label: "Auditoria",     badge: true },
       { to: "/enterprise", icon: KeyRound, label: "Enterprise"                 },
       { to: "/settings",   icon: Settings, label: "Configurações"              },
+      { to: "#", icon: Cpu,   label: "Edge Agents", upcoming: "F31" },
+      { to: "#", icon: Store, label: "Marketplace",  upcoming: "F31" },
+    ],
+  },
+
+  // ── Em Breve ──────────────────────────────────────────────────────────────
+  {
+    title: "Em Breve",
+    items: [
+      { to: "#", icon: ShieldHalf, label: "Hardening Avançado",      upcoming: "F28" },
+      { to: "#", icon: Coins,      label: "IA FinOps",                upcoming: "F29" },
+      { to: "#", icon: FileCheck2, label: "Conformidade Regulatória", upcoming: "F30" },
     ],
   },
 ];
@@ -192,17 +211,33 @@ export function Sidebar() {
           <div key={section.title || "__root__"}>
             <SectionLabel title={section.title} />
             <div className="space-y-0.5">
-              {section.items.map(({ to, icon: Icon, label, badge }) => (
-                <NavLink key={to} to={to} end={to === "/"} className={navLinkClass}>
-                  <Icon size={18} />
-                  <span className="flex-1">{label}</span>
-                  {badge && isAdmin && pendingCount > 0 && (
-                    <span className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center leading-none">
-                      {pendingCount > 99 ? "99+" : pendingCount}
+              {section.items.map(({ to, icon: Icon, label, badge, upcoming }) =>
+                upcoming ? (
+                  // Item bloqueado — fase futura
+                  <div
+                    key={label}
+                    title={`Disponível na ${upcoming}`}
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 opacity-45 cursor-not-allowed select-none"
+                  >
+                    <Icon size={18} />
+                    <span className="flex-1">{label}</span>
+                    <Lock size={11} />
+                    <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded font-mono">
+                      {upcoming}
                     </span>
-                  )}
-                </NavLink>
-              ))}
+                  </div>
+                ) : (
+                  <NavLink key={to} to={to} end={to === "/"} className={navLinkClass}>
+                    <Icon size={18} />
+                    <span className="flex-1">{label}</span>
+                    {badge && isAdmin && pendingCount > 0 && (
+                      <span className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center leading-none">
+                        {pendingCount > 99 ? "99+" : pendingCount}
+                      </span>
+                    )}
+                  </NavLink>
+                )
+              )}
             </div>
           </div>
         ))}
