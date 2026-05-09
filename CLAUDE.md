@@ -134,14 +134,88 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 ---
 
-### Fase 28 — SSO / OIDC e RBAC Granular
-*Autenticação federada e permissões finas por recurso*
+### Fase 28 — Segurança Avançada e Resiliência
+*Hardening de autenticação, proteção de infraestrutura e tolerância a falhas*
 
-### Fase 29 — Marketplace de Plugins
-*Contribuição de connectors por parceiros e comunidade*
+**Origem:** Mesa Redonda Rounds 1, 2 e 3 — Vera (Zero Trust), Thiago (DevSecOps), Rodrigo (Red Team), Caio (SRE)
 
-### Fase 30 — Billing e Multi-idioma
-*Planos, limites, cobrança automatizada; i18n pt-BR/en-US/es-LA*
+| Funcionalidade | Detalhe | Prioridade |
+|---|---|---|
+| JWT short-lived + refresh httpOnly | Tokens de acesso com TTL 15 min; refresh token em cookie httpOnly/Secure/SameSite=Strict | Alta |
+| SSRF protection | Bloquear `169.254.169.254`, `localhost`, ranges RFC1918 nos campos `host` de hypervisors/connectors | Alta |
+| BOLA/IDOR checks | Verificação explícita de tenant em cada object-level access (além do query filter) | Alta |
+| Circuit breaker nos connectors | Padrão circuit breaker (tenacity / hystrix) — vendor lento não bloqueia workers | Alta |
+| CI/CD com SAST | GitHub Actions: Bandit, pip-audit, Trivy (imagem Docker), semgrep; bloquear merge se findings críticos | Alta |
+| Supply chain security | Pinagem de dependências com hash; renovação automática via Dependabot/Renovate | Média |
+| Pentest externo + bug bounty | Relatório de pentest anual; programa privado de bug bounty (HackerOne/Intigriti) | Média |
+| Rate limiting por API key | Limites configuráveis por tenant e por rota; headers `X-RateLimit-*` | Média |
+
+---
+
+### Fase 29 — Observabilidade, IA FinOps e Qualidade de Código
+*Rastreabilidade de IA, controle de custos, qualidade de código e melhorias RAG*
+
+**Origem:** Mesa Redonda Rounds 2 e 3 — Pedro (IA), Cristina (FinOps), Isabela (RAG), Diego (DevOps)
+
+| Funcionalidade | Detalhe | Prioridade |
+|---|---|---|
+| AI observability (logs + anti-injection) | Logging de todos os prompts/respostas; validação de entrada antes de enviar ao Claude; detecção de prompt injection | Alta |
+| Token tracking por tenant | Contador de tokens (input/output) por tenant por mês; alerta ao atingir quota; dashboard de consumo | Alta |
+| Quotas e billing IA | Limite configurável de tokens/sessões por plano; throttle gracioso quando exceder | Alta |
+| AI fallback (OpenAI → Ollama) | Fallback automático para modelo alternativo se Anthropic API indisponível | Média |
+| Chunking semântico para RAG | Substituir chunking fixo por chunking por seção/parágrafo; reranking por BM25+embeddings | Média |
+| Análise de qualidade de regras | Detectar regras de firewall duplicadas, sobrepostas, sombra, `any/any allow`, regras nunca usadas (hit count) | Alta |
+| Diagnóstico de qualidade de link | Histórico ICMP/RTT por device; alertas de latência anômala; exportar para Grafana | Média |
+
+---
+
+### Fase 30 — Compliance Enterprise e Continuidade de Negócio
+*Pacotes regulatórios, documentação legal, SLA formal e disaster recovery*
+
+**Origem:** Mesa Redonda Rounds 1, 2 e 3 — Flávia (Compliance), Patrícia (Privacidade), Augusto (LGPD), Eduardo (BC/DR), Mônica (SLA)
+
+| Funcionalidade | Detalhe | Prioridade |
+|---|---|---|
+| Compliance packs por vertical | Checklist CIS, PCI-DSS, BACEN Res. 4.658, LGPD Art. 46 — relatórios de conformidade por vertical | Alta |
+| DPA / LGPD template | Template de Contrato de Tratamento de Dados (DPA) gerado automaticamente; cláusula de transferência internacional (Anthropic USA) | Alta |
+| RTO/RPO documentados | Plano BCP com objetivos de recuperação; backup automático com teste de restore periódico | Alta |
+| SLA formal com créditos automáticos | SLA por plano (ex: 99,9% uptime); cálculo e crédito automático via billing em caso de violação | Média |
+| Relatório executivo de compliance | PDF executivo com score por framework (CIS/PCI/LGPD); evolução mensal; assinatura digital | Média |
+| Data residency | Flag por tenant para garantir dados em região específica (BR); metadados de localização em audit log | Baixa |
+
+---
+
+### Fase 31 — Expansão de Plataforma e White-label Completo
+*Edge agent, suporte CGNAT, revendas completas e estratégia open core*
+
+**Origem:** Mesa Redonda Rounds 2 e 3 — Leonardo (Infra), Sérgio (Redes/ISP), Flávia (Revenda), Juliana (Produto)
+
+| Funcionalidade | Detalhe | Prioridade |
+|---|---|---|
+| Edge agent on-premise | Agente leve (Python/Go) que abre WebSocket/gRPC de saída para o SaaS; sem porta inbound | Alta |
+| Suporte a CGNAT | Edge agent resolve o problema de endereços NAT de ISPs brasileiros; reconecta automaticamente | Alta |
+| White-label completo | Domínio customizado (CNAME), email transacional (logo+cores), relatório PDF com marca do parceiro | Alta |
+| Open core — connectors OSS | Repositório público com connectors + parsers de vendors; licença Apache 2.0; contribuições externas | Média |
+| Programa de certificação parceiros | Trilha de certificação técnica para revendedores; portal de parceiros com leads e comissões | Média |
+| SSO / OIDC | SAML 2.0 / OIDC — Azure AD, Okta, Google Workspace; mapeamento de grupos para TenantRole | Alta |
+| RBAC granular | Permissões por cliente/device/operação além dos 3 roles atuais; scopes por API key | Média |
+| Marketplace de plugins | Plugins de vendor contribuídos por parceiros; review/publicação pelo time FireManager | Baixa |
+
+---
+
+### Fase 32 — Produto, UX e Documentação
+*Experiência do usuário, acessibilidade, documentação por persona e internacionalização*
+
+**Origem:** Mesa Redonda Rounds 2 e 3 — André (Produto), Beatriz (UX/Acessibilidade), Juliana (GTM), Cristina (CS)
+
+| Funcionalidade | Detalhe | Prioridade |
+|---|---|---|
+| Documentação pública por persona | Docs separados: Admin MSSP, Analista N2, Cliente final; Swagger interativo por módulo | Alta |
+| Billing e planos | Planos (Starter/Pro/Enterprise); limites de devices; cobrança automatizada (Stripe); fatura automática | Alta |
+| Multi-idioma (i18n) | pt-BR ✅, en-US, es-LA; detecção automática do idioma do browser | Média |
+| Acessibilidade (WCAG 2.1 AA) | Contraste para daltônicos (palete testada), navegação por teclado, labels ARIA, leitor de tela | Média |
+| Onboarding guiado | Wizard de primeiros passos: add device → primeiro snapshot → primeira regra | Média |
+| Feedback in-app | Widget de feedback contextual por página; integrado ao Linear/Jira interno | Baixa |
 
 ---
 

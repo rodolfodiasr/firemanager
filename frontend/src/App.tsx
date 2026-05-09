@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
 import { AppRouter } from "./router";
 import { useAuthStore } from "./store/authStore";
+import { StagingBanner } from "./components/layout/StagingBanner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <StagingBanner />
         <AuthInit />
         <AppRouter />
         <Toaster position="top-right" />

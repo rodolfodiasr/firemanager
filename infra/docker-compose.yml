@@ -115,10 +115,26 @@ services:
     depends_on:
       - api
 
+  frontend-staging:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.staging
+      args:
+        VITE_STAGING: "true"
+    ports:
+      - "3002:80"
+    networks:
+      - public-net
+    depends_on:
+      - api
+    profiles:
+      - staging
+
   nginx:
     image: nginx:alpine
     ports:
       - "80:80"
+      - "8080:8080"
     networks:
       - public-net
     volumes:
