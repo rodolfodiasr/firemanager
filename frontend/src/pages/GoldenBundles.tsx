@@ -187,7 +187,7 @@ function BundleWizard({ bundle, onClose }: { bundle: GoldenBundle | null; onClos
         if (key) acc[key] = value;
         return acc;
       }, {});
-      const payload = { name, description: description || null, vendor, variables: vars, sections };
+      const payload = { name, description: description || null, vendor, variables: vars, sections: sections as unknown as BundleSection[] };
       return bundle
         ? goldenBundlesApi.update(bundle.id, payload)
         : goldenBundlesApi.create(payload);
