@@ -51,6 +51,7 @@ interface Message {
 }
 
 export function AgentDrawer() {
+  // ── Todos os hooks ANTES de qualquer early return ─────────────────────────
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const location = useLocation();
 
@@ -64,22 +65,15 @@ export function AgentDrawer() {
 
   const { devices } = useDevices();
 
-  const skip = !isAuthenticated || ["/login", "/invite"].some((p) => location.pathname.startsWith(p));
-  if (skip) return null;
-
-  const contextLabel = ROUTE_LABEL[location.pathname] ?? "Página atual";
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const resetConversation = () => {
+  const resetConversation = useCallback(() => {
     setMessages([]);
     setOperationId(null);
-  };
+  }, []);
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || !deviceId || loading) return;
@@ -113,6 +107,12 @@ export function AgentDrawer() {
       handleSend();
     }
   };
+
+  // ── Early return APÓS todos os hooks ──────────────────────────────────────
+  const skip = !isAuthenticated || ["/login", "/invite"].some((p) => location.pathname.startsWith(p));
+  if (skip) return null;
+
+  const contextLabel = ROUTE_LABEL[location.pathname] ?? "Página atual";
 
   return (
     <>
