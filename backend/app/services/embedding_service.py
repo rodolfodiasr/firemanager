@@ -49,7 +49,9 @@ def chunk_text(text: str) -> list[str]:
 async def generate_embeddings(texts: list[str]) -> list[list[float]]:
     """Call OpenAI text-embedding-3-small to generate embedding vectors."""
     from openai import AsyncOpenAI
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    from app.services import platform_config_service
+    api_key = platform_config_service.get_sync("openai_api_key") or settings.openai_api_key
+    client = AsyncOpenAI(api_key=api_key)
     response = await client.embeddings.create(
         model=settings.openai_embedding_model,
         input=texts,

@@ -42,6 +42,7 @@ const ROUTE_LABEL: Record<string, string> = {
   "/settings": "Configurações",
   "/organization": "Organização",
   "/mssp": "Painel MSSP",
+  "/platform-config": "Config. de Plataforma",
 };
 
 interface Message {

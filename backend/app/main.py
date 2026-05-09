@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, alerts, audit, auth, bulk_jobs, category_roles, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, enterprise, executive, firewall_migration, glpi, golden_bundles, golden_template, identity, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, recommendations, remediation, server_operations, servers, templates, tenants, variables, vm_migration
+from app.api import admin, alerts, audit, auth, bulk_jobs, category_roles, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, enterprise, executive, firewall_migration, glpi, golden_bundles, golden_template, identity, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, platform_config, recommendations, remediation, server_operations, servers, templates, tenants, variables, vm_migration
 from app.config import settings
 
 log = structlog.get_logger()
@@ -16,6 +16,13 @@ log = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log.info("Eternity SecOps starting", environment=settings.environment)
+    from app.database import AsyncSessionLocal
+    from app.services import platform_config_service
+    async with AsyncSessionLocal() as db:
+        try:
+            await platform_config_service.warm_cache(db)
+        except Exception:
+            pass  # DB may not have the table yet (first run before migration)
     yield
     log.info("Eternity SecOps shutting down")
 
@@ -74,6 +81,7 @@ app.include_router(executive.router,           prefix="/executive",             
 app.include_router(enterprise.router,          prefix="/enterprise",               tags=["enterprise"])
 app.include_router(golden_bundles.router,      prefix="/golden-bundles",           tags=["golden-bundles"])
 app.include_router(vm_migration.router,        prefix="/vm-migration",              tags=["vm-migration"])
+app.include_router(platform_config.router,     prefix="/platform-config",            tags=["platform-config"])
 
 
 class FireManagerError(Exception):

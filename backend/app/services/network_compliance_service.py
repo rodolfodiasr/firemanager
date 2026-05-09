@@ -1177,7 +1177,10 @@ Produza EXATAMENTE o seguinte JSON (sem markdown, sem texto extra):
 Inclua no máximo 5 recomendações, priorizando por risco (critical > high > medium > low).
 Foque apenas nos controles que FALHARAM. Se todos passaram, diga isso no resumo e retorne recomendações vazias."""
 
-        client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+        from app.services import platform_config_service
+        from app.config import settings as _settings
+        _api_key = platform_config_service.get_sync("anthropic_api_key") or _settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        client = anthropic.AsyncAnthropic(api_key=_api_key)
         msg = await client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1500,

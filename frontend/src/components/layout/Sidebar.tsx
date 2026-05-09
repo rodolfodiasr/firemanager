@@ -146,9 +146,10 @@ const navSections: NavSection[] = [
   {
     title: "Plataforma",
     items: [
-      { to: "/audit",      icon: Shield,   label: "Auditoria",     badge: true },
-      { to: "/enterprise", icon: KeyRound, label: "Enterprise"                 },
-      { to: "/settings",   icon: Settings, label: "Configurações"              },
+      { to: "/audit",           icon: Shield,      label: "Auditoria",           badge: true },
+      { to: "/enterprise",      icon: KeyRound,    label: "Enterprise"                       },
+      { to: "/platform-config", icon: ShieldCheck, label: "Config. Plataforma"               },
+      { to: "/settings",        icon: Settings,    label: "Configurações"                    },
       { to: "#", icon: Cpu,   label: "Edge Agents", upcoming: "F31" },
       { to: "#", icon: Store, label: "Marketplace",  upcoming: "F31" },
     ],

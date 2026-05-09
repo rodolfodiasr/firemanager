@@ -6,9 +6,13 @@ import json
 
 import anthropic
 
-from app.config import settings
+from app.services import platform_config_service
 
-client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+def _get_client() -> anthropic.Anthropic:
+    from app.config import settings
+    api_key = platform_config_service.get_sync("anthropic_api_key") or settings.anthropic_api_key
+    return anthropic.Anthropic(api_key=api_key)
 
 
 async def generate_migration_runbook(
@@ -54,7 +58,7 @@ Generate a comprehensive migration runbook in Markdown format covering:
 Be specific and actionable. Include estimated maintenance windows."""
 
     def _call() -> str:
-        msg = client.messages.create(
+        msg = _get_client().messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],

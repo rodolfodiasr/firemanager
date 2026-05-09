@@ -10,6 +10,17 @@ from app.config import settings
 log = structlog.get_logger()
 
 
+def _smtp_settings() -> tuple[str, int, str, str, str]:
+    """Return (host, port, user, password, email_from) from DB cache → env."""
+    from app.services import platform_config_service
+    host = platform_config_service.get_sync("smtp_host") or settings.smtp_host
+    port = int(platform_config_service.get_sync("smtp_port") or settings.smtp_port)
+    user = platform_config_service.get_sync("smtp_user") or settings.smtp_user
+    password = platform_config_service.get_sync("smtp_password") or settings.smtp_password
+    from_addr = platform_config_service.get_sync("email_from") or settings.email_from
+    return host, port, user, password, from_addr
+
+
 def send_invite_email(
     to_email: str,
     tenant_name: str,
@@ -41,18 +52,20 @@ def send_invite_email(
 </html>
 """
 
+    smtp_host, smtp_port, smtp_user, smtp_password, email_from = _smtp_settings()
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"Convite para {tenant_name} — FireManager"
-    msg["From"] = settings.email_from
+    msg["From"] = email_from
     msg["To"] = to_email
     msg.attach(MIMEText(body_html, "html"))
 
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as server:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
             server.ehlo()
             server.starttls()
-            if settings.smtp_user:
-                server.login(settings.smtp_user, settings.smtp_password)
+            if smtp_user:
+                server.login(smtp_user, smtp_password)
             server.send_message(msg)
         log.info("Invite email sent", to=to_email, tenant=tenant_name)
     except Exception as exc:
@@ -61,12 +74,13 @@ def send_invite_email(
 
 def _smtp_send(msg: MIMEMultipart, to_emails: list[str]) -> None:
     """Shared SMTP send helper."""
+    smtp_host, smtp_port, smtp_user, smtp_password, _ = _smtp_settings()
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as server:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
             server.ehlo()
             server.starttls()
-            if settings.smtp_user:
-                server.login(settings.smtp_user, settings.smtp_password)
+            if smtp_user:
+                server.login(smtp_user, smtp_password)
             server.send_message(msg)
         log.info("Email sent", to=to_emails)
     except Exception as exc:
@@ -81,7 +95,8 @@ def send_score_alert_email(
     frontend_url: str = "http://localhost:5173",
 ) -> None:
     """Alert tenant admins when the Eternity Trust Score drops significantly or falls below 60."""
-    if not to_emails or not settings.smtp_user:
+    _, _, smtp_user_val, _, _ = _smtp_settings()
+    if not to_emails or not smtp_user_val:
         return
 
     eternity = scores.get("eternity", {})
@@ -173,9 +188,10 @@ def send_score_alert_email(
 </body>
 </html>"""
 
+    _, _, _, _, email_from = _smtp_settings()
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"]    = settings.email_from
+    msg["From"]    = email_from
     msg["To"]      = ", ".join(to_emails)
     msg.attach(MIMEText(body_html, "html"))
     _smtp_send(msg, to_emails)
