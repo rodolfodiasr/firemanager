@@ -19,7 +19,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   MessageSquare,
-  ShieldBan,
+  FileInput,
   BookMarked,
   Network,
   Database,
@@ -39,6 +39,7 @@ interface NavItem {
   to: string;
   icon: LucideIcon;
   label: string;
+  badge?: boolean;
 }
 
 interface NavSection {
@@ -47,56 +48,100 @@ interface NavSection {
 }
 
 const navSections: NavSection[] = [
+  // ── Início ────────────────────────────────────────────────────────────────
   {
     title: "",
     items: [
       { to: "/", icon: LayoutDashboard, label: "Dashboard" },
     ],
   },
+
+  // ── Firewalls ─────────────────────────────────────────────────────────────
   {
-    title: "Firewall & Rede",
+    title: "Firewalls",
     items: [
-      { to: "/agent",       icon: Bot,            label: "Agente IA"    },
-      { to: "/direct-mode", icon: Terminal,        label: "Modo Técnico" },
-      { to: "/inspector",   icon: Radar,           label: "Inspetor"     },
-      { to: "/devices",     icon: Server,          label: "Dispositivos" },
-      { to: "/migrations",           icon: ArrowRightLeft, label: "Migração Switches"   },
-      { to: "/firewall-migrations",  icon: ShieldBan,      label: "Migração Firewall"   },
-      { to: "/golden-templates",     icon: BookMarked,     label: "Golden Config"        },
-      { to: "/connectivity",         icon: Network,        label: "Conectividade"        },
-      { to: "/knowledge",            icon: Database,       label: "Base de Conhecimento" },
+      { to: "/devices",     icon: Server,   label: "Dispositivos" },
+      { to: "/inspector",   icon: Radar,    label: "Inspetor"     },
+      { to: "/direct-mode", icon: Terminal, label: "CLI Direto"   },
     ],
   },
+
+  // ── Automação de Configuração ─────────────────────────────────────────────
   {
-    title: "Servidores & Análise",
+    title: "Automação",
     items: [
-      { to: "/server-analysis",icon: Brain,          label: "Analista N3"   },
-      { to: "/server-direct",  icon: Terminal,       label: "Modo Técnico"  },
-      { to: "/compliance",     icon: ClipboardCheck, label: "Conformidade"  },
-      { to: "/governance",     icon: BarChart3,      label: "Governança"    },
-      { to: "/remediation",    icon: ShieldCheck,    label: "Remediações"   },
-      { to: "/servers",             icon: HardDrive,    label: "Servidores"    },
-      { to: "/database-connectors", icon: DatabaseZap,  label: "Bancos de Dados" },
-      { to: "/identity",            icon: Users,        label: "Identidade"      },
-      { to: "/onboarding",          icon: UserPlus,     label: "Onboarding"      },
-      { to: "/vm-migration",        icon: Monitor,      label: "Migração de VMs" },
+      { to: "/golden-templates",    icon: BookMarked,  label: "Templates"       },
+      { to: "/golden-bundles",      icon: Package2,    label: "Kits · Bundles"  },
+      { to: "/firewall-migrations", icon: FileInput,   label: "Importar Regras" },
     ],
   },
+
+  // ── Redes & Conectividade ─────────────────────────────────────────────────
   {
-    title: "Automação & Relatórios",
+    title: "Redes & Conectividade",
     items: [
-      { to: "/alerts",         icon: Bell,      label: "Alertas"             },
-      { to: "/executive",      icon: BarChart2, label: "Dashboard Executivo" },
-      { to: "/golden-bundles", icon: Package2,  label: "Golden Bundles"      },
+      { to: "/connectivity", icon: Network,        label: "Topologia & Rotas"    },
+      { to: "/migrations",   icon: ArrowRightLeft, label: "Migração de Switches" },
     ],
   },
+
+  // ── Infraestrutura ────────────────────────────────────────────────────────
+  {
+    title: "Infraestrutura",
+    items: [
+      { to: "/servers",              icon: HardDrive,   label: "Servidores"      },
+      { to: "/server-analysis",      icon: Brain,       label: "Análise N3"      },
+      { to: "/server-direct",        icon: Terminal,    label: "Console SSH"     },
+      { to: "/database-connectors",  icon: DatabaseZap, label: "Bancos de Dados" },
+      { to: "/vm-migration",         icon: Monitor,     label: "Migração de VMs" },
+    ],
+  },
+
+  // ── Identidade & Acesso ───────────────────────────────────────────────────
+  {
+    title: "Identidade & Acesso",
+    items: [
+      { to: "/identity",   icon: Users,    label: "Identidade" },
+      { to: "/onboarding", icon: UserPlus, label: "Onboarding" },
+    ],
+  },
+
+  // ── Inteligência ──────────────────────────────────────────────────────────
+  {
+    title: "Inteligência",
+    items: [
+      { to: "/agent",      icon: Bot,            label: "Agente IA"           },
+      { to: "/knowledge",  icon: Database,       label: "Base de Conhecimento"},
+      { to: "/compliance", icon: ClipboardCheck, label: "Conformidade"        },
+      { to: "/governance", icon: BarChart3,      label: "Governança"          },
+    ],
+  },
+
+  // ── Segurança & Resposta ──────────────────────────────────────────────────
+  {
+    title: "Segurança & Resposta",
+    items: [
+      { to: "/alerts",      icon: Bell,        label: "Alertas"    },
+      { to: "/remediation", icon: ShieldCheck, label: "Remediações"},
+    ],
+  },
+
+  // ── Relatórios ────────────────────────────────────────────────────────────
+  {
+    title: "Relatórios",
+    items: [
+      { to: "/executive", icon: BarChart2,     label: "Dashboard Executivo" },
+      { to: "/glpi",      icon: MessageSquare, label: "Tickets IA"          },
+    ],
+  },
+
+  // ── Plataforma ────────────────────────────────────────────────────────────
   {
     title: "Plataforma",
     items: [
-      { to: "/audit",      icon: Shield,        label: "Auditoria"     },
-      { to: "/glpi",       icon: MessageSquare, label: "Tickets IA"    },
-      { to: "/enterprise", icon: KeyRound,      label: "Enterprise"    },
-      { to: "/settings",   icon: Settings,      label: "Configurações" },
+      { to: "/audit",      icon: Shield,   label: "Auditoria",     badge: true },
+      { to: "/enterprise", icon: KeyRound, label: "Enterprise"                 },
+      { to: "/settings",   icon: Settings, label: "Configurações"              },
     ],
   },
 ];
@@ -147,11 +192,11 @@ export function Sidebar() {
           <div key={section.title || "__root__"}>
             <SectionLabel title={section.title} />
             <div className="space-y-0.5">
-              {section.items.map(({ to, icon: Icon, label }) => (
+              {section.items.map(({ to, icon: Icon, label, badge }) => (
                 <NavLink key={to} to={to} end={to === "/"} className={navLinkClass}>
                   <Icon size={18} />
                   <span className="flex-1">{label}</span>
-                  {label === "Auditoria" && isAdmin && pendingCount > 0 && (
+                  {badge && isAdmin && pendingCount > 0 && (
                     <span className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center leading-none">
                       {pendingCount > 99 ? "99+" : pendingCount}
                     </span>
@@ -162,7 +207,7 @@ export function Sidebar() {
           </div>
         ))}
 
-        {/* Conditional items appended to Plataforma */}
+        {/* Organização e MSSP — itens condicionais ao final de Plataforma */}
         {(showTenants || user?.is_super_admin) && (
           <div className="space-y-0.5 mt-0.5">
             {showTenants && (
