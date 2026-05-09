@@ -135,6 +135,7 @@ services:
     ports:
       - "80:80"
       - "8080:8080"
+      - "4000:4000"   # Plataforma RH
     networks:
       - public-net
     volumes:
