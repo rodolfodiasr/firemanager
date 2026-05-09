@@ -50,10 +50,19 @@ interface Message {
   content: string;
 }
 
+// Wrapper: decide se monta o drawer (não chama nenhum hook de dados)
 export function AgentDrawer() {
-  // ── Todos os hooks ANTES de qualquer early return ─────────────────────────
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const location = useLocation();
+  const skip = !isAuthenticated || ["/login", "/invite"].some((p) => location.pathname.startsWith(p));
+  if (skip) return null;
+  return <AgentDrawerInner />;
+}
+
+// Inner: todos os hooks e lógica — só monta quando autenticado e fora do /login
+function AgentDrawerInner() {
+  const location = useLocation();
+  const contextLabel = ROUTE_LABEL[location.pathname] ?? "Página atual";
 
   const [isOpen, setIsOpen] = useState(false);
   const [deviceId, setDeviceId] = useState("");
@@ -107,12 +116,6 @@ export function AgentDrawer() {
       handleSend();
     }
   };
-
-  // ── Early return APÓS todos os hooks ──────────────────────────────────────
-  const skip = !isAuthenticated || ["/login", "/invite"].some((p) => location.pathname.startsWith(p));
-  if (skip) return null;
-
-  const contextLabel = ROUTE_LABEL[location.pathname] ?? "Página atual";
 
   return (
     <>
