@@ -29,7 +29,8 @@ const ROUTE_LABEL: Record<string, string> = {
   "/vm-migration": "Migração de VMs",
   "/identity": "Identidade & Acesso",
   "/onboarding": "Onboarding",
-  "/agent": "Agente de Rede",
+  "/agent": "Agente de Firewall",
+  "/network-agent": "Agente de Redes",
   "/knowledge": "Base de Conhecimento",
   "/compliance": "Conformidade",
   "/governance": "Governança",
@@ -44,6 +45,9 @@ const ROUTE_LABEL: Record<string, string> = {
   "/mssp": "Painel MSSP",
   "/platform-config": "Config. de Plataforma",
 };
+
+// Páginas que pertencem ao domínio de redes (switches/roteadores)
+const NETWORK_PATHS = ["/connectivity", "/migrations", "/network-agent"];
 
 interface Message {
   role: "user" | "assistant";
@@ -64,6 +68,14 @@ function AgentDrawerInner() {
   const location = useLocation();
   const contextLabel = ROUTE_LABEL[location.pathname] ?? "Página atual";
 
+  // Detecta contexto: rede ou firewall
+  const isNetworkContext = NETWORK_PATHS.some((p) => location.pathname.startsWith(p));
+  const agentLabel = isNetworkContext ? "Agente de Redes" : "Agente de Firewall";
+  const agentPath = isNetworkContext ? "/network-agent" : "/agent";
+  const agentPlaceholderExample = isNetworkContext
+    ? "Ex: "Liste as VLANs configuradas""
+    : "Ex: "Liste as regras de firewall"";
+
   const [isOpen, setIsOpen] = useState(false);
   const [deviceId, setDeviceId] = useState("");
   const [input, setInput] = useState("");
@@ -72,7 +84,21 @@ function AgentDrawerInner() {
   const [operationId, setOperationId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const { devices } = useDevices();
+  const { devices: allDevices } = useDevices();
+
+  // Filtra devices pelo domínio atual
+  const devices = allDevices.filter((d) =>
+    isNetworkContext
+      ? d.category === "switch" || d.category === "routing"
+      : d.category === "firewall"
+  );
+
+  // Quando muda de contexto (rede ↔ firewall), limpa seleção e conversa
+  useEffect(() => {
+    setDeviceId("");
+    setMessages([]);
+    setOperationId(null);
+  }, [isNetworkContext]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -123,7 +149,7 @@ function AgentDrawerInner() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          title="Agente IA"
+          title={agentLabel}
           className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-brand-600 hover:bg-brand-700 text-white rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-105"
         >
           <Bot size={26} />
@@ -139,13 +165,13 @@ function AgentDrawerInner() {
             <div className="flex items-center gap-2 min-w-0">
               <Bot size={18} className="shrink-0 text-brand-400" />
               <div className="min-w-0">
-                <p className="text-sm font-semibold leading-tight">Agente IA</p>
+                <p className="text-sm font-semibold leading-tight">{agentLabel}</p>
                 <p className="text-xs text-gray-400 truncate">Contexto: {contextLabel}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0 ml-2">
               <Link
-                to="/agent"
+                to={agentPath}
                 title="Abrir em tela cheia"
                 className="text-gray-400 hover:text-white transition-colors"
               >
@@ -192,7 +218,7 @@ function AgentDrawerInner() {
                   Selecione um dispositivo e faça uma pergunta.
                 </p>
                 <p className="text-xs text-gray-300 mt-0.5">
-                  Ex: "Liste as regras de firewall"
+                  {agentPlaceholderExample}
                 </p>
               </div>
             )}
@@ -247,8 +273,8 @@ function AgentDrawerInner() {
               </button>
             </div>
             <p className="text-xs text-gray-400 mt-1.5 text-center">
-              <Link to="/agent" className="hover:text-brand-600 transition-colors">
-                Abrir agente completo →
+              <Link to={agentPath} className="hover:text-brand-600 transition-colors">
+                Abrir {agentLabel.toLowerCase()} completo →
               </Link>
             </p>
           </div>

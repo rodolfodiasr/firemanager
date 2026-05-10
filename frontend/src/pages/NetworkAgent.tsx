@@ -1,14 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Pencil, Layers, Square, CheckSquare, AlertCircle, Loader2, BookOpen } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Layers, Square, CheckSquare, AlertCircle, Loader2 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { ChatWindow } from "../components/agent/ChatWindow";
 import { useDevices } from "../hooks/useDevices";
 import { useAgent } from "../hooks/useAgent";
-import { operationsApi } from "../api/operations";
 import { bulkJobsApi } from "../api/bulk_jobs";
 import type { Device } from "../types/device";
+
+const NETWORK_CATEGORIES = ["switch", "routing"] as const;
 
 // ── Bulk panel ────────────────────────────────────────────────────────────────
 
@@ -70,18 +71,18 @@ function BulkPanel({ devices }: { devices: Device[] }) {
                 : <Square size={14} className="text-gray-300 shrink-0 mt-0.5" />}
               <div className="min-w-0">
                 <p className="font-medium text-gray-800 truncate">{device.name}</p>
-                <p className="text-xs text-gray-400">{device.vendor}</p>
+                <p className="text-xs text-gray-400">{device.vendor} · {device.category}</p>
               </div>
             </button>
           );
         })}
       </div>
 
-      {/* Bulk input area */}
+      {/* Bulk input */}
       <div className="flex-1 bg-white rounded-xl border border-gray-200 flex flex-col p-5 gap-4">
         <div className="flex items-center gap-2">
           <Layers size={16} className="text-brand-500" />
-          <p className="text-sm font-semibold text-gray-800">Operação em Lote — Agente de Firewall</p>
+          <p className="text-sm font-semibold text-gray-800">Operação em Lote — Agente de Redes</p>
           {selectedIds.size >= 2 && (
             <span className="ml-auto text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-medium">
               {selectedIds.size} selecionados
@@ -113,7 +114,7 @@ function BulkPanel({ devices }: { devices: Device[] }) {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 rows={6}
-                placeholder="Ex: Liberar acesso HTTPS para o IP 192.168.1.50 vindo da rede interna"
+                placeholder="Ex: Configurar VLAN 100 com nome 'Produção' em todas as portas de acesso"
                 className="flex-1 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
               />
               <p className="text-xs text-gray-400">
@@ -145,48 +146,27 @@ function BulkPanel({ devices }: { devices: Device[] }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export function Agent() {
+export function NetworkAgent() {
   const [searchParams] = useSearchParams();
-  const editId = searchParams.get("edit");
   const deviceParam = searchParams.get("device");
-  const seedParam = searchParams.get("seed");
 
   const { devices: allDevices } = useDevices();
-  const devices = allDevices.filter((d) => d.category === "firewall");
+  const devices = allDevices.filter((d) =>
+    NETWORK_CATEGORIES.includes(d.category as typeof NETWORK_CATEGORIES[number])
+  );
+
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(deviceParam ?? null);
   const [bulkMode, setBulkMode] = useState(false);
-  const [useBookstackContext, setUseBookstackContext] = useState(true);
-
-  const { data: editOp } = useQuery({
-    queryKey: ["operation", editId],
-    queryFn: () => operationsApi.get(editId!),
-    enabled: !!editId,
-    staleTime: Infinity,
-  });
 
   const { messages, readyToExecute, requiresApproval, loading, send, execute, submitForReview, reset } =
-    useAgent(selectedDeviceId, editOp?.id ?? null, useBookstackContext);
-
-  useEffect(() => {
-    if (!editOp) return;
-    setSelectedDeviceId(editOp.device_id);
-    reset();
-  }, [editOp?.id]);
+    useAgent(selectedDeviceId, null, false);
 
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
-
-  const editSeedInput = editOp
-    ? `${editOp.natural_language_input} — Quero ajustar: `
-    : seedParam
-    ? decodeURIComponent(seedParam)
-    : undefined;
-
-  const canBulk = !editOp && devices.length >= 2;
+  const canBulk = devices.length >= 2;
 
   return (
-    <PageWrapper title={editOp ? "Editar Operação" : "Agente de Firewall"}>
+    <PageWrapper title="Agente de Redes">
       <div className="h-[calc(100vh-7rem)] flex flex-col gap-3">
-        {/* Mode toggle */}
         {canBulk && (
           <div className="flex items-center gap-2">
             <button
@@ -217,11 +197,16 @@ export function Agent() {
           <BulkPanel devices={devices} />
         ) : (
           <div className="flex-1 flex gap-4 min-h-0">
-            {/* Device selector panel */}
+            {/* Device selector */}
             <div className="w-64 bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-3 overflow-y-auto">
               <h3 className="text-sm font-semibold text-gray-700">Dispositivo alvo</h3>
               {devices.length === 0 ? (
-                <p className="text-xs text-gray-400">Nenhum firewall cadastrado</p>
+                <div className="text-xs text-gray-400 space-y-1">
+                  <p>Nenhum switch ou roteador encontrado.</p>
+                  <p className="text-gray-300">
+                    Cadastre um device com categoria <strong>Switch</strong> ou <strong>Routing</strong>.
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {devices.map((device) => (
@@ -239,7 +224,7 @@ export function Agent() {
                     >
                       <p className="font-medium">{device.name}</p>
                       <p className={`text-xs ${selectedDeviceId === device.id ? "text-red-200" : "text-gray-400"}`}>
-                        {device.vendor} · {device.status}
+                        {device.vendor} · {device.category}
                       </p>
                     </button>
                   ))}
@@ -249,41 +234,19 @@ export function Agent() {
 
             {/* Chat area */}
             <div className="flex-1 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden">
-              {editOp && (
-                <div className="px-4 py-2.5 border-b border-amber-200 bg-amber-50 flex items-start gap-2">
-                  <Pencil size={14} className="text-amber-600 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-800">
-                    <span className="font-semibold">Editando operação:</span>{" "}
-                    {editOp.natural_language_input}
-                  </p>
-                </div>
-              )}
-              {!editOp && selectedDevice ? (
+              {selectedDevice ? (
                 <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-gray-500">Operando em:</span>
                   <span className="text-sm font-medium">{selectedDevice.name}</span>
-                  <span className="text-xs text-gray-400">({selectedDevice.vendor})</span>
-                  <label
-                    className="ml-auto flex items-center gap-1.5 cursor-pointer select-none"
-                    title="Incluir documentação e snapshots do BookStack como contexto para a IA"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={useBookstackContext}
-                      onChange={(e) => setUseBookstackContext(e.target.checked)}
-                      className="w-3.5 h-3.5 accent-brand-600"
-                    />
-                    <BookOpen size={12} className={useBookstackContext ? "text-brand-600" : "text-gray-400"} />
-                    <span className={`text-xs font-medium ${useBookstackContext ? "text-brand-700" : "text-gray-400"}`}>
-                      Contexto BookStack
-                    </span>
-                  </label>
+                  <span className="text-xs text-gray-400">
+                    ({selectedDevice.vendor} · {selectedDevice.category})
+                  </span>
                 </div>
-              ) : !editOp ? (
+              ) : (
                 <div className="px-4 py-3 border-b border-gray-100 bg-yellow-50">
-                  <p className="text-xs text-yellow-700">Selecione um dispositivo para iniciar</p>
+                  <p className="text-xs text-yellow-700">Selecione um switch ou roteador para iniciar</p>
                 </div>
-              ) : null}
+              )}
               <ChatWindow
                 messages={messages}
                 readyToExecute={readyToExecute}
@@ -293,7 +256,6 @@ export function Agent() {
                 onExecute={execute}
                 onSubmitForReview={submitForReview}
                 onCancel={reset}
-                defaultInput={editSeedInput}
               />
             </div>
           </div>

@@ -70,7 +70,7 @@ const navSections: NavSection[] = [
       { to: "/devices",     icon: Server,   label: "Dispositivos"  },
       { to: "/inspector",   icon: Radar,    label: "Inspetor"      },
       { to: "/direct-mode", icon: Terminal, label: "CLI Direto"    },
-      { to: "/agent",       icon: Bot,      label: "Agente de Rede"},
+      { to: "/agent",       icon: Bot,      label: "Agente de Firewall"},
     ],
   },
 
@@ -90,7 +90,7 @@ const navSections: NavSection[] = [
     items: [
       { to: "/connectivity", icon: Network,        label: "Topologia & Rotas"    },
       { to: "/migrations",   icon: ArrowRightLeft, label: "Migração de Switches" },
-      { to: "/agent",        icon: Bot,            label: "Agente de Rede"       },
+      { to: "/network-agent", icon: Bot,            label: "Agente de Redes"      },
     ],
   },
 

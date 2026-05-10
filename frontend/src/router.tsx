@@ -3,6 +3,7 @@ import { useAuthStore } from "./store/authStore";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { Agent } from "./pages/Agent";
+import { NetworkAgent } from "./pages/NetworkAgent";
 import { Devices } from "./pages/Devices";
 import { Settings } from "./pages/Settings";
 import { Audit } from "./pages/Audit";
@@ -56,6 +57,7 @@ export function AppRouter() {
       <Route path="/invite/:token" element={<AcceptInvite />} />
       <Route path="/" element={<ProtectedLayout><Dashboard /></ProtectedLayout>} />
       <Route path="/agent" element={<ProtectedLayout><Agent /></ProtectedLayout>} />
+      <Route path="/network-agent" element={<ProtectedLayout><NetworkAgent /></ProtectedLayout>} />
       <Route path="/devices" element={<ProtectedLayout><Devices /></ProtectedLayout>} />
       {/* Redirects for consolidated Dispositivos tabs */}
       <Route path="/templates" element={<Navigate to="/devices" replace />} />
