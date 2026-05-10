@@ -73,8 +73,8 @@ function AgentDrawerInner() {
   const agentLabel = isNetworkContext ? "Agente de Redes" : "Agente de Firewall";
   const agentPath = isNetworkContext ? "/network-agent" : "/agent";
   const agentPlaceholderExample = isNetworkContext
-    ? "Ex: "Liste as VLANs configuradas""
-    : "Ex: "Liste as regras de firewall"";
+    ? 'Ex: "Liste as VLANs configuradas"'
+    : 'Ex: "Liste as regras de firewall"';
 
   const [isOpen, setIsOpen] = useState(false);
   const [deviceId, setDeviceId] = useState("");
