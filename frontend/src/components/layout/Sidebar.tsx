@@ -67,9 +67,10 @@ const navSections: NavSection[] = [
   {
     title: "Firewalls",
     items: [
-      { to: "/devices",     icon: Server,   label: "Dispositivos" },
-      { to: "/inspector",   icon: Radar,    label: "Inspetor"     },
-      { to: "/direct-mode", icon: Terminal, label: "CLI Direto"   },
+      { to: "/devices",     icon: Server,   label: "Dispositivos"  },
+      { to: "/inspector",   icon: Radar,    label: "Inspetor"      },
+      { to: "/direct-mode", icon: Terminal, label: "CLI Direto"    },
+      { to: "/agent",       icon: Bot,      label: "Agente de Rede"},
     ],
   },
 
@@ -89,6 +90,7 @@ const navSections: NavSection[] = [
     items: [
       { to: "/connectivity", icon: Network,        label: "Topologia & Rotas"    },
       { to: "/migrations",   icon: ArrowRightLeft, label: "Migração de Switches" },
+      { to: "/agent",        icon: Bot,            label: "Agente de Rede"       },
     ],
   },
 
@@ -96,11 +98,11 @@ const navSections: NavSection[] = [
   {
     title: "Infraestrutura",
     items: [
-      { to: "/servers",              icon: HardDrive,   label: "Servidores"      },
-      { to: "/server-analysis",      icon: Brain,       label: "Análise N3"      },
-      { to: "/server-direct",        icon: Terminal,    label: "Console SSH"     },
-      { to: "/database-connectors",  icon: DatabaseZap, label: "Bancos de Dados" },
-      { to: "/vm-migration",         icon: Monitor,     label: "Migração de VMs" },
+      { to: "/servers",             icon: HardDrive,   label: "Servidores"      },
+      { to: "/server-analysis",     icon: Brain,       label: "Agente N3"       },
+      { to: "/server-direct",       icon: Terminal,    label: "Console SSH"     },
+      { to: "/database-connectors", icon: DatabaseZap, label: "Bancos de Dados" },
+      { to: "/vm-migration",        icon: Monitor,     label: "Migração de VMs" },
     ],
   },
 
@@ -110,17 +112,7 @@ const navSections: NavSection[] = [
     items: [
       { to: "/identity",   icon: Users,    label: "Identidade" },
       { to: "/onboarding", icon: UserPlus, label: "Onboarding" },
-    ],
-  },
-
-  // ── Inteligência ──────────────────────────────────────────────────────────
-  {
-    title: "Inteligência",
-    items: [
-      { to: "/agent",      icon: Bot,            label: "Agente IA"           },
-      { to: "/knowledge",  icon: Database,       label: "Base de Conhecimento"},
-      { to: "/compliance", icon: ClipboardCheck, label: "Conformidade"        },
-      { to: "/governance", icon: BarChart3,      label: "Governança"          },
+      { to: "#", icon: KeyRound, label: "SSO / OIDC", upcoming: "F31" },
     ],
   },
 
@@ -128,8 +120,29 @@ const navSections: NavSection[] = [
   {
     title: "Segurança & Resposta",
     items: [
-      { to: "/alerts",      icon: Bell,        label: "Alertas"    },
-      { to: "/remediation", icon: ShieldCheck, label: "Remediações"},
+      { to: "/alerts",      icon: Bell,        label: "Alertas"           },
+      { to: "/remediation", icon: ShieldCheck, label: "Remediações"       },
+      { to: "#", icon: ShieldHalf, label: "SOAR",               upcoming: "F33" },
+      { to: "#", icon: Globe,      label: "Threat Intelligence", upcoming: "F33" },
+    ],
+  },
+
+  // ── Conformidade & Governança ─────────────────────────────────────────────
+  {
+    title: "Conformidade & Governança",
+    items: [
+      { to: "/compliance", icon: ClipboardCheck, label: "Conformidade" },
+      { to: "/governance", icon: BarChart3,      label: "Governança"   },
+      { to: "#", icon: FileCheck2, label: "Packs CIS / PCI / LGPD", upcoming: "F30" },
+    ],
+  },
+
+  // ── Inteligência IA ───────────────────────────────────────────────────────
+  {
+    title: "Inteligência IA",
+    items: [
+      { to: "/knowledge", icon: Database, label: "Base de Conhecimento"    },
+      { to: "#", icon: Radar, label: "Análise de Regras IA", upcoming: "F29" },
     ],
   },
 
@@ -146,10 +159,10 @@ const navSections: NavSection[] = [
   {
     title: "Plataforma",
     items: [
-      { to: "/audit",           icon: Shield,      label: "Auditoria",           badge: true },
-      { to: "/enterprise",      icon: KeyRound,    label: "Enterprise"                       },
-      { to: "/platform-config", icon: ShieldCheck, label: "Config. Plataforma"               },
-      { to: "/settings",        icon: Settings,    label: "Configurações"                    },
+      { to: "/audit",           icon: Shield,      label: "Auditoria",        badge: true },
+      { to: "/enterprise",      icon: KeyRound,    label: "Enterprise"                    },
+      { to: "/platform-config", icon: ShieldCheck, label: "Config. Plataforma"            },
+      { to: "/settings",        icon: Settings,    label: "Configurações"                 },
       { to: "#", icon: Cpu,   label: "Edge Agents", upcoming: "F31" },
       { to: "#", icon: Store, label: "Marketplace",  upcoming: "F31" },
     ],
@@ -159,9 +172,8 @@ const navSections: NavSection[] = [
   {
     title: "Em Breve",
     items: [
-      { to: "#", icon: ShieldHalf, label: "Hardening Avançado",      upcoming: "F28" },
-      { to: "#", icon: Coins,      label: "IA FinOps",                upcoming: "F29" },
-      { to: "#", icon: FileCheck2, label: "Conformidade Regulatória", upcoming: "F30" },
+      { to: "#", icon: ShieldHalf, label: "Hardening Avançado", upcoming: "F28" },
+      { to: "#", icon: Coins,      label: "IA FinOps",           upcoming: "F29" },
     ],
   },
 ];
