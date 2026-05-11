@@ -135,37 +135,48 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 ---
 
 ### Fase 28 — Segurança Avançada e Resiliência
-*Hardening de autenticação, proteção de infraestrutura e tolerância a falhas*
+*Hardening de autenticação, proteção de infraestrutura, tolerância a falhas e segurança do agente IA*
 
-**Origem:** Mesa Redonda Rounds 1, 2 e 3 — Vera (Zero Trust), Thiago (DevSecOps), Rodrigo (Red Team), Caio (SRE)
+**Origem:** Mesa Redonda Segurança da Informação (20 profissionais) — Rafael (CISO), Ana (Red Team/AI), Eduardo (AI/ML), Thiago (Network), Vanessa (AppSec), Marcos (IR), Paulo (OT), Fernanda (Zero Trust), Sandra (Architecture), André (Bug Bounty)
 
 | Funcionalidade | Detalhe | Prioridade |
 |---|---|---|
-| JWT short-lived + refresh httpOnly | Tokens de acesso com TTL 15 min; refresh token em cookie httpOnly/Secure/SameSite=Strict | Alta |
-| SSRF protection | Bloquear `169.254.169.254`, `localhost`, ranges RFC1918 nos campos `host` de hypervisors/connectors | Alta |
-| BOLA/IDOR checks | Verificação explícita de tenant em cada object-level access (além do query filter) | Alta |
-| Circuit breaker nos connectors | Padrão circuit breaker (tenacity / hystrix) — vendor lento não bloqueia workers | Alta |
-| CI/CD com SAST | GitHub Actions: Bandit, pip-audit, Trivy (imagem Docker), semgrep; bloquear merge se findings críticos | Alta |
-| Supply chain security | Pinagem de dependências com hash; renovação automática via Dependabot/Renovate | Média |
-| Pentest externo + bug bounty | Relatório de pentest anual; programa privado de bug bounty (HackerOne/Intigriti) | Média |
+| **Preview CLI exato antes de executar** | Exibir o bloco de comandos literal que será enviado ao device, linha por linha, antes da aprovação humana — técnico aprova o comando, não a intenção | **Crítica** |
+| **Snapshot obrigatório antes de toda escrita** | Toda operação de escrita (não só bundles) dispara snapshot automático pré-execução; snapshot pós-execução registrado; rollback disponível em 1 clique | **Crítica** |
+| **Denylist de comandos catastróficos por vendor** | Lista curta (~5–10 por vendor) de comandos irreversíveis bloqueados independente de aprovação: `factoryreset`, `formatlogdisk`, `delete all`, `wipe config`; allowlist seria restritiva demais — denylist cobre o único cenário onde preview + snapshot não bastam | **Crítica** |
+| **AI output schema validation** | Validar output estruturado do Claude contra schema esperado (source, destination, action, etc.) antes de executar; rejeitar output fora do schema | Alta |
+| **Prompt injection detection** | Sanitizar toda entrada enviada ao Claude — input do usuário, dados dos devices (nomes de políticas, comentários), documentos RAG; detectar padrões de injection | Alta |
+| JWT short-lived + refresh httpOnly | Tokens de acesso TTL 15 min; refresh token em cookie httpOnly/Secure/SameSite=Strict; logout invalida token no servidor | Alta |
+| SSRF protection (scheme + IP allowlist) | Bloquear IPs RFC1918, 169.254.169.254, localhost; allowlist de scheme (só `http://`/`https://`); validação de DNS antes de conectar | Alta |
+| BOLA/IDOR checks | Verificação explícita de tenant em cada object-level access; validar `device_id` pertence ao tenant em todo endpoint de update/delete | Alta |
+| **Hash-chained audit log** | Cada entrada de audit contém hash SHA-256 da entrada anterior; adulteração detectável; ancoragem periódica via RFC 3161 timestamping | Alta |
+| Circuit breaker nos connectors | Padrão circuit breaker (tenacity) — vendor lento não bloqueia workers Celery | Alta |
+| CI/CD com SAST + secret scanning | GitHub Actions: Bandit, pip-audit, Trivy, semgrep, truffleHog/detect-secrets; bloquear merge em findings críticos ou credentials hardcoded | Alta |
+| **Modo read-only forçado por device** | Flag por device que impede toda operação de escrita via agente — para clientes OT/ICS, utilities, saúde que nunca autorizam escrita automatizada | Alta |
+| **Token de convite único + expiração 24h** | Token de convite de uso único; expiração em 24h; invalidação automática após primeiro uso | Alta |
+| Supply chain security | Pinagem de dependências com hash; Dependabot/Renovate; versionamento de parsers por firmware de vendor | Média |
 | Rate limiting por API key | Limites configuráveis por tenant e por rota; headers `X-RateLimit-*` | Média |
+| **Canal público de reporte de vuln** | E-mail `security@` com PGP key publicada; SLA de resposta: crítico 24h, alto 7d, médio 30d | Média |
 
 ---
 
-### Fase 29 — Observabilidade, IA FinOps e Qualidade de Código
-*Rastreabilidade de IA, controle de custos, qualidade de código e melhorias RAG*
+### Fase 29 — Observabilidade, IA FinOps, Qualidade e Resiliência de IA
+*Rastreabilidade de IA, controle de custos, qualidade de código, dry-run e resiliência de modelo*
 
-**Origem:** Mesa Redonda Rounds 2 e 3 — Pedro (IA), Cristina (FinOps), Isabela (RAG), Diego (DevOps)
+**Origem:** Mesa Redonda Segurança — Dr. Eduardo (AI/ML), Felipe (Responsible AI), Diego (Threat Intel), Carlos (SOC)
 
 | Funcionalidade | Detalhe | Prioridade |
 |---|---|---|
-| AI observability (logs + anti-injection) | Logging de todos os prompts/respostas; validação de entrada antes de enviar ao Claude; detecção de prompt injection | Alta |
+| AI observability (logs + anti-injection) | Logging completo de prompts/respostas; validação de entrada; detecção de prompt injection; rastreabilidade prompt→comando→resposta do device | Alta |
+| **AI dry-run / modo simulação** | Antes de executar, rodar o comando em modo simulado (onde vendor suporta) ou exibir diff previsto; resultado comparado com estado atual do device | Alta |
+| **Confidence threshold + escalação** | Se Claude expressa incerteza ou o output tem score baixo de confiança, escalar para revisão humana em vez de prosseguir; nunca fingir certeza | Alta |
 | Token tracking por tenant | Contador de tokens (input/output) por tenant por mês; alerta ao atingir quota; dashboard de consumo | Alta |
 | Quotas e billing IA | Limite configurável de tokens/sessões por plano; throttle gracioso quando exceder | Alta |
-| AI fallback (OpenAI → Ollama) | Fallback automático para modelo alternativo se Anthropic API indisponível | Média |
-| Chunking semântico para RAG | Substituir chunking fixo por chunking por seção/parágrafo; reranking por BM25+embeddings | Média |
-| Análise de qualidade de regras | Detectar regras de firewall duplicadas, sobrepostas, sombra, `any/any allow`, regras nunca usadas (hit count) | Alta |
-| Diagnóstico de qualidade de link | Histórico ICMP/RTT por device; alertas de latência anômala; exportar para Grafana | Média |
+| **AI fallback (Anthropic → OpenAI → Ollama)** | Fallback automático em cadeia se Anthropic indisponível; testado em failover drill semestral | Alta |
+| **Rotação da chave Fernet** | Rotação anual da chave de criptografia de credenciais; re-encrypt automático de todos os valores cifrados; histórico de chaves para decrypt de dados antigos | Alta |
+| Chunking semântico para RAG | Substituir chunking fixo por chunking por seção; reranking BM25+embeddings; sanitização de documentos no upload | Média |
+| Análise de qualidade de regras | Detectar regras duplicadas, sobrepostas, sombra, `any/any allow`, hit count zero | Alta |
+| Diagnóstico de qualidade de link | Histórico ICMP/RTT; alertas de latência anômala; exportar Grafana | Média |
 
 ---
 
@@ -216,6 +227,59 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | Acessibilidade (WCAG 2.1 AA) | Contraste para daltônicos (palete testada), navegação por teclado, labels ARIA, leitor de tela | Média |
 | Onboarding guiado | Wizard de primeiros passos: add device → primeiro snapshot → primeira regra | Média |
 | Feedback in-app | Widget de feedback contextual por página; integrado ao Linear/Jira interno | Baixa |
+
+---
+
+### Fase 33 — IA Safety & Governança
+*Controles formais de segurança do agente IA, aprovação avançada e framework de governança*
+
+**Origem:** Mesa Redonda Segurança da Informação — Felipe (Responsible AI), Larissa (LGPD), Marcos (IR), Carlos (SOC), Paulo (OT), Mônica (SecOps), Rafael (CISO), Ana (Red Team)
+
+| Funcionalidade | Detalhe | Prioridade |
+|---|---|---|
+| **Aprovação dupla para devices críticos** | Flag "device crítico" por tenant; operações de escrita exigem 2 aprovadores distintos (four-eyes principle); fila de aprovação com timeout | Alta |
+| **Janela de manutenção por device** | Operações de escrita via agente só executam dentro de janelas configuradas; fora da janela vão para fila pendente com notificação | Alta |
+| **Termos de Uso e política de IA** | Documento publicado: o que o agente pode e não pode fazer; limitação de responsabilidade; uso aceitável; assinatura eletrônica pelo admin do tenant | Alta |
+| **Security Incident Response Plan (SIRP) para IA** | Playbook documentado: o que fazer se agente executar operação não autorizada; quem notificar; RTO de comunicação ao cliente ≤ 2h | Alta |
+| **Red team trimestral do agente** | Exercício formal de tentativa de prompt injection, manipulação de contexto RAG, jailbreak; resultado documentado e corrigido antes do próximo trimestre | Alta |
+| **Four-eyes para operações de gestão** | Alterações em configuração de tenant, promoção de admin, alteração de allowlist de comandos — exigem segundo aprovador | Alta |
+| **Validação de DPA com Anthropic** | Verificar adequação do contrato com Anthropic à LGPD (ANPD Res. 19/2024); cláusula de transferência internacional; notificar clientes | Alta |
+| **Direito ao esquecimento (data deletion)** | Endpoint de exclusão completa de tenant: dados, snapshots, logs, credenciais, embeddings, documentos RAG; confirmação auditada | Alta |
+| **Ancoragem de audit log em RFC 3161** | Timestamping criptográfico de blocos do audit log via autoridade confiável; prova irrefutável em juízo | Média |
+| **Dashboard de postura interna** | Painel interno (só Super Admin): tentativas de login com falha, operações de escrita por tenant, anomalias de volume, circuit breakers abertos | Média |
+
+---
+
+### Fase 34 — Infraestrutura de Segurança Avançada
+*mTLS interno, KMS/HSM, microsegmentação, OPA e observabilidade de segurança*
+
+**Origem:** Mesa Redonda Segurança — Sandra (Architecture), Roberto (Crypto), Juliana (Cloud), Fernanda (Zero Trust), Mônica (SecOps), Diego (Threat Intel)
+
+| Funcionalidade | Detalhe | Prioridade |
+|---|---|---|
+| **mTLS entre serviços internos** | Comunicação api↔celery↔redis com mTLS; redis com autenticação obrigatória; sem tráfego interno em plaintext | Alta |
+| **KMS / HashiCorp Vault** | Chave Fernet e secrets de infraestrutura no Vault ou AWS KMS; nunca em `.env`; rotação automática; auditoria de acesso às chaves | Alta |
+| **Microsegmentação Docker** | Redes Docker separadas por serviço; api não acessa postgres diretamente (só via ORM); celery não acessa redis além do necessário | Alta |
+| **Open Policy Agent (OPA)** | Ponto central de decisão de autorização; políticas declarativas em Rego; facilita auditoria e consistência cross-serviço | Média |
+| **Container security hardening** | AppArmor/seccomp profiles nos containers; usuário não-root nas imagens; read-only filesystem onde possível; scan Trivy em CI | Alta |
+| **Gestão de vulnerabilidades formal** | Scan semanal automatizado (Trivy + Bandit + pip-audit); SLA de correção: crítico 24h, alto 7d, médio 30d; relatório mensal ao CISO | Alta |
+| **Pentest externo anual** | Relatório de pentest por empresa credenciada; findings públicos (responsável disclosure após 90d); bug bounty privado HackerOne | Média |
+| **Supply chain: parser versionado por firmware** | Parsers de CLI versionados por firmware do vendor; alerta quando output de device muda estruturalmente; sanitização de dados do device | Média |
+
+---
+
+### Fase 35 — SOAR & Threat Intelligence
+*Resposta automatizada a incidentes, inteligência de ameaças e detecção avançada*
+
+**Origem:** Mesa Redonda Segurança — Mônica (SecOps/SOAR), Diego (Threat Intel), Carlos (SOC), Leonardo (Pentester)
+
+| Funcionalidade | Detalhe | Prioridade |
+|---|---|---|
+| **SOAR leve embutido** | Playbooks de resposta automática: score cai 20pts em 5min → agente entra em read-only, notifica CISO do cliente, abre ticket de incidente | Alta |
+| **Threat Intelligence feed** | Integração com feeds de IoCs (IPs maliciosos, hashes, domínios); cruzamento com IPs nos firewalls gerenciados; alertas de match | Alta |
+| NDR (Network Detection & Response) | Análise de padrões de tráfego anômalo nos devices gerenciados; baseline comportamental; alerta de desvio | Média |
+| **Isolamento automático de device** | Em incidente confirmado, colocar device em modo read-only automático + notificar; reativação manual com aprovação dupla | Alta |
+| Correlação de alertas cross-tenant | Super Admin vê padrões de ataque que afetam múltiplos tenants simultaneamente (campanha coordenada) | Média |
 
 ---
 
@@ -341,4 +405,11 @@ F21-23                   ──► F24 (dashboard executivo)
 F24                      ──► F25 (enterprise/marketplace)
 F26 pode rodar em paralelo com F25 (extensão vertical de F17)
 F27 pode rodar em paralelo com F25-26 (módulo independente)
+
+F28 (segurança + IA safety)  ──► F33 (governança IA) ──► F35 (SOAR)
+F28 (hash-chained audit)     ──► F33 (ancoragem RFC 3161)
+F29 (AI observability)       ──► F33 (red team + SIRP)
+F31 (RBAC granular)          ──► F33 (four-eyes + aprovação dupla)
+F34 (infra segurança)        pode rodar em paralelo com F33
+F35 (SOAR) depende de F23 (alertas) + F33 (SIRP) + F34 (infra)
 ```
