@@ -36,4 +36,7 @@ export interface ChatResponse {
   ready_to_execute: boolean;
   requires_approval: boolean;
   intent: string | null;
+  preview_commands: string[];
+  guardrail_blocked: boolean;
+  device_id: string;
 }
