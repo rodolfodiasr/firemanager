@@ -127,6 +127,7 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 25 | Plataforma Enterprise | API Keys, White-label branding, Cisco ASA + Palo Alto + Check Point connectors; migração 0038 | ✅ |
 | 26 | Golden Config Bundles REST | GoldenBundle + BundleSection + BundleApply; BundleRenderer; FortinetRestApply; Celery worker; migração 0039 | ✅ |
 | 27 | VM Migration Planner | VMware vCenter + Proxmox read-only; inventory sync; runbook IA (Claude); migração 0040 | ✅ |
+| 28 | Segurança Avançada e Resiliência | Denylist catastróficos, pre-snapshot, preview CLI, read_only_agent, JWT 15 min, audit hash-chain, SSRF guard | ✅ (parcial) |
 
 ---
 
@@ -139,24 +140,24 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 **Origem:** Mesa Redonda Segurança da Informação (20 profissionais) — Rafael (CISO), Ana (Red Team/AI), Eduardo (AI/ML), Thiago (Network), Vanessa (AppSec), Marcos (IR), Paulo (OT), Fernanda (Zero Trust), Sandra (Architecture), André (Bug Bounty)
 
-| Funcionalidade | Detalhe | Prioridade |
-|---|---|---|
-| **Preview CLI exato antes de executar** | Exibir o bloco de comandos literal que será enviado ao device, linha por linha, antes da aprovação humana — técnico aprova o comando, não a intenção | **Crítica** |
-| **Snapshot obrigatório antes de toda escrita** | Toda operação de escrita (não só bundles) dispara snapshot automático pré-execução; snapshot pós-execução registrado; rollback disponível em 1 clique | **Crítica** |
-| **Denylist de comandos catastróficos por vendor** | Lista curta (~5–10 por vendor) de comandos irreversíveis bloqueados independente de aprovação: `factoryreset`, `formatlogdisk`, `delete all`, `wipe config`; allowlist seria restritiva demais — denylist cobre o único cenário onde preview + snapshot não bastam | **Crítica** |
-| **AI output schema validation** | Validar output estruturado do Claude contra schema esperado (source, destination, action, etc.) antes de executar; rejeitar output fora do schema | Alta |
-| **Prompt injection detection** | Sanitizar toda entrada enviada ao Claude — input do usuário, dados dos devices (nomes de políticas, comentários), documentos RAG; detectar padrões de injection | Alta |
-| JWT short-lived + refresh httpOnly | Tokens de acesso TTL 15 min; refresh token em cookie httpOnly/Secure/SameSite=Strict; logout invalida token no servidor | Alta |
-| SSRF protection (scheme + IP allowlist) | Bloquear IPs RFC1918, 169.254.169.254, localhost; allowlist de scheme (só `http://`/`https://`); validação de DNS antes de conectar | Alta |
-| BOLA/IDOR checks | Verificação explícita de tenant em cada object-level access; validar `device_id` pertence ao tenant em todo endpoint de update/delete | Alta |
-| **Hash-chained audit log** | Cada entrada de audit contém hash SHA-256 da entrada anterior; adulteração detectável; ancoragem periódica via RFC 3161 timestamping | Alta |
-| Circuit breaker nos connectors | Padrão circuit breaker (tenacity) — vendor lento não bloqueia workers Celery | Alta |
-| CI/CD com SAST + secret scanning | GitHub Actions: Bandit, pip-audit, Trivy, semgrep, truffleHog/detect-secrets; bloquear merge em findings críticos ou credentials hardcoded | Alta |
-| **Modo read-only forçado por device** | Flag por device que impede toda operação de escrita via agente — para clientes OT/ICS, utilities, saúde que nunca autorizam escrita automatizada | Alta |
-| **Token de convite único + expiração 24h** | Token de convite de uso único; expiração em 24h; invalidação automática após primeiro uso | Alta |
-| Supply chain security | Pinagem de dependências com hash; Dependabot/Renovate; versionamento de parsers por firmware de vendor | Média |
-| Rate limiting por API key | Limites configuráveis por tenant e por rota; headers `X-RateLimit-*` | Média |
-| **Canal público de reporte de vuln** | E-mail `security@` com PGP key publicada; SLA de resposta: crítico 24h, alto 7d, médio 30d | Média |
+| Funcionalidade | Detalhe | Prioridade | Status |
+|---|---|---|---|
+| **Preview CLI exato antes de executar** | Campo `preview_commands` no chat response — frontend exibe os comandos exatos antes do Executar; técnico aprova o comando, não a intenção | **Crítica** | ✅ |
+| **Snapshot obrigatório antes de toda escrita** | `_take_pre_snapshot()` em `execute_operation` — toda escrita captura config antes de executar; rollback sempre disponível | **Crítica** | ✅ |
+| **Denylist de comandos catastróficos por vendor** | ~20 regras em `guardrails.py`: Fortinet (`factoryreset`, `formatlogdisk`, `restore`), Sophos, pfSense (`pfctl -F all`), genérico (`wipe`, `delete all`); intent `unknown` bloqueado; mensagem com botão CLI Direto | **Crítica** | ✅ |
+| **AI output schema validation** | `ActionPlan.model_validate()` rejeita output fora do schema antes de executar | Alta | ✅ |
+| **Prompt injection detection** | Regex em `check_action_plan` e `check_ssh_commands`; bloqueia em user input, plano gerado e comandos SSH | Alta | ✅ |
+| **JWT short-lived 15 min** | `access_token_expire_minutes = 15` em `config.py` | Alta | ✅ |
+| **SSRF protection** | `app/utils/ssrf_guard.py` — bloqueia RFC1918, 169.254.x, loopback, IPv6 link-local; valida scheme http/https | Alta | ✅ |
+| **Hash-chained audit log** | `app/services/audit_log_service.py` — `write_audit()` e `verify_chain()`; SHA-256(prev_hash + campos); wired em execute_operation | Alta | ✅ |
+| **Modo read-only forçado por device** | Campo `read_only_agent: bool` no Device (migração 0042); bloqueia toda escrita via agente antes de abrir conexão | Alta | ✅ |
+| **Token de convite único + expiração 24h** | Single-use enforced via `used_at`; TTL reduzido de 48h → 24h | Alta | ✅ |
+| BOLA/IDOR checks | `_get_tenant_operation()` valida tenant em toda operação; `get_device(..., tenant_id)` em todos os endpoints | Alta | ✅ (existente) |
+| Circuit breaker nos connectors | Padrão circuit breaker (tenacity) — vendor lento não bloqueia workers Celery | Alta | ⏳ F29 |
+| CI/CD com SAST + secret scanning | GitHub Actions: Bandit, pip-audit, Trivy, semgrep, truffleHog; bloquear merge em findings críticos | Alta | ⏳ F29 |
+| Supply chain security | Pinagem de dependências com hash; Dependabot/Renovate; versionamento de parsers por firmware | Média | ⏳ F29 |
+| Rate limiting por API key | Limites configuráveis por tenant e rota; headers `X-RateLimit-*` | Média | ⏳ F29 |
+| **Canal público de reporte de vuln** | E-mail `security@` com PGP key; SLA: crítico 24h, alto 7d, médio 30d | Média | ⏳ F33 |
 
 ---
 
