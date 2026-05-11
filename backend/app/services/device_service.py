@@ -36,6 +36,7 @@ async def create_device(db: AsyncSession, data: DeviceCreate, tenant_id: UUID) -
         use_ssl=data.use_ssl,
         verify_ssl=data.verify_ssl,
         notes=data.notes,
+        read_only_agent=data.read_only_agent,
     )
     db.add(device)
     await db.flush()
@@ -109,6 +110,8 @@ async def update_device(
         device.verify_ssl = data.verify_ssl
     if data.notes is not None:
         device.notes = data.notes
+    if data.read_only_agent is not None:
+        device.read_only_agent = data.read_only_agent
     await db.flush()
     await db.refresh(device)
     return device

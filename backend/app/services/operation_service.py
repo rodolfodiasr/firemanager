@@ -256,6 +256,46 @@ async def start_or_continue_operation(
     return operation, response
 
 
+_READ_ONLY_INTENTS_SET = frozenset({
+    "list_rules", "list_nat_policies", "list_route_policies",
+    "get_security_status", "health_check", "get_snapshot",
+    "list_vlans", "list_ports", "get_info",
+})
+
+
+async def _take_pre_snapshot(db: AsyncSession, device: "Device", operation_id: UUID) -> None:
+    """Capture a config snapshot BEFORE any write operation (rollback guarantee)."""
+    try:
+        from app.connectors.factory import get_connector, get_ssh_connector, CLI_VENDORS
+        if device.vendor in CLI_VENDORS:
+            ssh_connector = get_ssh_connector(device)
+            result = await ssh_connector.execute_show_commands(["show running-config"])
+            if result.success and result.output:
+                snap = Snapshot(
+                    device_id=device.id,
+                    operation_id=operation_id,
+                    config_data=result.output,
+                    config_hash=hashlib.sha256(result.output.encode()).hexdigest(),
+                    label=f"Pre-execution snapshot — operation {operation_id}",
+                )
+                db.add(snap)
+                await db.flush()
+        else:
+            connector = get_connector(device)
+            config_data = await connector.get_config_snapshot()
+            snap = Snapshot(
+                device_id=device.id,
+                operation_id=operation_id,
+                config_data=config_data,
+                config_hash=hashlib.sha256(config_data.encode()).hexdigest(),
+                label=f"Pre-execution snapshot — operation {operation_id}",
+            )
+            db.add(snap)
+            await db.flush()
+    except Exception:
+        pass  # pre-snapshot failure is non-critical; operation proceeds
+
+
 async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: bool = False) -> Operation:
     result = await db.execute(select(Operation).where(Operation.id == operation_id))
     operation = result.scalar_one_or_none()
@@ -272,6 +312,56 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
 
     from app.policy_engine.schemas import ActionPlan
     plan = ActionPlan.model_validate(operation.action_plan)
+
+    # ── read_only_agent safety gate ───────────────────────────────────────────
+    if device.read_only_agent and plan.intent.value not in _READ_ONLY_INTENTS_SET:
+        operation.status = OperationStatus.failed
+        operation.error_message = (
+            "Dispositivo em modo somente-leitura (read_only_agent=True). "
+            "Operações de escrita via agente estão desabilitadas para este dispositivo."
+        )
+        await db.flush()
+        await db.refresh(operation)
+        try:
+            from app.services.audit_log_service import write_audit
+            await write_audit(
+                db,
+                action="operation.blocked.read_only_agent",
+                user_id=operation.user_id,
+                device_id=device.id,
+                operation_id=operation.id,
+                details={"intent": plan.intent.value},
+            )
+        except Exception:
+            pass
+        return operation
+
+    # ── Pre-execution snapshot for all write operations ───────────────────────
+    if plan.intent.value not in _READ_ONLY_INTENTS_SET:
+        await _take_pre_snapshot(db, device, operation_id)
+
+    # ── Guardrail re-check at execution time (defense-in-depth) ──────────────
+    ssh_cmds_to_check = (plan.ssh_commands or []) + (plan.ssh_show_commands or [])
+    if ssh_cmds_to_check:
+        recheck = check_ssh_commands(ssh_cmds_to_check)
+        if recheck.blocked:
+            operation.status = OperationStatus.failed
+            operation.error_message = f"[GUARDRAIL BLOCK na execução] {recheck.block_reason}"
+            await db.flush()
+            await db.refresh(operation)
+            try:
+                from app.services.audit_log_service import write_audit
+                await write_audit(
+                    db,
+                    action="operation.blocked.guardrail",
+                    user_id=operation.user_id,
+                    device_id=device.id,
+                    operation_id=operation.id,
+                    details={"reason": recheck.block_reason, "commands": ssh_cmds_to_check[:10]},
+                )
+            except Exception:
+                pass
+            return operation
 
     # ── CLI-only vendors: all execution goes through SSH ──────────────────────
     if device.vendor in CLI_VENDORS:
@@ -639,5 +729,24 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
 
     if operation.status == OperationStatus.completed:
         await append_changelog(db, device, operation)
+
+    # Write hash-chained audit entry for all write operations
+    if plan.intent.value not in _READ_ONLY_INTENTS_SET:
+        try:
+            from app.services.audit_log_service import write_audit
+            await write_audit(
+                db,
+                action=f"operation.{operation.status.value}",
+                user_id=operation.user_id,
+                device_id=device.id,
+                operation_id=operation.id,
+                details={
+                    "intent": plan.intent.value,
+                    "mark_direct": mark_direct,
+                    "error": operation.error_message,
+                },
+            )
+        except Exception:
+            pass
 
     return operation

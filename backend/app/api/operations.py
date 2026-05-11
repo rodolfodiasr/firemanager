@@ -37,6 +37,15 @@ async def _chat_response(
         else:
             from app.services.audit_service import check_requires_approval
             requires_approval = await check_requires_approval(db, ctx.user, operation.intent)
+
+    # Expose the exact CLI commands that will be sent to the device (preview before execute)
+    preview_commands: list[str] = []
+    if ready and operation.action_plan:
+        preview_commands = (
+            (operation.action_plan.get("ssh_commands") or [])
+            + (operation.action_plan.get("ssh_show_commands") or [])
+        )
+
     return {
         "operation_id": str(operation.id),
         "status": operation.status.value,
@@ -44,6 +53,7 @@ async def _chat_response(
         "ready_to_execute": ready,
         "requires_approval": requires_approval,
         "intent": operation.intent,
+        "preview_commands": preview_commands,
     }
 
 

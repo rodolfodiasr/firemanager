@@ -31,6 +31,7 @@ class DeviceCreate(BaseModel):
     notes: str | None = None
     zabbix_host_name: str | None = None
     wazuh_agent_name: str | None = None
+    read_only_agent: bool = False
 
 
 class DeviceUpdate(BaseModel):
@@ -45,6 +46,7 @@ class DeviceUpdate(BaseModel):
     notes: str | None = None
     zabbix_host_name: str | None = None
     wazuh_agent_name: str | None = None
+    read_only_agent: bool | None = None
 
 
 class DeviceRead(BaseModel):
@@ -67,6 +69,7 @@ class DeviceRead(BaseModel):
     bookstack_fm_page_id: int | None = None
     bookstack_doc_page_id: int | None = None
     bookstack_snapshot_page_id: int | None = None
+    read_only_agent: bool = False
     created_at: datetime
     updated_at: datetime
 

@@ -90,6 +90,8 @@ class Device(Base):
     bookstack_doc_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # BookStack integration — FM periodic snapshot page (current state, overwritten each run)
     bookstack_snapshot_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Safety: prevents ALL write operations via AI agent (for OT/ICS/healthcare environments)
+    read_only_agent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

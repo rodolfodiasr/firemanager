@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = "change-me-in-production"
     credential_encryption_key: str = ""
-    access_token_expire_minutes: int = 60
+    access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
     # Anthropic

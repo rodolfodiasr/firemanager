@@ -18,7 +18,7 @@ from app.utils.email import send_invite_email
 
 router = APIRouter()
 
-INVITE_TTL = timedelta(hours=48)
+INVITE_TTL = timedelta(hours=24)
 
 
 class InviteCreate(BaseModel):

@@ -112,6 +112,50 @@ _SSH_BLOCK_RULES: list[tuple[str, re.Pattern[str], str]] = [
         re.compile(r"\bno\s+ip\s+access-list\s+extended\s+\*", re.IGNORECASE),
         "Remover todos os ACLs pode abrir ou fechar todo o tráfego.",
     ),
+    # ── Fortinet ──────────────────────────────────────────────────────────────
+    (
+        "fortinet_factory_reset",
+        re.compile(r"\bexecute\s+factoryreset\b", re.IGNORECASE),
+        "Factory reset do Fortinet apaga toda a configuração do dispositivo.",
+    ),
+    (
+        "fortinet_restore_all",
+        re.compile(r"\bexecute\s+restore\s+(all-settings|config\s+ftp|config\s+tftp)", re.IGNORECASE),
+        "Restaurar configuração do Fortinet pode apagar ou substituir todas as políticas.",
+    ),
+    (
+        "fortinet_format_boot",
+        re.compile(r"\bexecute\s+formatlogdisk\b", re.IGNORECASE),
+        "formatlogdisk apaga todos os logs e pode tornar o dispositivo temporariamente inoperante.",
+    ),
+    # ── Sophos ────────────────────────────────────────────────────────────────
+    (
+        "sophos_factory_reset",
+        re.compile(r"\bsystem\s+reset\s+factory-defaults?\b", re.IGNORECASE),
+        "Factory reset do Sophos apaga toda a configuração do firewall.",
+    ),
+    # ── pfSense / OPNsense ────────────────────────────────────────────────────
+    (
+        "pfsense_flush_all",
+        re.compile(r"\bpfctl\s+-F\s+all\b", re.IGNORECASE),
+        "pfctl -F all remove todas as regras de firewall, expondo o dispositivo completamente.",
+    ),
+    (
+        "pfsense_reset_factory",
+        re.compile(r"\bpfSense-factory-defaults\.sh\b", re.IGNORECASE),
+        "Script de factory-defaults apaga toda a configuração do pfSense.",
+    ),
+    # ── Generic catastrophic ──────────────────────────────────────────────────
+    (
+        "generic_wipe",
+        re.compile(r"\bwipe\s+(config|all|nvram|flash|storage)\b", re.IGNORECASE),
+        "Comando wipe destrói dados de configuração de forma irreversível.",
+    ),
+    (
+        "delete_all_config",
+        re.compile(r"\bdelete\s+all\s*(config|configuration|rules)?\s*$", re.IGNORECASE),
+        "Deleção de toda a configuração é uma operação irreversível catastrófica.",
+    ),
     (
         "prompt_injection",
         re.compile(
