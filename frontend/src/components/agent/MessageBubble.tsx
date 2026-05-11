@@ -1,4 +1,5 @@
-import { Bot, User } from "lucide-react";
+import { Bot, User, Terminal } from "lucide-react";
+import { Link } from "react-router-dom";
 import type { ChatMessage, TableData } from "../../store/agentStore";
 
 interface MessageBubbleProps {
@@ -111,11 +112,22 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${
           isUser
             ? "bg-brand-600 text-white rounded-tr-sm"
+            : message.directModeDeviceId
+            ? "bg-red-50 border border-red-200 text-gray-900 rounded-tl-sm"
             : "bg-gray-100 text-gray-900 rounded-tl-sm"
         }`}
       >
         {message.content}
         {message.tableData && <ResultTable tableData={message.tableData} />}
+        {message.directModeDeviceId && (
+          <Link
+            to={`/direct-mode?device=${message.directModeDeviceId}`}
+            className="mt-3 flex items-center gap-2 w-fit px-3 py-2 bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            <Terminal size={13} />
+            Abrir CLI Direto para este dispositivo
+          </Link>
+        )}
       </div>
     </div>
   );

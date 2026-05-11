@@ -46,6 +46,12 @@ async def _chat_response(
             + (operation.action_plan.get("ssh_show_commands") or [])
         )
 
+    guardrail_blocked = (
+        operation.status == OperationStatus.failed
+        and bool(operation.error_message)
+        and "[GUARDRAIL BLOCK]" in (operation.error_message or "")
+    )
+
     return {
         "operation_id": str(operation.id),
         "status": operation.status.value,
@@ -54,6 +60,8 @@ async def _chat_response(
         "requires_approval": requires_approval,
         "intent": operation.intent,
         "preview_commands": preview_commands,
+        "guardrail_blocked": guardrail_blocked,
+        "device_id": str(operation.device_id),
     }
 
 

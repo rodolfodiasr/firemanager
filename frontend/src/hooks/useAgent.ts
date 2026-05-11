@@ -39,7 +39,9 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
           response = await operationsApi.continueChat(currentOperationId, content);
         }
 
-        addMessage("assistant", response.agent_message);
+        const directModeDeviceId =
+          response.guardrail_blocked && response.device_id ? response.device_id : undefined;
+        addMessage("assistant", response.agent_message, undefined, directModeDeviceId);
         setReadyToExecute(response.ready_to_execute);
         setRequiresApproval(response.requires_approval ?? false);
         setIntent(response.intent ?? null);

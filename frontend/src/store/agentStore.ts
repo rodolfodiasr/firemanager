@@ -15,6 +15,7 @@ export interface ChatMessage {
   content: string;
   tableData?: TableData;
   timestamp: Date;
+  directModeDeviceId?: string;
 }
 
 interface AgentState {
@@ -24,7 +25,7 @@ interface AgentState {
   requiresApproval: boolean;
   intent: string | null;
   loading: boolean;
-  addMessage: (role: "user" | "assistant", content: string, tableData?: TableData) => void;
+  addMessage: (role: "user" | "assistant", content: string, tableData?: TableData, directModeDeviceId?: string) => void;
   setOperationId: (id: string | null) => void;
   setReadyToExecute: (ready: boolean) => void;
   setRequiresApproval: (v: boolean) => void;
@@ -42,9 +43,9 @@ export const useAgentStore = create<AgentState>((set) => ({
   intent: null,
   loading: false,
 
-  addMessage: (role, content, tableData?) =>
+  addMessage: (role, content, tableData?, directModeDeviceId?) =>
     set((state) => ({
-      messages: [...state.messages, { role, content, tableData, timestamp: new Date() }],
+      messages: [...state.messages, { role, content, tableData, directModeDeviceId, timestamp: new Date() }],
     })),
 
   setOperationId: (id) => set({ currentOperationId: id }),

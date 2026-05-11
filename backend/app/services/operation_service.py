@@ -240,6 +240,12 @@ async def start_or_continue_operation(
             operation.error_message = (
                 f"[GUARDRAIL BLOCK] {guardrail_result.block_reason}"
             )
+            response = (
+                f"⚠️ Operação bloqueada pela denylist de segurança.\n\n"
+                f"{guardrail_result.block_reason}\n\n"
+                f"Se este comando for realmente necessário em uma janela de manutenção planejada, "
+                f"execute-o manualmente com auditoria completa pelo CLI Direto."
+            )
         elif guardrail_result.warnings:
             # Escalate critical intents detected by guardrails to require 2 approvals
             if risk != OperationRisk.critical:
