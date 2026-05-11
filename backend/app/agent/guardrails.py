@@ -46,7 +46,11 @@ class GuardrailResult:
     def block_reason(self) -> str | None:
         for v in self.violations:
             if v.severity == Severity.BLOCK:
-                return v.message
+                cmd = v.command.strip()
+                return (
+                    f"O comando '{cmd}' está na denylist de comandos proibidos e não pode ser executado. "
+                    f"Motivo: {v.message}"
+                )
         return None
 
     @property
