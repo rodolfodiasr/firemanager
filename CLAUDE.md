@@ -166,18 +166,47 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 **Origem:** Mesa Redonda Segurança — Dr. Eduardo (AI/ML), Felipe (Responsible AI), Diego (Threat Intel), Carlos (SOC)
 
-| Funcionalidade | Detalhe | Prioridade |
-|---|---|---|
-| AI observability (logs + anti-injection) | Logging completo de prompts/respostas; validação de entrada; detecção de prompt injection; rastreabilidade prompt→comando→resposta do device | Alta |
-| **AI dry-run / modo simulação** | Antes de executar, rodar o comando em modo simulado (onde vendor suporta) ou exibir diff previsto; resultado comparado com estado atual do device | Alta |
-| **Confidence threshold + escalação** | Se Claude expressa incerteza ou o output tem score baixo de confiança, escalar para revisão humana em vez de prosseguir; nunca fingir certeza | Alta |
-| Token tracking por tenant | Contador de tokens (input/output) por tenant por mês; alerta ao atingir quota; dashboard de consumo | Alta |
-| Quotas e billing IA | Limite configurável de tokens/sessões por plano; throttle gracioso quando exceder | Alta |
-| **AI fallback (Anthropic → OpenAI → Ollama)** | Fallback automático em cadeia se Anthropic indisponível; testado em failover drill semestral | Alta |
-| **Rotação da chave Fernet** | Rotação anual da chave de criptografia de credenciais; re-encrypt automático de todos os valores cifrados; histórico de chaves para decrypt de dados antigos | Alta |
-| Chunking semântico para RAG | Substituir chunking fixo por chunking por seção; reranking BM25+embeddings; sanitização de documentos no upload | Média |
-| Análise de qualidade de regras | Detectar regras duplicadas, sobrepostas, sombra, `any/any allow`, hit count zero | Alta |
-| Diagnóstico de qualidade de link | Histórico ICMP/RTT; alertas de latência anômala; exportar Grafana | Média |
+#### AI observability (logs + anti-injection) — Alta
+Tabela `ai_interactions`: tenant_id, user_id, operation_id, prompt_tokens, completion_tokens, model, raw_prompt (Fernet-cifrado), raw_response (Fernet-cifrado), prompt_hash (SHA-256), injection_score, duration_ms, created_at. Middleware intercepta toda chamada à Anthropic SDK e registra antes/depois. O `operation_id` liga cada interaction ao device, tenant, usuário e resultado final — rastreabilidade completa prompt→comando→resposta do device. Dashboard Admin: últimas N interações, tokens por dia/mês, picos de uso. Resultado de cada `check_action_plan` registrado junto à interaction.
+
+#### AI dry-run / modo simulação — Alta
+Novo endpoint `POST /operations/{id}/dry-run` executa `execute_operation` em modo preview sem gravar no device. Para vendors com suporte nativo (Fortinet: `action=check` na policy REST): executa o check real e retorna diff do vendor. Para vendors sem suporte (SonicWall, SSH): gera "config diff" mostrando exatamente quais linhas seriam adicionadas/removidas comparando os comandos gerados com o snapshot atual do device. Frontend: botão "Simular" ao lado de "Executar" no AgentChat — exibe resultado em modal antes de confirmar a execução real.
+
+#### Confidence threshold + escalação — Alta
+Claude retorna score de confiança 0–1 no plano baseado em quantas ambiguidades encontrou (campo `_confidence` no ActionPlan JSON). Se score < 0.7 (threshold configurável por tenant via `TenantConfig`): operação vai automaticamente para `awaiting_approval` em vez de `approved`, com mensagem ao usuário: "O agente não tem certeza suficiente (confiança: X%). Um analista N2 irá revisar." Campo `confidence_score: float` adicionado à tabela `operations`. Threshold configurável no painel de configurações do tenant.
+
+#### Token tracking por tenant — Alta
+Tabela `ai_token_usage`: tenant_id, month (YYYY-MM), input_tokens, output_tokens, total_tokens, cost_usd (calculado com pricing Anthropic: $3/M input, $15/M output para Sonnet 4). Celery beat job mensal agrega `ai_interactions` → `ai_token_usage`. API `GET /admin/tenants/{id}/token-usage?months=6` para Super Admin e Admin do tenant. Dashboard: gráfico barras por mês, breakdown por usuário, custo estimado em BRL e USD. Alerta automático quando uso atinge 80% da quota do plano (via canal de alertas configurado F23).
+
+#### Quotas e billing IA — Alta
+Campo `ai_token_quota_monthly: int | None` no modelo `Tenant` (null = ilimitado). Middleware em `start_or_continue_operation`: verifica `SUM(total_tokens)` do mês atual, bloqueia com HTTP 429 e mensagem clara se acima da quota. Throttle gracioso: nos últimos 20% da quota, adiciona aviso na resposta do agente ("X tokens restantes este mês"). Planos sugeridos: Starter 100k tokens/mês, Pro 1M, Enterprise ilimitado.
+
+#### AI fallback (Anthropic → OpenAI → Ollama) — Alta
+Abstração `LLMProvider` com método `async chat(messages, schema) -> dict`. Implementações: `AnthropicProvider` (claude-sonnet-4-6), `OpenAIProvider` (gpt-4o), `OllamaProvider` (llama3:8b local). `FallbackLLMProvider`: tenta em ordem, captura `APIConnectionError` e `RateLimitError`, loga fallback no audit log como evento de segurança. Config por tenant: `llm_provider_order: list[str]` (default: `["anthropic", "openai", "ollama"]`). Ollama endpoint: `OLLAMA_BASE_URL` no env. Alerta via canal de alertas (F23) quando fallback é acionado — indica indisponibilidade do provider primário.
+
+#### Rotação da chave Fernet — Alta
+Tabela `fernet_key_history`: id, key_id (UUID), key_value_encrypted (cifrado com KMS ou master key), created_at, rotated_at, active. Script `python -m app.cli rotate-fernet-key`: (1) gera nova chave Fernet, (2) re-encripta todos os `device.credentials` (JSONB) em batch de 100, (3) mantém chave antiga como fallback para decrypt de registros não migrados, (4) marca chave antiga como rotated_at. `MultiFernet` do cryptography lib tenta decrypt com todas as chaves ativas em ordem — zero downtime. Celery beat: alerta automático se última rotação > 365 dias.
+
+#### Circuit breaker nos connectors — Alta
+`tenacity` com pattern de circuit breaker por device: após 5 falhas em 60s, abre o circuit. Estado por device em Redis: `circuit:{device_id}:open` (TTL 5 min), `circuit:{device_id}:failures` (contador). Worker Celery health check: se circuit aberto, pula o device e registra como `unreachable` sem tentar conexão. API `GET /devices/{id}/circuit-status` para Admin ver estado e forçar reset. Circuit fecha automaticamente após TTL ou reset manual. Evita que vendor lento/fora do ar bloqueie workers Celery causando backlog.
+
+#### CI/CD com SAST + secret scanning — Alta
+`.github/workflows/security.yml` (roda em PRs e push para main): Bandit (Python SAST, bloqueia em HIGH), pip-audit (CVEs em deps, bloqueia em CRITICAL), Trivy (imagem Docker, bloqueia em CRITICAL), semgrep (rules OWASP Top 10), truffleHog (secrets no git history, bloqueia qualquer finding). `.github/workflows/build.yml`: build Docker + push para registry com tag de commit hash. Merge bloqueado automaticamente se qualquer check falhar. Badge de status no README.
+
+#### Supply chain security — Média
+`requirements.txt` com hashes SHA-256 (`pip install --require-hashes`). Dependabot ou Renovate configurado para PRs automáticos de atualização de dependências. Parsers de CLI versionados por firmware: classes `FortinetParser_7_4`, `FortinetParser_7_6` — `get_connector()` usa `device.firmware_version` para selecionar o parser correto. Alerta quando versão do firmware de um device muda inesperadamente (pode indicar comprometimento ou upgrade não autorizado).
+
+#### Rate limiting por API key — Média
+Middleware FastAPI: verifica header `X-API-Key`, identifica tenant, aplica limites via Redis (`INCR` + `EXPIRE` por janela de 1 min). Limites por plano e rota: Starter (100 req/min geral, 20 writes/min), Pro (1000/min, 200 writes/min), Enterprise (configurável). Headers de resposta: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`. HTTP 429 com body indicando quando retry é seguro.
+
+#### Chunking semântico para RAG — Média
+Parser de documento detecta headers Markdown/HTML e quebra por seção em vez de por tamanho fixo. Cada chunk carrega metadata: `document_title`, `section_title`, `page_number`, `heading_level`. Reranking: após busca por embeddings (top-20), aplica BM25 para rerankar e retorna top-5 — melhora recall de seções técnicas específicas. Sanitização no upload: strip de scripts, iframes, conteúdo binário embutido em PDF; rejeita arquivos com macro Office.
+
+#### Análise de qualidade de regras — Alta
+Celery task `analyze_rule_quality(device_id)` executa após cada snapshot e detecta: regras duplicadas (mesmo src/dst/svc/action), shadow rules (regra nunca alcançada porque outra mais ampla vem antes na lista), regras `any/any allow` (abre tudo), regras disabled há >90 dias (candidatas a remoção), regras sem hit count em 30 dias (se vendor reporta hit count). Resultado salvo em campo `quality_issues: JSONB` no snapshot. Dashboard: badge "X issues" na listagem de devices; modal com lista de problemas e sugestão de correção textual.
+
+#### Diagnóstico de qualidade de link — Média
+Celery beat ICMP probe a cada 5 min para cada device: registra RTT e packet loss em `link_quality_history` (device_id, timestamp, rtt_ms, packet_loss_pct). Alerta automático (canal F23) se RTT > 3× média dos últimos 7 dias ou packet loss > 5%. Exporta métricas para Prometheus (gauge `device_rtt_ms`, counter `device_packet_loss_pct`) → visível no Grafana existente (F24). Gráfico histórico no detalhe do device: 24h, 7d, 30d.
 
 ---
 
@@ -186,14 +215,23 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 **Origem:** Mesa Redonda Rounds 1, 2 e 3 — Flávia (Compliance), Patrícia (Privacidade), Augusto (LGPD), Eduardo (BC/DR), Mônica (SLA)
 
-| Funcionalidade | Detalhe | Prioridade |
-|---|---|---|
-| Compliance packs por vertical | Checklist CIS, PCI-DSS, BACEN Res. 4.658, LGPD Art. 46 — relatórios de conformidade por vertical | Alta |
-| DPA / LGPD template | Template de Contrato de Tratamento de Dados (DPA) gerado automaticamente; cláusula de transferência internacional (Anthropic USA) | Alta |
-| RTO/RPO documentados | Plano BCP com objetivos de recuperação; backup automático com teste de restore periódico | Alta |
-| SLA formal com créditos automáticos | SLA por plano (ex: 99,9% uptime); cálculo e crédito automático via billing em caso de violação | Média |
-| Relatório executivo de compliance | PDF executivo com score por framework (CIS/PCI/LGPD); evolução mensal; assinatura digital | Média |
-| Data residency | Flag por tenant para garantir dados em região específica (BR); metadados de localização em audit log | Baixa |
+#### Compliance packs por vertical — Alta
+Modelo `ComplianceCheck`: framework (CIS/PCI-DSS/BACEN/LGPD), check_id, description, check_function, severity (critical/high/medium). `ComplianceResult`: tenant_id, device_id, check_id, status (pass/fail/warn/na), evidence (JSON), checked_at. Cada pack tem ~50–100 checks automatizados que cruzam snapshots, audit logs e configurações do tenant. Exemplos CIS: "Nenhuma regra `any/any allow` ativa", "Acesso SSH restrito a IPs internos", "Senha de admin com complexidade mínima". Exemplos BACEN 4.658: "Logs de acesso retidos por 5 anos no audit log", "MFA habilitado para todos os admins". Dashboard: score 0–100% por framework, drill-down por check individual, evolução histórica mensal. API exporta resultados em JSON/CSV para GRC tools (ServiceNow, Archer).
+
+#### DPA / LGPD template — Alta
+Template Jinja2 do DPA gerado como PDF (WeasyPrint) com dados do tenant: nome, CNPJ, DPO, finalidade do tratamento. Cláusula automática de transferência internacional: dados de prompts processados pela Anthropic Inc. (EUA) — base legal Art. 33 LGPD + ANPD Res. 19/2024. Fluxo: Admin aceita DPA via checkbox com confirmação de leitura → `TenantDPA` salvo com timestamp, IP, user_id. Apresentado no onboarding do tenant e disponível para download em Configurações → Documentos Legais. Campo `data_processing_purpose` por categoria de dado processado (credenciais, snapshots, prompts IA).
+
+#### RTO/RPO documentados — Alta
+`BackupPolicy` por tenant: frequência (daily/weekly), retenção (30/90/365 dias), destino (S3 com SSE-KMS / GCS / volume local). Celery beat task `run_backup(tenant_id)`: exporta devices (sem credentials plaintext), snapshots, audit logs → arquivo ZIP cifrado com Fernet. `BackupTestResult`: data do último teste de restore, duração do restore, sucesso/falha, hash de integridade verificado — exibido no dashboard de compliance. RTO documentado: 4h para restore completo. RPO documentado: 1h (backup hourly para Enterprise). Alerta automático se backup não rodou no prazo.
+
+#### SLA formal com créditos automáticos — Média
+Modelo `SLAPolicy` por plano: uptime_target_pct (99.9% Enterprise, 99.5% Pro, 99% Starter), credit_per_hour_pct (10% do valor mensal por hora de violação). `UptimeRecord` (tenant_id, period_start, period_end, uptime_pct): alimentado pelos health checks e alertas de indisponibilidade (F23). Celery beat mensal: calcula uptime real vs target, cria `SLACredit` se violado. SLACredit integra ao Stripe como desconto automático na próxima fatura. Dashboard de SLA por tenant e por device: timeline de incidentes, minutos de downtime, créditos acumulados.
+
+#### Relatório executivo de compliance — Média
+PDF gerado com WeasyPrint contendo: score por framework (CIS/PCI-DSS/BACEN/LGPD) em gauge visual, top-10 violações com severidade, evolução do score nos últimos 6 meses (gráfico linha), dispositivos críticos em não-conformidade, próximas ações recomendadas. Assinatura digital: hash SHA-256 do PDF + timestamp RFC 3161 embutido como metadado. Agendamento automático: enviado ao email do Admin do tenant todo dia 1 do mês. Logo e cores do tenant aplicados via white-label (F31).
+
+#### Data residency — Baixa
+Campo `data_region: str` no Tenant (ex: "BR", "EU", "US"). Metadado `data_region` em todo audit log entry. Documentação clara no DPA: quais dados ficam no servidor do cliente (snapshots, credenciais cifradas), quais passam pela Anthropic (prompts com contexto do device), e como configurar Ollama local (F29) para eliminar saída de dados de região. Flag `restrict_to_region: bool` no Tenant — bloqueia providers externos quando ativado, forçando uso de Ollama local.
 
 ---
 
@@ -202,16 +240,29 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 **Origem:** Mesa Redonda Rounds 2 e 3 — Leonardo (Infra), Sérgio (Redes/ISP), Flávia (Revenda), Juliana (Produto)
 
-| Funcionalidade | Detalhe | Prioridade |
-|---|---|---|
-| Edge agent on-premise | Agente leve (Python/Go) que abre WebSocket/gRPC de saída para o SaaS; sem porta inbound | Alta |
-| Suporte a CGNAT | Edge agent resolve o problema de endereços NAT de ISPs brasileiros; reconecta automaticamente | Alta |
-| White-label completo | Domínio customizado (CNAME), email transacional (logo+cores), relatório PDF com marca do parceiro | Alta |
-| Open core — connectors OSS | Repositório público com connectors + parsers de vendors; licença Apache 2.0; contribuições externas | Média |
-| Programa de certificação parceiros | Trilha de certificação técnica para revendedores; portal de parceiros com leads e comissões | Média |
-| SSO / OIDC | SAML 2.0 / OIDC — Azure AD, Okta, Google Workspace; mapeamento de grupos para TenantRole | Alta |
-| RBAC granular | Permissões por cliente/device/operação além dos 3 roles atuais; scopes por API key | Média |
-| Marketplace de plugins | Plugins de vendor contribuídos por parceiros; review/publicação pelo time FireManager | Baixa |
+#### Edge agent on-premise — Alta
+Cliente leve Python + asyncio que roda no ambiente do cliente (VM Linux ou container Docker). Abre conexão WebSocket sainte para `wss://firemanager.io/edge-gateway/{agent_token}` — zero porta inbound necessária. O SaaS envia comandos em JSON pelo WebSocket; o edge agent executa SSH/REST localmente contra os devices da LAN interna e retorna resultado. Autenticação: JWT de longa duração (30 dias) gerado no onboarding do edge agent, armazenado em arquivo local cifrado. Instalação: `pip install firemanager-edge-agent` ou Docker: `docker run firemanager/edge-agent --token TOKEN`. Modelo `EdgeAgent` no DB: tenant_id, agent_token_hash, device_ids (array de devices gerenciáveis), last_seen, version, status (online/offline/stale).
+
+#### Suporte a CGNAT — Alta
+Problema: cliente com IP CGNAT do ISP não tem IP público fixo → impossível SSH/REST de fora → edge agent resolve. Reconexão automática com backoff exponencial (tenacity: 1s → 2s → 4s → máx 60s). Heartbeat a cada 30s pelo WebSocket; SaaS marca device como `unreachable` se sem heartbeat por 3 min. Multiplexação: um edge agent pode gerenciar N devices na mesma LAN interna (switch, firewall, servidor) via SSH/REST local. Dashboard: badge "via Edge Agent" no device com última reconexão, versão do agent e latência média da conexão WebSocket.
+
+#### White-label completo — Alta
+Modelo `TenantBranding`: logo_url, favicon_url, primary_color (hex), secondary_color, custom_domain, email_from_name, email_from_address, report_header_text, report_footer_text. CNAME: Admin configura `firemanager.minhaempresa.com.br` → nginx detecta pelo Host header e serve o frontend com branding do tenant (CSS vars injetadas dinamicamente, logo via CDN). Email transacional: templates Jinja2 de todos os emails (convite, alertas, relatórios) usam logo e cores do tenant. PDF executivo (WeasyPrint): logo do parceiro no cabeçalho, cores primárias, rodapé customizado. Favicon e title da aba (`<title>`) dinâmicos por tenant.
+
+#### SSO / OIDC — Alta
+Modelo `TenantSSO`: provider (azure_ad/okta/google/custom_oidc), client_id, client_secret (Fernet), discovery_url (ex: `https://login.microsoftonline.com/{tenant}/.well-known/openid-configuration`), group_claim, group_mapping (JSON: `{"Firewall-Admins": "admin", "SOC-Team": "analyst"}`). Fluxo PKCE: login page detecta domínio do email → redireciona para IdP → callback `/auth/sso/callback` cria sessão → JWT interno com role mapeada. Provisionamento JIT: usuário novo via SSO criado automaticamente com role do grupo. Flag `sso_required: bool` no tenant: bloqueia login local para forçar SSO corporativo.
+
+#### RBAC granular — Média
+Modelo `Permission`: resource (device/group/template/report/audit/billing), action (read/write/execute/approve/export), scope_type (tenant/group_id/device_id). `CustomRole` por tenant além dos 3 padrões: ex: "Firewall-RO" (lê devices, zero escrita), "Auditoria" (só audit logs + relatórios). API keys com scopes explícitos: `devices:read`, `operations:write`, `reports:read` — API key nunca herda mais permissões do que o usuário que a criou. Middleware de autorização consulta `Permission` em vez de comparar role string diretamente.
+
+#### Open core — connectors OSS — Média
+Repositório público `github.com/firemanager/connectors` com: interface `BaseConnector` documentada, connectors existentes como exemplos de referência, guia de contribuição (testes obrigatórios, formato de PR, processo de review). `firemanager/community-connectors`: connectors de terceiros aprovados mas não mantidos pelo time core. Licença: core SaaS (AGPL), connectors (Apache 2.0) para máxima adoção. CI do repositório público: testes de integração contra devices simulados (mock servers).
+
+#### Programa de certificação parceiros — Média
+Portal web (módulo no Super Admin para tenants `is_partner: bool`): trilha de certificação com módulos de treinamento (vídeo + quiz) + prova técnica em ambiente sandbox dedicado. Badge "FireManager Certified Partner" concedido após aprovação, visível no portal público. Dashboard de parceiro: clientes gerenciados, MRR gerado, leads indicados, comissões pendentes e pagas. Deal registration: parceiro registra oportunidade e fica protegido de venda direta.
+
+#### Marketplace de plugins — Baixa
+Modelo `Plugin`: name, version, author_tenant_id, category (connector/report/workflow/alert_rule), package_url, signature (Ed25519), approved_at, approved_by. Fluxo: parceiro faz upload de wheel Python assinado → review manual pelo time FireManager (segurança + funcionalidade) → publicação no marketplace. Instalação por tenant via UI: `pip install` do plugin dentro do container em virtualenv isolado. Sandbox de permissões: plugin só acessa sua própria DB namespace, não pode ler credenciais de outros tenants.
 
 ---
 
@@ -220,14 +271,23 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 **Origem:** Mesa Redonda Rounds 2 e 3 — André (Produto), Beatriz (UX/Acessibilidade), Juliana (GTM), Cristina (CS)
 
-| Funcionalidade | Detalhe | Prioridade |
-|---|---|---|
-| Documentação pública por persona | Docs separados: Admin MSSP, Analista N2, Cliente final; Swagger interativo por módulo | Alta |
-| Billing e planos | Planos (Starter/Pro/Enterprise); limites de devices; cobrança automatizada (Stripe); fatura automática | Alta |
-| Multi-idioma (i18n) | pt-BR ✅, en-US, es-LA; detecção automática do idioma do browser | Média |
-| Acessibilidade (WCAG 2.1 AA) | Contraste para daltônicos (palete testada), navegação por teclado, labels ARIA, leitor de tela | Média |
-| Onboarding guiado | Wizard de primeiros passos: add device → primeiro snapshot → primeira regra | Média |
-| Feedback in-app | Widget de feedback contextual por página; integrado ao Linear/Jira interno | Baixa |
+#### Documentação pública por persona — Alta
+Site MkDocs Material (ou Docusaurus) em `docs.firemanager.io`, gerado automaticamente no CI e publicado via GitHub Pages ou CDN. Três trilhas com navegação lateral separada: **Admin MSSP** (criar tenant, adicionar device, configurar SSO, gestão de usuários, API keys, billing); **Analista N2** (usar o agente, revisar operações, bulk jobs, interpretar snapshots, Golden Config); **Cliente final** (ver dashboard, relatórios, abrir chamado, entender o que o agente fez no seu firewall). Swagger interativo embutido por módulo (gerado do OpenAPI 3.1 do FastAPI). Changelog versionado por release com data e breaking changes destacados.
+
+#### Billing e planos — Alta
+Modelo `Plan`: name, monthly_price_brl, max_devices, max_users, ai_token_quota, sla_target_pct, features (JSONB com flags de features). Integração Stripe: `stripe.Customer` por tenant, `stripe.Subscription` por plano, webhooks para `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`. Fatura PDF automática gerada com WeasyPrint no dia do vencimento e enviada por email. Portal de billing no painel do Admin do tenant: histórico de faturas (download PDF), troca de plano (upgrade imediato, downgrade no próximo ciclo), atualização de dados de cartão. Dunning: 3 tentativas de cobrança em 7 dias → tenant entra em read-only → após 30 dias sem pagamento → dados retidos 60 dias → purge automático com aviso.
+
+#### Multi-idioma (i18n) — Média
+Frontend: `react-i18next` com namespace por módulo (`devices`, `operations`, `compliance`, `billing`). Detecção automática via `navigator.language` com fallback para `pt-BR`. Seletor manual na navbar com cookie de preferência (persiste entre sessões). Ferramenta de extração: `i18next-scanner` no CI para auditar strings sem tradução (CI falha se >5% de strings não traduzidas). Backend: strings de resposta do agente IA no idioma do usuário — system prompt instrui Claude com `Respond in {user_language}`. Mensagens de erro da API retornadas em JSON com campo `message_pt` e `message_en`.
+
+#### Acessibilidade (WCAG 2.1 AA) — Média
+Auditoria automatizada com axe-core (CI bloqueia se encontrar violações de nível AA). Auditoria manual com Lighthouse e NVDA/VoiceOver antes de cada release. Palete de cores: contraste mínimo 4.5:1 para texto normal, 3:1 para texto grande — testado com Color Contrast Analyzer. Modo alto contraste opcional (toggle na navbar). Foco visível: `outline: 2px solid` em todos os elementos interativos; skip-link `"Pular para o conteúdo"` no topo da página. Tabelas de dados: `<caption>` descritivo, `scope="col"` nos `<th>`, `aria-sort` em colunas ordenáveis, `aria-live="polite"` em atualizações assíncronas. Toasts: `role="alert"` para erros, `role="status"` para confirmações.
+
+#### Onboarding guiado — Média
+Wizard React com checklist de 4 etapas na home (só aparece enquanto incompleto): (1) Adicionar device + testar conexão com badge de sucesso, (2) Rodar primeiro snapshot e ver resultado, (3) Fazer primeira pergunta ao agente ("listar regras"), (4) Configurar primeiro alerta. Estado persistido em `UserPreference.onboarding_completed: bool` e `onboarding_step: int` (permite retomar de onde parou). Checklist visível como card na home com progresso percentual e badges de conclusão por etapa. Botão "Pular onboarding" para usuários experientes que chegam via convite.
+
+#### Feedback in-app — Baixa
+Widget flutuante (bottom-right, botão "?" com badge) com rating 1–5 estrelas + campo de texto livre (max 500 chars). Contextual: detecta rota atual (`/devices`, `/operations/bulk`, `/compliance`) e última operação realizada para pré-preencher contexto no payload. Backend: tabela `UserFeedback` (tenant_id, user_id, page, rating, text, context JSON, created_at). Webhook configurável para Slack (canal `#feedback-interno`) e integração com Linear/Jira via API. Rate limit: máximo 3 feedbacks por usuário por dia para evitar spam.
 
 ---
 
@@ -236,18 +296,38 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 **Origem:** Mesa Redonda Segurança da Informação — Felipe (Responsible AI), Larissa (LGPD), Marcos (IR), Carlos (SOC), Paulo (OT), Mônica (SecOps), Rafael (CISO), Ana (Red Team)
 
-| Funcionalidade | Detalhe | Prioridade |
-|---|---|---|
-| **Aprovação dupla para devices críticos** | Flag "device crítico" por tenant; operações de escrita exigem 2 aprovadores distintos (four-eyes principle); fila de aprovação com timeout | Alta |
-| **Janela de manutenção por device** | Operações de escrita via agente só executam dentro de janelas configuradas; fora da janela vão para fila pendente com notificação | Alta |
-| **Termos de Uso e política de IA** | Documento publicado: o que o agente pode e não pode fazer; limitação de responsabilidade; uso aceitável; assinatura eletrônica pelo admin do tenant | Alta |
-| **Security Incident Response Plan (SIRP) para IA** | Playbook documentado: o que fazer se agente executar operação não autorizada; quem notificar; RTO de comunicação ao cliente ≤ 2h | Alta |
-| **Red team trimestral do agente** | Exercício formal de tentativa de prompt injection, manipulação de contexto RAG, jailbreak; resultado documentado e corrigido antes do próximo trimestre | Alta |
-| **Four-eyes para operações de gestão** | Alterações em configuração de tenant, promoção de admin, alteração de allowlist de comandos — exigem segundo aprovador | Alta |
-| **Validação de DPA com Anthropic** | Verificar adequação do contrato com Anthropic à LGPD (ANPD Res. 19/2024); cláusula de transferência internacional; notificar clientes | Alta |
-| **Direito ao esquecimento (data deletion)** | Endpoint de exclusão completa de tenant: dados, snapshots, logs, credenciais, embeddings, documentos RAG; confirmação auditada | Alta |
-| **Ancoragem de audit log em RFC 3161** | Timestamping criptográfico de blocos do audit log via autoridade confiável; prova irrefutável em juízo | Média |
-| **Dashboard de postura interna** | Painel interno (só Super Admin): tentativas de login com falha, operações de escrita por tenant, anomalias de volume, circuit breakers abertos | Média |
+#### Aprovação dupla para devices críticos — Alta
+Campo `is_critical: bool` no Device, configurável pelo Admin do tenant. Para devices críticos: após agente gerar plano aprovado, status vai para `awaiting_dual_approval` em vez de `approved`. Modelo `OperationApproval`: operation_id, approver_id, approved_at, comment — necessário 2 registros de usuários distintos (nem o solicitante nem o mesmo aprovador duas vezes). Fila de aprovação: dashboard dedicado para analistas N2 e Admin com operações pendentes ordenadas por criticidade e tempo de espera. Timeout configurável por tenant (default: 4h): se não aprovado, status → `expired` + notificação ao solicitante. Auto-escalação: após 1h sem resposta, notifica canal de alertas configurado (Slack/Teams).
+
+#### Janela de manutenção por device — Alta
+Modelo `MaintenanceWindow`: device_id, day_of_week (0–6 ou null=diário), start_time, end_time, timezone (ex: `America/Sao_Paulo`), enabled. Verificação em `execute_operation`: se device tem janela configurada e horário atual está fora dela → operação vai para status `queued_maintenance` em vez de executar. Worker Celery beat `check_maintenance_queues` a cada minuto: quando janela abre, pega operações `queued_maintenance` daquele device e executa em ordem de criação. Frontend: calendário semanal visual de janelas no painel de configurações do device. Override por Admin: flag `force_execute: bool` no request de execução bypassa a janela (logado no audit com justificativa obrigatória).
+
+#### Termos de Uso e política de IA — Alta
+Documento Markdown versionado em `/terms` (ToS) e `/ai-policy` (política do agente). Seções da política de IA: o que o agente faz (gera planos, executa via API), o que nunca faz (executa sem aprovação humana em devices críticos, acessa sistemas além dos cadastrados), como é auditado (hash-chain + RFC 3161), limitação de responsabilidade (o FireManager é ferramenta, decisão final é do analista). `TenantTermsAcceptance`: tenant_id, admin_user_id, terms_version, ai_policy_version, accepted_at, ip_address. Gate no onboarding e no upgrade de plano: Admin deve aceitar versão atual dos termos. Nova versão de termos força nova aceitação na próxima abertura (redirect no middleware).
+
+#### Security Incident Response Plan (SIRP) para IA — Alta
+Documento público em `docs.firemanager.io/security/sirp`. Categorias de incidente: (1) operação executada sem autorização válida, (2) prompt injection confirmado, (3) acesso a device não autorizado pelo tenant, (4) dados de tenant A exibidos para tenant B. Para cada categoria: sequência de resposta, responsáveis, SLA de comunicação ao cliente (≤ 2h para crítico). Internamente: trigger automático quando audit log detecta `operation.executed_at` sem `operation.approved_by` válido → abre `SecurityIncident` com severity=critical. `SecurityIncident`: type, severity, affected_tenant_id, detected_at, notified_at, resolved_at, root_cause, remediation. Status page pública `status.firemanager.io` com histórico de incidentes.
+
+#### Red team trimestral do agente — Alta
+Processo documentado (não código de produção). Checklist de exercícios trimestrais: prompt injection via input do usuário, injeção via conteúdo do BookStack, via nome do device, via output do snapshot SSH, jailbreak de role do sistema, bypass de guardrail por ofuscação, data exfiltration via RAG (tentar extrair credenciais de outros tenants via perguntas ao agente), IDOR via operation_id. Resultado documentado em `RedTeamExercise` no DB: date, exerciser_name, scope, findings (JSONB com CVSS score), critical_count, fixed_at. Template de relatório padronizado. Celery beat: alerta interno se passou >95 dias sem `RedTeamExercise` registrado.
+
+#### Four-eyes para operações de gestão — Alta
+Operações de gestão que exigem segundo aprovador: promover usuário para admin, revogar convite já enviado, alterar configuração SSO, adicionar/remover device crítico, alterar plano para downgrade, resetar MFA de outro usuário. `ManagementApprovalRequest`: action_type (enum), requested_by, payload (JSON com snapshot da mudança proposta), approved_by, rejected_by, created_at, expires_at (1h). Fluxo: admin solicita → todos os outros admins do tenant recebem notificação → primeiro a aprovar desbloqueia a ação → se rejeitado, ação cancelada e log registrado com motivo. Ambos os usuários (solicitante + aprovador) registrados no audit log da ação final.
+
+#### Validação de DPA com Anthropic — Alta
+Não é código mas gera artefatos de produto. Aviso embutido na ativação do tenant: "Ao usar o agente IA, prompts contendo contexto do device são processados pela Anthropic Inc. (EUA). Veja nosso DPA para detalhes." DPA gerado (F30) já inclui cláusula específica ANPD Res. 19/2024 sobre transferência internacional. Campo `dpa_anthropic_acknowledged: bool` no `TenantTermsAcceptance`. Para tenants com `data_region = "BR"` e `restrict_to_region = true` (F30): sistema usa Ollama local (F29) e aviso é omitido pois dados não saem do país. Contato com time legal Anthropic para validar Data Processing Agreement para clientes brasileiros.
+
+#### Direito ao esquecimento (data deletion) — Alta
+Endpoint `DELETE /admin/tenants/{id}` (só Super Admin) com body `{"confirmation": "DELETE TENANT <nome_exato>", "reason": "LGPD Art. 18 solicitação do titular"}`. Cascade completo: usuários, devices, credenciais (decrypt + wipe do Fernet), snapshots, audit_logs, ai_interactions, embeddings pgvector, documentos BookStack, API keys, tokens de convite, backups automáticos (exceto cold storage retido 30 dias). Execução como Celery task assíncrona com progress tracking: status `purging` → `purged`. Antes do purge: backup final cifrado em cold storage com TTL 30 dias. Audit do próprio purge: `TenantPurgeLog` (tabela separada, sem FK para tenant, imutável): tenant_name, tenant_id, requested_by, reason, purged_at, backup_retained_until. Email de confirmação ao super admin e ao ex-admin do tenant após conclusão.
+
+#### Ancoragem de audit log em RFC 3161 — Média
+Celery task `anchor_audit_logs` a cada hora: coleta todos `audit_log` entries da última hora → serializa em JSON canônico → calcula SHA-256 do bloco → envia para TSA gratuita (`freetsa.org` ou `tsa.pki.gva.es`) via `TIMESTAMP REQUEST` RFC 3161. Salva `AuditLogAnchor`: period_start, period_end, block_hash, entry_count, tsa_response (base64 DER), tsa_timestamp, tsa_serial, tsa_cert_chain. Endpoint público `GET /audit/verify-anchor/{anchor_id}`: recalcula hash do bloco, verifica assinatura TSA, retorna `{valid: bool, entries_count, timestamp, tsa_authority}`. Prova em juízo: arquivo ZIP com bloco de logs + TSA response + cadeia de certificados da CA.
+
+#### Dashboard de postura interna — Média
+Painel exclusivo para Super Admin (`is_super_admin`), não visível para tenants. Métricas em tempo real: tentativas de login com falha nas últimas 24h por tenant e por IP (detecta força bruta), operações de escrita por tenant por dia (gráfico — detecta picos anômalos), guardrail blocks nas últimas 24h por tenant e tipo de violação, circuit breakers abertos agora (lista de devices), tokens de convite expirados não usados (indica processos de onboarding abandonados), tenants com compliance score < 50% (risco de churn + risco regulatório). Alertas internos automáticos: tenant com >10 logins falhos em 1h → flag para investigação de comprometimento de conta.
+
+#### Canal público de reporte de vulnerabilidades — Média
+Página pública `firemanager.io/security`: email `security@firemanager.io`, PGP key pública para download (para reports confidenciais cifrados), política de disclosure responsável (safe harbor, escopo, o que é elegível, recompensas). SLA publicado: crítico 24h acknowledge + 7d fix, alto 7d acknowledge + 30d fix, médio 30d acknowledge + 90d fix. Internamente: `VulnerabilityReport` (reporter_email, severity, title, description, proof_of_concept, status: new/triaging/fixing/fixed/wont_fix, fix_version, disclosed_at, bounty_paid). Template de resposta padrão PT/EN gerado automaticamente ao receber report. Após fix: coordena com reporter para disclosure responsável após 90 dias.
 
 ---
 
@@ -256,16 +336,29 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 **Origem:** Mesa Redonda Segurança — Sandra (Architecture), Roberto (Crypto), Juliana (Cloud), Fernanda (Zero Trust), Mônica (SecOps), Diego (Threat Intel)
 
-| Funcionalidade | Detalhe | Prioridade |
-|---|---|---|
-| **mTLS entre serviços internos** | Comunicação api↔celery↔redis com mTLS; redis com autenticação obrigatória; sem tráfego interno em plaintext | Alta |
-| **KMS / HashiCorp Vault** | Chave Fernet e secrets de infraestrutura no Vault ou AWS KMS; nunca em `.env`; rotação automática; auditoria de acesso às chaves | Alta |
-| **Microsegmentação Docker** | Redes Docker separadas por serviço; api não acessa postgres diretamente (só via ORM); celery não acessa redis além do necessário | Alta |
-| **Open Policy Agent (OPA)** | Ponto central de decisão de autorização; políticas declarativas em Rego; facilita auditoria e consistência cross-serviço | Média |
-| **Container security hardening** | AppArmor/seccomp profiles nos containers; usuário não-root nas imagens; read-only filesystem onde possível; scan Trivy em CI | Alta |
-| **Gestão de vulnerabilidades formal** | Scan semanal automatizado (Trivy + Bandit + pip-audit); SLA de correção: crítico 24h, alto 7d, médio 30d; relatório mensal ao CISO | Alta |
-| **Pentest externo anual** | Relatório de pentest por empresa credenciada; findings públicos (responsável disclosure após 90d); bug bounty privado HackerOne | Média |
-| **Supply chain: parser versionado por firmware** | Parsers de CLI versionados por firmware do vendor; alerta quando output de device muda estruturalmente; sanitização de dados do device | Média |
+#### mTLS entre serviços internos — Alta
+CA interna gerada no bootstrap do Docker Compose com `step-ca` (ou `cfssl`): emite certificados client+server para api, celery, redis. Redis: `requirepass` + `tls-cert-file` + `tls-key-file` + `tls-ca-cert-file` — conexão recusada sem TLS mutual. FastAPI: `httpx.AsyncClient` com cert do client para callbacks internos. Celery: `kombu` configurado com SSL context. Script de renovação automática: certificados internos com validade 90 dias, renovados automaticamente via Celery beat 30 dias antes do vencimento. Monitoramento: Prometheus alerta se certificado vence em <15 dias.
+
+#### KMS / HashiCorp Vault — Alta
+Vault em container separado no Docker Compose (modo dev para local, prod usa Vault HA em 3 nodes ou AWS KMS). Secrets engine `kv-v2` para todos os secrets: `ANTHROPIC_API_KEY`, `DATABASE_URL`, `FERNET_KEY`, `SMTP_PASSWORD`, `STRIPE_SECRET_KEY`. App role auth: cada serviço (api, celery_worker, celery_beat) tem `role_id` + `secret_id` únicos com políticas Rego mínimas (api só pode ler `kv/api/*`). Audit log do Vault: quem acessou qual secret e quando — exportado para Prometheus. Fail-secure: se Vault indisponível no startup, API recusa inicializar (não falha aberta com secrets do `.env`). Rotação de secrets: script que gera novo valor, salva no Vault, e reinicia o serviço afetado.
+
+#### Microsegmentação Docker — Alta
+Redes Docker explícitas no `docker-compose.yml`: `frontend_net` (nginx↔api), `backend_net` (api↔postgres↔redis), `worker_net` (celery↔redis↔postgres), `monitoring_net` (prometheus↔grafana↔api:/metrics). `api` não está em `worker_net` — celery se comunica com api via Redis broker apenas, nunca direto. `postgres` e `redis` não têm portas expostas no host (sem `ports:` — só `expose:`). Nenhum serviço com `network_mode: host`. Nginx é o único com portas 80/443 expostas para o host. Testes de conectividade no CI: verifica que `api` não consegue alcançar `celery` diretamente.
+
+#### Open Policy Agent (OPA) — Média
+Sidecar OPA em container separado com `opa_policies/` versionadas em git. Políticas Rego: `allow_operation(user, device, action)`, `allow_read(user, resource)`, `can_approve(user, operation)`, `is_admin(user, tenant)`, `can_bulk_execute(user, device_ids)`. FastAPI dependency `Depends(opa_authorize("allow_write"))`: faz POST para `http://opa:8181/v1/data/firemanager/allow` com input `{user, resource, action}` → bool. Vantagem: todas as decisões de authz passam por ponto único com log estruturado; policy audit em auditoria externa sem precisar ler código Python. Deploy de políticas: `opa_policies/` no git → `docker cp` no startup do OPA container.
+
+#### Container security hardening — Alta
+Todas as imagens baseadas em `python:3.12-slim` com usuário `appuser` (UID 1000, GID 1000) no Dockerfile: `RUN adduser --disabled-password --gecos '' appuser && chown -R appuser /app`. `--read-only` no filesystem + `/tmp` como `tmpfs` no docker-compose. AppArmor profile customizado: bloqueia `ptrace`, `net_admin`, `sys_admin`, `sys_rawio`. Seccomp profile: whitelist das syscalls necessárias (open, read, write, socket, connect, epoll_wait, futex, clock_gettime). Trivy scan automático no CI em cada build: bloqueia push para registry se encontrar CVE com severity CRITICAL ou HIGH (com exceção documentada para CVEs sem fix disponível).
+
+#### Gestão de vulnerabilidades formal — Alta
+GitHub Actions scheduled (domingo 02:00 UTC): (1) Trivy scan na imagem Docker do registry, (2) Bandit scan no código Python (HIGH/CRITICAL bloqueiam), (3) pip-audit nas dependências (CRITICAL bloqueiam), (4) semgrep com ruleset `p/owasp-top-ten`. Resultados salvos como artefato da Action + criados automaticamente como `VulnerabilityReport` (F33) para findings críticos. SLA com alerta automático via Slack (#security-interno): crítico 24h sem PR → alerta + create GitHub Issue P0; alto 7d; médio 30d. Relatório mensal PDF para CISO interno: findings por severidade, tempo médio de correção (MTTR), trend de vulnerabilidades abertas vs fechadas.
+
+#### Pentest externo anual — Média
+Processo documentado com artefatos de produto. Escopo definido anualmente: API REST, autenticação, RBAC, injeção de comandos, SSRF, tenant isolation, prompt injection no agente IA. Empresa credenciada (CREST ou OWASP partner verificado). Findings públicos após 90 dias do fix (responsible disclosure no `firemanager.io/security`). `PentestRecord` no DB: date, company, scope_description, critical_count, high_count, medium_count, all_fixed_at. Bug bounty privado: HackerOne private program para clientes Enterprise que queiram testar com regras de engajamento formais.
+
+#### Supply chain: parser versionado por firmware — Média
+`ConnectorRegistry`: dicionário `{vendor: {firmware_prefix: ConnectorClass}}`. Exemplos: `{"fortinet": {"7.4": FortinetConnector_7_4, "7.6": FortinetConnector_7_6}, "sonicwall": {"6": SonicWall_v6, "7": SonicWall_v7}}`. `get_connector(device)` usa `device.firmware_version` para selecionar classe correta — sem if/else espalhados. Structural drift detection: cada connector define `expected_output_schema` (Pydantic model); após parsing, valida output; se divergir → cria `FirmwareDriftAlert` e usa parser de fallback mais permissivo. `FirmwareVersionHistory`: device_id, detected_version, detected_at — alerta quando versão muda inesperadamente (pode indicar upgrade não autorizado ou comprometimento).
 
 ---
 
@@ -274,13 +367,20 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 **Origem:** Mesa Redonda Segurança — Mônica (SecOps/SOAR), Diego (Threat Intel), Carlos (SOC), Leonardo (Pentester)
 
-| Funcionalidade | Detalhe | Prioridade |
-|---|---|---|
-| **SOAR leve embutido** | Playbooks de resposta automática: score cai 20pts em 5min → agente entra em read-only, notifica CISO do cliente, abre ticket de incidente | Alta |
-| **Threat Intelligence feed** | Integração com feeds de IoCs (IPs maliciosos, hashes, domínios); cruzamento com IPs nos firewalls gerenciados; alertas de match | Alta |
-| NDR (Network Detection & Response) | Análise de padrões de tráfego anômalo nos devices gerenciados; baseline comportamental; alerta de desvio | Média |
-| **Isolamento automático de device** | Em incidente confirmado, colocar device em modo read-only automático + notificar; reativação manual com aprovação dupla | Alta |
-| Correlação de alertas cross-tenant | Super Admin vê padrões de ataque que afetam múltiplos tenants simultaneamente (campanha coordenada) | Média |
+#### SOAR leve embutido — Alta
+Modelo `PlaybookRule`: name, tenant_id, trigger_type (risk_score_drop/anomaly_detected/guardrail_block/device_unreachable), trigger_condition (JSON: `{"metric": "risk_score", "operator": "<", "threshold": 20, "window_minutes": 5}`), actions (JSON array de `{type, params}`), cooldown_minutes (evita loops), enabled. Actions disponíveis: `set_device_read_only`, `notify_slack`, `notify_email`, `create_ticket_jira`, `run_snapshot`, `escalate_to_n2`, `isolate_device`. Celery beat task `evaluate_playbooks`: a cada minuto, avalia todas as rules ativas de todos os tenants; se trigger satisfeito, executa actions em sequência. `PlaybookExecution`: rule_id, triggered_at, trigger_context (JSON snapshot do estado que disparou), actions_taken (JSONB), status (success/partial/failed). Frontend: editor visual de playbooks com cards de condição + ação conectados por setas.
+
+#### Threat Intelligence feed — Alta
+Integrações com feeds públicos gratuitos: OTX AlienVault API (IoCs por categoria), AbuseIPDB (IPs com histórico de abuso, score > 75), CISA KEV (Known Exploited Vulnerabilities — CVEs com exploração ativa), URLhaus (URLs de malware), Feodo Tracker (C2 de botnets). Celery beat a cada 4h: baixa feeds, normaliza em `ThreatIndicator` (type: ip/domain/hash/cve, value, source, severity, tags, last_seen, confidence). Match automático após cada snapshot: cruza IPs das regras de firewall (src/dst das access rules, NAT policies, rotas) com `ThreatIndicator`. Alerta de match: se regra `allow` tem src/dst que é IoC com severity HIGH/CRITICAL → alerta imediato via canal configurado. Dashboard TI: timeline de matches por tenant, breakdown por feed/categoria, top-10 IoCs mais vistos nos tenants gerenciados.
+
+#### NDR (Network Detection & Response) — Média
+Baseline comportamental por device: calcula média e desvio padrão de conexões por hora (contagem de sessões nos snapshots) nos últimos 30 dias de dados históricos. Anomalia detectada se: contagem atual > média + 3σ, ou novo protocolo não visto antes nas últimas 4 semanas, ou conexão para IP nunca visto antes nas últimas 7 dias. `NetworkAnomaly`: device_id, detected_at, anomaly_type, baseline_value, observed_value, severity, context_json (IPs/portas envolvidos). Correlação: se anomalia simultânea em >3 devices do mesmo tenant na mesma janela de 30 min → severity escalada para CRITICAL e `CrossTenantCampaign` verificado (ver correlação cross-tenant). Dashboard NDR: timeline de anomalias, drill-down por device, heatmap de intensidade por hora×dia da semana.
+
+#### Isolamento automático de device — Alta
+Acionado por: action `isolate_device` em PlaybookRule, ou manualmente pelo Admin via botão "Isolar device" no painel. Isolamento técnico: connector do vendor aplica regra de segurança temporária "deny all inbound+outbound" com prioridade máxima (posição 0 na lista de políticas), preservando regras existentes (só adiciona a nova). Salva estado em `DeviceIsolation`: device_id, isolated_at, isolated_by (user_id ou `"automation:{playbook_id}"`), reason, pre_isolation_snapshot_id, restored_at, restored_by. Reativação: exige aprovação dupla (F33) + justificativa mínima de 50 chars registrada no audit. Notificação imediata: CISO do cliente via email + canal de alertas Slack/Teams. Timeout de segurança: se isolamento ativo por >24h sem reativação, alerta de escalação automático.
+
+#### Correlação de alertas cross-tenant — Média
+Celery task `correlate_cross_tenant_alerts` (a cada 15 min): agrega `ThreatIndicator` matches e `NetworkAnomaly` de todos os tenants na última hora. Detecta padrão: mesmo IoC (IP/domínio) encontrado em devices de >3 tenants distintos na mesma janela de 1h → cria `CrossTenantCampaign` (name, ioc_value, affected_tenant_count, affected_tenants: lista anonimizada, severity, started_at). Visível exclusivamente para Super Admin no dashboard de postura interna (F33). Permite notificação proativa ao CISO de cada tenant afetado: "Detectamos atividade relacionada ao IoC X em múltiplos clientes gerenciados. Recomendamos revisar suas regras para este IP." — sem expor dados de outros tenants (notificação genérica com o IoC, não menciona quais outros tenants foram afetados).
 
 ---
 
