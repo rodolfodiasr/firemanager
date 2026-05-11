@@ -704,6 +704,14 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
                 operation.status = OperationStatus.failed
                 operation.error_message = ssh_result.error
 
+        # Fallback: intent não tratado por nenhuma branch acima
+        if exec_result is None and operation.status == OperationStatus.executing:
+            operation.status = OperationStatus.failed
+            operation.error_message = (
+                f"O intent '{plan.intent.value}' não é suportado para execução automática via agente. "
+                "Use o CLI Direto para realizar esta operação manualmente."
+            )
+
         if exec_result is not None:
             if exec_result.success:
                 operation.status = OperationStatus.completed

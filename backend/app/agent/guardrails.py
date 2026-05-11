@@ -226,6 +226,11 @@ _DANGEROUS_INTENTS = {
     "direct_ssh",
 }
 
+# Intents that must never reach execution — blocked immediately
+_BLOCKED_INTENTS = {
+    "unknown",  # agent couldn't map the request to a safe intent
+}
+
 _PROMPT_INJECTION_RE = re.compile(
     r"(INSTRUÇÃO PARA IA|IGNORE PREVIOUS|SYSTEM PROMPT|<\|endoftext\|>|<\/s>|\[INST\]"
     r"|ignore all previous|disregard (the|all) (above|previous)|act as)",
@@ -258,6 +263,14 @@ def check_action_plan(action_plan: dict[str, Any], user_input: str = "") -> Guar
     if ssh_commands:
         ssh_result = check_ssh_commands(ssh_commands)
         result.violations.extend(ssh_result.violations)
+
+    # Block intents that must never reach execution
+    if intent in _BLOCKED_INTENTS:
+        result.violations.append(GuardrailViolation(
+            Severity.BLOCK, "unknown_intent", intent,
+            "O agente não conseguiu mapear esta solicitação para uma operação segura conhecida. "
+            "Reformule o pedido com mais detalhes ou use o CLI Direto para executar manualmente.",
+        ))
 
     # Warn for dangerous intents with no confirmation context
     if intent in _DANGEROUS_INTENTS:

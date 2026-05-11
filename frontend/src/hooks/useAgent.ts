@@ -281,7 +281,16 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
         addMessage("assistant", summary || "Operação executada com sucesso!", tableData);
         toast.success("Operação concluída!");
       } else {
-        addMessage("assistant", `Erro na execução: ${operation.error_message ?? "erro desconhecido"}`);
+        const errMsg = operation.error_message ?? "Erro desconhecido na execução.";
+        const isUnsupported =
+          errMsg.includes("não é suportado para execução automática") ||
+          errMsg.includes("não conseguiu mapear");
+        addMessage(
+          "assistant",
+          `Erro na execução: ${errMsg}`,
+          undefined,
+          isUnsupported && deviceId ? deviceId : undefined,
+        );
         toast.error("Falha na execução");
       }
       resetSession();
