@@ -186,7 +186,34 @@ async def inspect_device(
             return {"resource": resource, "items": items}
 
         # ── REST API resources ────────────────────────────────────────────────
-        # All SonicWall resources (rules, nat, routes) use REST for structured data
+        # SonicWall: REST first (Gen7 structured data); fall back to SSH+pagination for Gen6 (HTTP 406)
+        if device.vendor == VendorEnum.sonicwall:
+            try:
+                connector = get_connector(device)
+                if resource == "rules":
+                    items_data = await connector.list_rules()
+                elif resource == "nat":
+                    items_data = await connector.list_nat_policies()
+                else:
+                    items_data = await connector.list_route_policies()
+                return {"resource": resource, "items": [dataclasses.asdict(i) for i in items_data]}
+            except Exception as exc_rest:
+                logger.warning("inspect REST failed for %s/%s (%s), trying SSH fallback", device_id, resource, exc_rest)
+                _SW_SSH_CMD = {
+                    "rules":  "show access-rules",
+                    "nat":    "show nat-policies",
+                    "routes": "show route",
+                }
+                ssh = get_ssh_connector(device)
+                ssh_result = await ssh.execute_show_commands_full([_SW_SSH_CMD[resource]])
+                if ssh_result.success and ssh_result.output:
+                    raw = _ANSI_RE.sub("", ssh_result.output).strip()
+                    return {
+                        "resource": resource,
+                        "items": [{"type": "Raw", "name": _SW_SSH_CMD[resource], "details": raw}],
+                    }
+                raise HTTPException(status_code=502, detail=f"Falha REST ({exc_rest}) e SSH: {ssh_result.error}")
+
         connector = get_connector(device)
 
         if resource == "rules":
