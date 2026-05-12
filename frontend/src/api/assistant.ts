@@ -5,6 +5,24 @@ import type {
   AssistantFolder,
 } from "../store/assistantStore";
 
+// ── Doc Draft types ───────────────────────────────────────────────────────────
+
+export interface DocDraft {
+  id: string;
+  session_id: string;
+  tenant_id: string;
+  created_by: string | null;
+  title: string;
+  content: string;
+  status: "draft" | "approved" | "published" | "rejected";
+  review_deadline: string | null;
+  sanitizer_warnings: { pattern: string; excerpt: string }[];
+  bookstack_page_id: number | null;
+  bookstack_page_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Response types ────────────────────────────────────────────────────────────
 
 interface AssistantMessageResponse {
@@ -177,4 +195,36 @@ export const assistantApi = {
 
   deleteFolder: (id: string) =>
     apiClient.delete(`/assistant/folders/${id}`).then((r) => r.data),
+};
+
+// ── Doc drafts API ────────────────────────────────────────────────────────────
+
+export const assistantDocsApi = {
+  generateDoc: (sessionId: string) =>
+    apiClient
+      .post<DocDraft>(`/assistant/sessions/${sessionId}/generate-doc`)
+      .then((r) => r.data),
+
+  listDocs: (status?: string) =>
+    apiClient
+      .get<DocDraft[]>("/assistant/docs", { params: status ? { status } : undefined })
+      .then((r) => r.data),
+
+  getDoc: (id: string) =>
+    apiClient.get<DocDraft>(`/assistant/docs/${id}`).then((r) => r.data),
+
+  updateDoc: (id: string, data: { title?: string; content?: string }) =>
+    apiClient.put<DocDraft>(`/assistant/docs/${id}`, data).then((r) => r.data),
+
+  approveDoc: (id: string) =>
+    apiClient.post<DocDraft>(`/assistant/docs/${id}/approve`).then((r) => r.data),
+
+  rejectDoc: (id: string) =>
+    apiClient.post<DocDraft>(`/assistant/docs/${id}/reject`).then((r) => r.data),
+
+  publishDoc: (id: string) =>
+    apiClient.post<DocDraft>(`/assistant/docs/${id}/publish`).then((r) => r.data),
+
+  deleteDoc: (id: string) =>
+    apiClient.delete(`/assistant/docs/${id}`).then((r) => r.data),
 };

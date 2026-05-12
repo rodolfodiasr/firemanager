@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Bot, X, Send, Loader2, Plus, Trash2, ChevronDown, Sparkles, Database,
+  Bot, X, Send, Loader2, Plus, Trash2, ChevronDown, Sparkles, Database, FileText,
 } from "lucide-react";
 import { useAssistantStore, type AssistantMessage } from "../../store/assistantStore";
-import { assistantApi } from "../../api/assistant";
+import { assistantApi, assistantDocsApi, type DocDraft } from "../../api/assistant";
 import { useAuthStore } from "../../store/authStore";
 import { useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
+import { DocDraftModal } from "./DocDraftModal";
 
 // ── Bolha de mensagem ─────────────────────────────────────────────────────────
 
@@ -72,6 +73,8 @@ function AssistantPanelInner() {
 
   const [input, setInput] = useState("");
   const [showSessions, setShowSessions] = useState(false);
+  const [generatingDoc, setGeneratingDoc] = useState(false);
+  const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Carregar capabilities e sessões ao abrir
@@ -158,6 +161,22 @@ function AssistantPanelInner() {
     }
   };
 
+  const handleGenerateDoc = async () => {
+    if (!currentSessionId || generatingDoc) return;
+    setGeneratingDoc(true);
+    try {
+      const draft = await assistantDocsApi.generateDoc(currentSessionId);
+      setDocDraft(draft);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        "Erro ao gerar documentação.";
+      toast.error(msg);
+    } finally {
+      setGeneratingDoc(false);
+    }
+  };
+
   const deleteSession = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -173,6 +192,14 @@ function AssistantPanelInner() {
   if (!isOpen) return null;
 
   return (
+    <>
+    {docDraft && (
+      <DocDraftModal
+        draft={docDraft}
+        onClose={() => setDocDraft(null)}
+        onUpdated={(updated) => setDocDraft(updated)}
+      />
+    )}
     <div className="fixed right-0 top-0 h-full w-[420px] bg-white shadow-2xl z-40 flex flex-col border-l border-gray-200">
 
       {/* Header */}
@@ -194,6 +221,21 @@ function AssistantPanelInner() {
             >
               <Bot size={10} />
               {selectedModel === "claude" ? "Claude" : "GPT-4o"}
+            </button>
+          )}
+          {currentSessionId && messages.length > 0 && (
+            <button
+              onClick={handleGenerateDoc}
+              disabled={generatingDoc}
+              title="Gerar documentação desta sessão"
+              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-gray-800 hover:bg-brand-600 text-gray-300 hover:text-white disabled:opacity-50 transition-colors"
+            >
+              {generatingDoc ? (
+                <Loader2 size={10} className="animate-spin" />
+              ) : (
+                <FileText size={10} />
+              )}
+              {generatingDoc ? "Gerando…" : "Documentar"}
             </button>
           )}
           <button onClick={close} className="text-gray-400 hover:text-white transition-colors">
@@ -309,5 +351,6 @@ function AssistantPanelInner() {
         </p>
       </div>
     </div>
+    </>
   );
 }
