@@ -186,29 +186,21 @@ async def inspect_device(
             return {"resource": resource, "items": items}
 
         # ── REST API resources ────────────────────────────────────────────────
-        # SonicWall: SSH-first for read operations (single-session constraint + Gen6 auth quirks)
-        if device.vendor == VendorEnum.sonicwall:
-            _SSH_CMD = {
-                "rules":  "show access-rules",
-                "nat":    "show nat-policies",
-                "routes": "show route ipv4",
-            }
-            ssh_cmd = _SSH_CMD[resource]
+        # SonicWall routes: SSH with full pagination (--MORE-- handled), then fallback to REST
+        # Rules and NAT use REST directly — gives structured data; SSH output is raw and truncated
+        if device.vendor == VendorEnum.sonicwall and resource == "routes":
             ssh = get_ssh_connector(device)
             try:
-                if resource == "routes":
-                    ssh_result = await ssh.execute_show_commands_full([ssh_cmd])
-                else:
-                    ssh_result = await ssh.execute_show_commands([ssh_cmd])
+                ssh_result = await ssh.execute_show_commands_full(["show route ipv4"])
                 if ssh_result.success and ssh_result.output:
                     raw = _ANSI_RE.sub("", ssh_result.output).strip()
                     return {
                         "resource": resource,
-                        "items": [{"type": "Raw", "name": ssh_cmd, "details": raw}],
+                        "items": [{"type": "Raw", "name": "show route ipv4", "details": raw}],
                     }
-                logger.warning("inspect SSH for %s/%s: %s", device_id, resource, ssh_result.error)
+                logger.warning("inspect SSH for %s/routes: %s", device_id, ssh_result.error)
             except Exception as exc_ssh:
-                logger.warning("inspect SSH exception for %s/%s: %s", device_id, resource, exc_ssh)
+                logger.warning("inspect SSH exception for %s/routes: %s", device_id, exc_ssh)
             # SSH failed — fall through to REST
 
         connector = get_connector(device)
