@@ -31,6 +31,7 @@ const ROUTE_LABEL: Record<string, string> = {
   "/onboarding": "Onboarding",
   "/agent": "Agente de Firewall",
   "/network-agent": "Agente de Redes",
+  "/assistant": "Assistente IA",
   "/knowledge": "Base de Conhecimento",
   "/compliance": "Conformidade",
   "/governance": "Governança",
@@ -46,8 +47,9 @@ const ROUTE_LABEL: Record<string, string> = {
   "/platform-config": "Config. de Plataforma",
 };
 
-// Páginas que pertencem ao domínio de redes (switches/roteadores)
-const NETWORK_PATHS = ["/connectivity", "/migrations", "/network-agent"];
+// Páginas onde o AgentDrawer faz sentido (firewall ou rede)
+const FIREWALL_PATHS = ["/devices", "/inspector", "/direct-mode", "/agent", "/golden-templates", "/golden-bundles", "/firewall-migrations"];
+const NETWORK_PATHS  = ["/connectivity", "/migrations", "/network-agent"];
 
 interface Message {
   role: "user" | "assistant";
@@ -58,7 +60,16 @@ interface Message {
 export function AgentDrawer() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const location = useLocation();
-  const skip = !isAuthenticated || ["/login", "/invite"].some((p) => location.pathname.startsWith(p));
+
+  const isRelevantPage =
+    FIREWALL_PATHS.some((p) => location.pathname.startsWith(p)) ||
+    NETWORK_PATHS.some((p) => location.pathname.startsWith(p));
+
+  const skip =
+    !isAuthenticated ||
+    !isRelevantPage ||
+    ["/login", "/invite"].some((p) => location.pathname.startsWith(p));
+
   if (skip) return null;
   return <AgentDrawerInner />;
 }

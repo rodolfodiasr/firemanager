@@ -33,6 +33,7 @@ import { Enterprise } from "./pages/Enterprise";
 import { GoldenBundles } from "./pages/GoldenBundles";
 import { VMMigration } from "./pages/VMMigration";
 import { PlatformConfig } from "./pages/PlatformConfig";
+import { AssistantPage } from "./pages/AssistantPage";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -96,6 +97,7 @@ export function AppRouter() {
       <Route path="/golden-bundles" element={<ProtectedLayout><GoldenBundles /></ProtectedLayout>} />
       <Route path="/vm-migration" element={<ProtectedLayout><VMMigration /></ProtectedLayout>} />
       <Route path="/platform-config" element={<ProtectedLayout><PlatformConfig /></ProtectedLayout>} />
+      <Route path="/assistant" element={<ProtectedLayout><AssistantPage /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

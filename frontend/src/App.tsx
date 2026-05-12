@@ -6,8 +6,6 @@ import { AppRouter } from "./router";
 import { useAuthStore } from "./store/authStore";
 import { StagingBanner } from "./components/layout/StagingBanner";
 import { AgentDrawer } from "./components/layout/AgentDrawer";
-import { AssistantFab } from "./components/assistant/AssistantFab";
-import { AssistantPanel } from "./components/assistant/AssistantPanel";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,8 +38,6 @@ export default function App() {
         <AuthInit />
         <AppRouter />
         <AgentDrawer />
-        <AssistantFab />
-        <AssistantPanel />
         <Toaster position="top-right" />
       </BrowserRouter>
     </QueryClientProvider>

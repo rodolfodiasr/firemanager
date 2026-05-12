@@ -37,6 +37,7 @@ import {
   FileCheck2,
   Cpu,
   Store,
+  Sparkles,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -141,7 +142,8 @@ const navSections: NavSection[] = [
   {
     title: "Inteligência IA",
     items: [
-      { to: "/knowledge", icon: Database, label: "Base de Conhecimento"    },
+      { to: "/knowledge",  icon: Database,  label: "Base de Conhecimento"  },
+      { to: "/assistant",  icon: Sparkles,  label: "Assistente IA"         },
       { to: "#", icon: Radar, label: "Análise de Regras IA", upcoming: "F29" },
     ],
   },
