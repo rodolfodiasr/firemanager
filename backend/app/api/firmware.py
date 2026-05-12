@@ -138,6 +138,14 @@ async def accept_risk(vuln_id: UUID, body: FirmwareVulnAccept, db: DbDep, ctx: C
 
 # ── Tenant-wide endpoints ─────────────────────────────────────────────────────
 
+@router.post("/firmware/refresh-all")
+async def trigger_refresh_all(db: DbDep, ctx: CtxDep):
+    """Enqueue firmware version read + CVE correlation for ALL devices of this tenant."""
+    from app.workers.firmware_tasks import refresh_all_devices
+    task = refresh_all_devices.delay(str(ctx.tenant.id))
+    return {"task_id": task.id, "status": "queued", "message": "Refresh enfileirado para todos os devices do tenant"}
+
+
 @router.get("/firmware/risk-summary", response_model=FirmwareRiskSummary)
 async def get_firmware_risk_summary(db: DbDep, ctx: CtxDep):
     from app.services.firmware_service import get_firmware_risk_summary

@@ -73,6 +73,9 @@ export const firmwareApi = {
   acceptRisk: (vulnId: string, reason: string) =>
     apiClient.patch(`/firmware/vulnerabilities/${vulnId}/accept`, { reason }).then(r => r.data),
 
+  refreshAll: () =>
+    apiClient.post<{ task_id: string; status: string }>("/firmware/refresh-all").then(r => r.data),
+
   getRiskSummary: () =>
     apiClient.get<FirmwareRiskSummary>("/firmware/risk-summary").then(r => r.data),
 
