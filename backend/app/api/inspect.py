@@ -33,6 +33,80 @@ _SECURITY_COMMANDS = [
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
+def _parse_sonicwall_ssh_rules(raw: str) -> list[dict]:
+    """Parse SonicWall Gen6 configure-mode 'show access-rules' into structured rule dicts.
+
+    Each rule block looks like:
+        access-rule ipv4 from WAN to LAN action allow service name "X" destination ...
+            uuid <uuid>
+            name <name>   | no name
+            enable        | no enable
+            source address any | name "X" | group "X"
+            service any   | name "X" | group X
+            destination address any | name "X" | group "X"
+            priority manual <n>
+            comment "X"   | no comment
+            exit
+    """
+    clean = _ANSI_RE.sub("", raw).replace("\r", "")
+    rules: list[dict] = []
+
+    blocks = re.split(r"(?=^access-rule\s+ipv4\s+from)", clean, flags=re.MULTILINE)
+    for block in blocks:
+        block = block.strip()
+        if not block.startswith("access-rule"):
+            continue
+
+        header = re.match(r"access-rule\s+ipv4\s+from\s+(\S+)\s+to\s+(\S+)", block)
+        if not header:
+            continue
+        from_zone, to_zone = header.group(1), header.group(2)
+
+        def field(pattern: str, default: str = "") -> str:
+            m = re.search(pattern, block, re.MULTILINE | re.IGNORECASE)
+            return m.group(1).strip().strip('"') if m else default
+
+        uuid = field(r"^\s+uuid\s+(\S+)")
+        no_name = bool(re.search(r"^\s+no\s+name\b", block, re.MULTILINE))
+        name = "" if no_name else field(r'^\s+name\s+"?([^"\n]+)"?')
+        enabled = not bool(re.search(r"^\s+no\s+enable\b", block, re.MULTILINE))
+
+        action_m = re.search(r"^\s+action\s+(allow|deny|discard)\b", block, re.MULTILINE)
+        action = action_m.group(1) if action_m else "allow"
+
+        src = "Any" if re.search(r"^\s+source\s+address\s+any\b", block, re.MULTILINE) \
+            else field(r'^\s+source\s+address\s+(?:name|group)\s+"?([^"\n]+)"?', "Any")
+
+        dst = "Any" if re.search(r"^\s+destination\s+address\s+any\b", block, re.MULTILINE) \
+            else field(r'^\s+destination\s+address\s+(?:name|group)\s+"?([^"\n]+)"?', "Any")
+
+        svc = "Any" if re.search(r"^\s+service\s+any\b", block, re.MULTILINE) \
+            else field(r'^\s+service\s+(?:name|group)\s+"?([^"\n]+)"?', "Any")
+
+        prio_m = re.search(r"^\s+priority\s+manual\s+(\d+)", block, re.MULTILINE)
+        priority = int(prio_m.group(1)) if prio_m else 0
+
+        no_comment = bool(re.search(r"^\s+no\s+comment\b", block, re.MULTILINE))
+        comment = "" if no_comment else field(r'^\s+comment\s+"([^"]+)"')
+
+        rules.append({
+            "rule_id": uuid,
+            "name": name or comment or f"Rule #{priority}",
+            "src": src,
+            "dst": dst,
+            "service": svc,
+            "action": action,
+            "enabled": enabled,
+            "src_zone": from_zone,
+            "dst_zone": to_zone,
+            "comment": comment,
+            "priority": priority,
+            "raw": {},
+        })
+
+    return rules
+
+
 def _parse_sonicwall_security_section(raw: str) -> dict:
     """Parse one SonicWall security service configure sub-mode output into structured dict."""
     clean = _ANSI_RE.sub("", raw).replace("\r", "")
@@ -205,9 +279,17 @@ async def inspect_device(
                     "routes": "show route",
                 }
                 ssh = get_ssh_connector(device)
-                ssh_result = await ssh.execute_show_commands_full([_SW_SSH_CMD[resource]])
+                # rules and nat need configure mode for detailed config-block output (Gen6)
+                if resource in ("rules", "nat"):
+                    ssh_result = await ssh.execute_show_in_configure([_SW_SSH_CMD[resource]])
+                else:
+                    ssh_result = await ssh.execute_show_commands_full([_SW_SSH_CMD[resource]])
                 if ssh_result.success and ssh_result.output:
                     raw = _ANSI_RE.sub("", ssh_result.output).strip()
+                    if resource == "rules":
+                        parsed = _parse_sonicwall_ssh_rules(raw)
+                        if parsed:
+                            return {"resource": resource, "items": parsed}
                     return {
                         "resource": resource,
                         "items": [{"type": "Raw", "name": _SW_SSH_CMD[resource], "details": raw}],
