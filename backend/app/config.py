@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     email_from: str = "FireManager <noreply@firemanager.local>"
 
+    # NVD (National Vulnerability Database)
+    nvd_api_key: str = ""
+
     # Integration tests
     fortinet_test_host: str = ""
     fortinet_test_token: str = ""

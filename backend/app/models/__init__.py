@@ -29,6 +29,7 @@ from app.models.user import User, UserRole
 from app.models.user_device_category_role import UserDeviceCategoryRole
 from app.models.user_tenant_role import UserTenantRole
 from app.models.variable import TenantVariable, DeviceVariable
+from app.models.firmware import DeviceFirmwareVersion, FirmwareCVE, DeviceFirmwareVulnerability
 
 __all__ = [
     "AnalysisSession",
@@ -81,4 +82,7 @@ __all__ = [
     "TenantVariable",
     "DeviceVariable",
     "VendorEnum",
+    "DeviceFirmwareVersion",
+    "FirmwareCVE",
+    "DeviceFirmwareVulnerability",
 ]

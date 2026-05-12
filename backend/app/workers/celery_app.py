@@ -17,6 +17,7 @@ celery_app = Celery(
         "app.workers.glpi_sync",
         "app.workers.migration_worker",
         "app.workers.bundle_apply",
+        "app.workers.firmware_tasks",
     ],
 )
 
@@ -46,6 +47,14 @@ celery_app.conf.update(
         "glpi-ticket-sync": {
             "task": "app.workers.glpi_sync.run_glpi_sync",
             "schedule": crontab(minute="*/5"),              # every 5 min
+        },
+        "firmware-nvd-sync": {
+            "task": "app.workers.firmware_tasks.sync_nvd_all_vendors",
+            "schedule": crontab(minute=0, hour=3),          # 03:00 UTC daily
+        },
+        "firmware-correlate": {
+            "task": "app.workers.firmware_tasks.correlate_all",
+            "schedule": crontab(minute=0, hour=4),          # 04:00 UTC daily
         },
     },
 )

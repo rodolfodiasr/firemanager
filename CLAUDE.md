@@ -1,8 +1,31 @@
-# FireManager — Guia de Contexto para Claude Code
+# Eternity SecOps — Guia de Contexto para Claude Code
+
+## Propósito Central
+
+**O Eternity SecOps é a plataforma de operação de infraestrutura de segurança com IA agentic — permite que MSSPs e times de TI gerenciem, configurem, automatizem e governem firewalls, identidade e infraestrutura de rede de múltiplos vendors, em linguagem natural, com rastreabilidade completa e supervisão humana em cada ação crítica.**
+
+**Tagline:** *"Opere sua infraestrutura de segurança em linguagem natural. Com governança."*
+
+**Mercado primário:** MSSPs (Managed Security Service Providers) e times de TI/segurança que precisam de capacidade operacional de equipe grande sem ter equipe grande.
+
+### O que NÃO é o Eternity SecOps
+
+| Categoria | Decisão |
+|---|---|
+| **SIEM** | Integra com SIEMs (Wazuh, Log360, Splunk, Sentinel) via F37 — não coleta logs de tráfego, não é motor de correlação |
+| **EDR/XDR** | Fora do escopo. Gerencia dispositivos de rede, não endpoints |
+| **Scanner de vulnerabilidades** | Consome resultados (Nmap, OpenVAS, Shodan) — não produz scans |
+| **FinOps Cloud** | Não gerencia custo de K8s/containers. Gerencia *segurança* de infraestrutura cloud (F38) |
+| **ITSM/ServiceDesk** | Integra com Jira/ServiceNow para tickets — não é um ServiceDesk |
+| **Plataforma de monitoramento** | Consome dados de Zabbix/Grafana/Prometheus — não substitui monitoramento |
+| **Gerenciador de servidores** | Módulo de servidores é read-only analítico (F14) — não executa comandos de modificação |
+| **DBA Tool** | Módulo de BD audita privilégios de acesso (F20) — não gerencia schemas ou dados |
+
+---
 
 ## O que é este projeto
 
-FireManager é uma plataforma MSSP (Managed Security Service Provider) para gestão centralizada de firewalls com IA. Backend FastAPI/Python, frontend React/TypeScript, PostgreSQL + pgvector, Celery/Redis, Docker Compose.
+Eternity SecOps (anteriormente FireManager) é uma plataforma MSSP (Managed Security Service Provider) para operação centralizada de infraestrutura de segurança com IA agentic. Backend FastAPI/Python, frontend React/TypeScript, PostgreSQL + pgvector, Celery/Redis, Docker Compose.
 
 **Stack:**
 - Backend: FastAPI + SQLAlchemy async + asyncpg + Alembic
@@ -133,14 +156,17 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 | Fase | Descrição | Entregáveis principais |
 |---|---|---|
-| 29 | Observabilidade, IA FinOps e Resiliência | AI observability, dry-run, confidence threshold, token tracking, fallback LLM, rotação Fernet, circuit breaker, SAST CI/CD |
+| 29 | IA Operacional: Observabilidade, Resiliência e **Multi-agente** | AI observability, dry-run, confidence threshold, token tracking, fallback LLM, rotação Fernet, circuit breaker, SAST CI/CD, **orquestrador + sub-agentes especializados (Firewall/Identity/Network/Compliance/Infra)** |
 | 30 | Compliance Enterprise e BC/DR | Compliance packs (CIS/PCI/BACEN/LGPD + vertical Identidade), DPA/LGPD, RTO/RPO, SLA formal, relatório executivo |
 | 31 | Edge Agent e White-label Completo | Edge agent on-premise, CGNAT, white-label, SSO/OIDC, RBAC granular, open core OSS, marketplace |
-| 32 | Produto, UX e Documentação | Docs por persona, billing Stripe, i18n, acessibilidade WCAG AA, onboarding wizard |
+| 32 | Produto, UX e Documentação | Docs por persona (Admin MSSP / Analista N2-N3 / Admin Cliente / Analista Identidade), billing Stripe, i18n, acessibilidade WCAG AA, onboarding wizard |
 | 33 | IA Safety & Governança | Aprovação dupla, janelas de manutenção, SIRP, red team trimestral, four-eyes AD, direito ao esquecimento, RFC 3161 |
 | 34 | Infraestrutura de Segurança Avançada | mTLS interno, HashiCorp Vault, microsegmentação Docker, OPA, container hardening, pentest anual |
-| 35 | SOAR & Threat Intelligence | SOAR leve, feeds IoC (OTX/AbuseIPDB/CISA), NDR, isolamento automático de device, anomalias de identidade |
+| 35 | SOAR & Threat Intelligence + **Builder Visual** | SOAR leve, feeds IoC (OTX/AbuseIPDB/CISA), NDR, isolamento automático de device, **builder drag-and-drop de playbooks, biblioteca de templates, métrica MTTR** |
 | 36 | Governança de Identidade AD/M365 | Inventário contínuo, campanhas de revisão de acesso, SoD, role mining IA, JIT, licenças M365, Conditional Access audit |
+| 37 | **Integrador de SIEM e Orquestração de Alertas** | Conectores para Wazuh/Splunk/Sentinel/Log360/QRadar, receptor webhook, normalização de alertas, trigger SIEM→PlaybookRule, resposta de volta ao SIEM, loop fechado detecção→resposta |
+| 38 | **Cloud Security Posture (CSPM)** | AWS Security Groups / Azure NSG / GCP Firewall Rules como devices gerenciáveis, view unificada on-premise+cloud, misconfiguration detection, Golden Config para cloud |
+| 39 | **Identidade Self-Service e Automação Proativa** | Reset de senha self-service, desbloqueio self-service, lembretes proativos de expiração, catálogo de acesso simplificado, relatórios AD pré-prontos |
 
 ---
 
@@ -214,6 +240,21 @@ Middleware FastAPI: verifica header `X-API-Key`, identifica tenant, aplica limit
 
 #### Chunking semântico para RAG — Média
 Parser de documento detecta headers Markdown/HTML e quebra por seção em vez de por tamanho fixo. Cada chunk carrega metadata: `document_title`, `section_title`, `page_number`, `heading_level`. Reranking: após busca por embeddings (top-20), aplica BM25 para rerankar e retorna top-5 — melhora recall de seções técnicas específicas. Sanitização no upload: strip de scripts, iframes, conteúdo binário embutido em PDF; rejeita arquivos com macro Office.
+
+#### Arquitetura Multi-Agente — Alta
+Evolução do agente único generalista para orquestrador + sub-agentes especializados por domínio:
+
+| Sub-agente | Especialidade | Ferramentas disponíveis |
+|---|---|---|
+| `FirewallAgent` | Regras, NAT, rotas, golden config, migration | Conectores de firewall, snapshots, guardrails |
+| `IdentityAgent` | AD, M365, onboarding, offboarding, JIT, SoD | azure_ad_service, google_workspace_service, ldap3 |
+| `NetworkAgent` | Conectividade, BGP/OSPF, switches, topologia | SSH routing analysis, Nmap, switch connectors |
+| `ComplianceAgent` | Checks CIS/PCI/BACEN, SoD violations, revisões | compliance_service, audit_log_service |
+| `InfraAgent` | Servidores, VMs, DBs (read-only analítico) | SSH/WinRM, VMware/Proxmox APIs, DB audit |
+
+**Orquestrador Claude:** recebe a pergunta em linguagem natural, identifica qual(is) sub-agente(s) acionar, coordena execução (paralela quando independentes) e consolida a resposta final. Exemplos: "isola o firewall de Campinas e revoga o João no AD" → `FirewallAgent` + `IdentityAgent` em paralelo. "verifica compliance do cliente X" → `ComplianceAgent` + `FirewallAgent` em paralelo.
+
+`AgentHandoff`: protocolo estruturado de retorno de cada sub-agente ao orquestrador (resultado JSON tipado, confidence score, ações executadas, próximos passos sugeridos).
 
 #### Análise de qualidade de regras — Alta
 Celery task `analyze_rule_quality(device_id)` executa após cada snapshot e detecta: regras duplicadas (mesmo src/dst/svc/action), shadow rules (regra nunca alcançada porque outra mais ampla vem antes na lista), regras `any/any allow` (abre tudo), regras disabled há >90 dias (candidatas a remoção), regras sem hit count em 30 dias (se vendor reporta hit count). Resultado salvo em campo `quality_issues: JSONB` no snapshot. Dashboard: badge "X issues" na listagem de devices; modal com lista de problemas e sugestão de correção textual.
@@ -381,7 +422,26 @@ Processo documentado com artefatos de produto. Escopo definido anualmente: API R
 **Origem:** Mesa Redonda Segurança — Mônica (SecOps/SOAR), Diego (Threat Intel), Carlos (SOC), Leonardo (Pentester)
 
 #### SOAR leve embutido — Alta
-Modelo `PlaybookRule`: name, tenant_id, trigger_type (risk_score_drop/anomaly_detected/guardrail_block/device_unreachable), trigger_condition (JSON: `{"metric": "risk_score", "operator": "<", "threshold": 20, "window_minutes": 5}`), actions (JSON array de `{type, params}`), cooldown_minutes (evita loops), enabled. Actions disponíveis: `set_device_read_only`, `notify_slack`, `notify_email`, `create_ticket_jira`, `run_snapshot`, `escalate_to_n2`, `isolate_device`. Celery beat task `evaluate_playbooks`: a cada minuto, avalia todas as rules ativas de todos os tenants; se trigger satisfeito, executa actions em sequência. `PlaybookExecution`: rule_id, triggered_at, trigger_context (JSON snapshot do estado que disparou), actions_taken (JSONB), status (success/partial/failed). Frontend: editor visual de playbooks com cards de condição + ação conectados por setas.
+Modelo `PlaybookRule`: name, tenant_id, trigger_type (risk_score_drop/anomaly_detected/guardrail_block/device_unreachable/siem_alert/identity_anomaly/jit_abuse), trigger_condition (JSON: `{"metric": "risk_score", "operator": "<", "threshold": 20, "window_minutes": 5}`), actions (JSON array de `{type, params}`), cooldown_minutes (evita loops), enabled. Actions disponíveis: `set_device_read_only`, `notify_slack`, `notify_email`, `create_ticket_jira`, `run_snapshot`, `escalate_to_n2`, `isolate_device`, `revert_to_snapshot`, `notify_mssp_admin`, `run_compliance_check`. Celery beat task `evaluate_playbooks`: a cada minuto, avalia todas as rules ativas de todos os tenants; se trigger satisfeito, executa actions em sequência. `PlaybookExecution`: rule_id, triggered_at, trigger_context (JSON snapshot do estado que disparou), actions_taken (JSONB), status (success/partial/failed), resolved_at (para cálculo de MTTR). Frontend: editor visual de playbooks com cards de condição + ação conectados por setas (canvas drag-and-drop — ver Builder Visual abaixo).
+
+#### Builder Visual de Playbooks (drag-and-drop) — Alta
+UI React com canvas drag-and-drop (similar ao n8n mas focado em infraestrutura de segurança). Cards de Trigger → cards de Condição → cards de Ação conectados por setas visuais. Cada card tem formulário contextual: trigger card mostra campos do trigger_type selecionado, action card mostra parâmetros da action selecionada. Preview de execução: simula o playbook com dados históricos antes de ativar. Substituição da configuração via JSON/API por uma experiência visual acessível a analistas N1.
+
+#### Biblioteca de Templates de Playbook — Alta
+Templates pré-prontos ativados com 1 clique, adaptáveis por tenant:
+
+| Template | Trigger | Ações |
+|---|---|---|
+| Device Unreachable Response | `device_unreachable` | snapshot + alerta Slack + ticket Jira + escalar N2 |
+| Risk Score Crítico | `risk_score < 20` | isolar device + alerta CISO + requer aprovação dupla |
+| Guardrail Block Alert | `guardrail_block` | alerta Slack + log auditoria + bloquear usuário 15min |
+| SoD Violation Detected | `sod_violation` | alerta manager + criar access review task |
+| IoC Match em Regras | `threat_intel_match` | snapshot + alerta + criar tarefa de revisão manual |
+| Login Suspeito | `identity_anomaly` | suspender conta + revogar JIT + notificar CISO |
+| SIEM Alert Crítico | `siem_alert` (severity=CRITICAL) | snapshot device + isolar se confirmed + fechar alerta no SIEM |
+
+#### Métrica MTTR (Mean Time to Resolution) — Alta
+Campo `resolved_at` em `PlaybookExecution` — preenchido quando a última action do playbook conclui com sucesso. `MTTR = AVG(resolved_at - triggered_at)` por playbook e por tenant. Dashboard de eficiência de automação: MTTR por tipo de playbook, por severidade, evolução histórica semanal/mensal. Permite ao MSSP demonstrar ao cliente: "tempo médio de resposta a incidentes caiu de 47min para 8min após ativar automação".
 
 #### Threat Intelligence feed — Alta
 Integrações com feeds públicos gratuitos: OTX AlienVault API (IoCs por categoria), AbuseIPDB (IPs com histórico de abuso, score > 75), CISA KEV (Known Exploited Vulnerabilities — CVEs com exploração ativa), URLhaus (URLs de malware), Feodo Tracker (C2 de botnets). Celery beat a cada 4h: baixa feeds, normaliza em `ThreatIndicator` (type: ip/domain/hash/cve, value, source, severity, tags, last_seen, confidence). Match automático após cada snapshot: cruza IPs das regras de firewall (src/dst das access rules, NAT policies, rotas) com `ThreatIndicator`. Alerta de match: se regra `allow` tem src/dst que é IoC com severity HIGH/CRITICAL → alerta imediato via canal configurado. Dashboard TI: timeline de matches por tenant, breakdown por feed/categoria, top-10 IoCs mais vistos nos tenants gerenciados.
@@ -459,6 +519,96 @@ Painel dedicado "Identidade" no menu principal ao lado de Firewall, Servidores e
 | **F30 — Compliance** | Novo vertical "Identidade" nos compliance packs: CIS AD Benchmark (controles de conta, senha, grupo, admin), BACEN 4.658 Art. 4 (controle de acesso a ambientes críticos), LGPD Art. 46 (medidas técnicas de proteção) |
 | **F33 — Governança** | Four-eyes estendido: concessão de Domain Admin ou Global Admin via UI do Eternity SecOps exige segundo aprovador via `ManagementApprovalRequest` com action_type `grant_ad_privileged_role` |
 | **F35 — SOAR** | Anomalias de identidade (login de país novo, viagem impossível, volume anômalo de acesso a arquivos) disparam PlaybookRules com actions `suspend_ad_account`, `revoke_jit_access`, `force_mfa_reregistration` |
+
+---
+
+### Fase 37 — Integrador de SIEM e Orquestração de Alertas
+*Fechar o loop: SIEM detecta → Eternity SecOps age → SIEM registra resolução*
+
+**Princípio:** O Eternity SecOps NÃO é um SIEM. O cliente já tem Wazuh, Log360, Splunk ou Sentinel. O SIEM detecta e alerta. O Eternity SecOps é a ferramenta que o analista usa DEPOIS do alerta para agir — isolar device, revogar acesso, capturar snapshot, abrir ticket. Esta fase fecha esse loop automaticamente.
+
+#### Conectores de SIEM — Alta
+Modelo `SiemConnector` (tenant_id, type: wazuh/splunk/sentinel/log360/qradar/elastic, endpoint, api_key/token Fernet-cifrado, webhook_secret, enabled). Cada conector implementa `normalize_alert(raw_payload) -> SiemAlert` — converte formato nativo do SIEM para schema comum. `SiemAlert` (connector_id, external_id, severity: info/low/medium/high/critical, source_ip, source_device_id, rule_name, description, raw_payload, received_at, status: new/triaging/actioned/closed).
+
+#### Receptor de Webhooks de SIEM — Alta
+Endpoint `POST /siem/webhook/{connector_id}` — recebe alertas em tempo real. Valida assinatura HMAC (Wazuh, Splunk HEC, Sentinel Logic Apps, Elastic alerting API). Normaliza para `SiemAlert` e persiste. Para Wazuh: usa integração nativa de webhook já existente no Wazuh Manager. Para Splunk: Splunk Webhook Alert Action apontando para o endpoint.
+
+#### SiemAlert como Gatilho de PlaybookRule — Alta
+Novo `trigger_type: siem_alert` nos PlaybookRules. Condições configuráveis: `severity >= HIGH`, `rule_name contains "brute_force"`, `source_ip in managed_devices`. Quando SIEM detecta → Eternity SecOps avalia playbooks → executa ações automaticamente. Exemplo de playbook gerado automaticamente no onboarding: "alerta Wazuh severity=CRITICAL para device gerenciado → snapshot + isolar device + abrir ticket Jira + notificar CISO".
+
+#### Correlação SIEM × Infraestrutura Gerenciada — Alta
+Ao receber `SiemAlert` com `source_ip`: cruza com devices gerenciados e identifica device_id, tenant_id, vendor, último snapshot. Enriquece o alerta com contexto: qual firewall, quais regras ativas, qual usuário tem acesso. Resultado exibido no dashboard de alertas com contexto completo em segundos.
+
+#### Resposta de Volta ao SIEM — Alta
+Após ação executada (isolamento, revogação, snapshot): posta resultado de volta ao SIEM via API. Fecha o alerta no Wazuh/Splunk com comentário automático incluindo link para o audit log do Eternity SecOps da ação tomada. Para Sentinel: cria comment no incident. Para Splunk: fecha notable event com comment.
+
+#### Dashboard de Alertas SIEM — Média
+Feed em tempo real de alertas recebidos de todos os SIEMs configurados. Status por alerta: new / triaging / actioned / closed. Tempo de resposta (triggered_at → actioned_at). MTTR por SIEM, por severidade, por tenant. Histórico pesquisável por device, IP, rule_name.
+
+**SIEMs suportados na launch:** Wazuh (webhook nativo), Microsoft Sentinel (Logic Apps webhook), Elastic SIEM (alerting API), Log360 (webhook), Splunk (REST API HEC).
+
+---
+
+### Fase 38 — Cloud Security Posture Management (CSPM)
+*Gerenciar segurança de rede on-premise E cloud em uma plataforma unificada*
+
+**Princípio:** AWS Security Groups, Azure NSGs e GCP Firewall Rules são firewalls. O MSSP que gerencia um Fortinet on-premise do cliente também precisa gerenciar os Security Groups da AWS do mesmo cliente. Esta fase torna isso possível — mesma UX, mesmo agente IA, mesma auditoria.
+
+**O que NÃO está nesta fase:** custo de cloud (FinOps), rightsizing de K8s, billing — esses pertencem a ferramentas FinOps especializadas (CloudSpend, Apptio). O Eternity SecOps gerencia *segurança* de infraestrutura cloud, não custo.
+
+#### AWS Security Groups como Devices — Alta
+Conector `aws_security_group.py` via boto3 (IAM Role com permissão mínima: `ec2:DescribeSecurityGroups`, `ec2:AuthorizeSecurityGroupIngress`, `ec2:RevokeSecurityGroupIngress`). Security Groups aparecem como devices no Eternity SecOps com `vendor = aws_security_group`. Agente IA pode consultar regras em linguagem natural ("quais Security Groups permitem SSH de 0.0.0.0/0?") e criar/remover regras ("bloqueia porta 3389 para o SG do servidor de aplicação"). Snapshot de SG = lista de inbound/outbound rules normalizada no mesmo schema das regras de firewall.
+
+#### Azure NSG como Devices — Alta
+Conector `azure_nsg.py` via azure-mgmt-network SDK (Service Principal: client_id + client_secret Fernet-cifrado por tenant). NSGs aparecem como devices com `vendor = azure_nsg`. Mesma operação de regras — agente fala "adiciona regra que bloqueia RDP de internet no NSG da subnet de produção".
+
+#### GCP Firewall Rules como Devices — Alta
+Conector `gcp_firewall.py` via google-cloud-python (Service Account JSON Fernet-cifrado por tenant). Regras de firewall VPC aparecem como devices com `vendor = gcp_firewall`. Operações via Compute API.
+
+#### View Unificada On-Premise + Cloud — Alta
+Dashboard "Infraestrutura" mostra todos os firewalls em uma lista: físicos (Fortinet, SonicWall, pfSense), virtuais (devices em VMware/Proxmox), e cloud (AWS SG, Azure NSG, GCP FW). Filtro por tipo, por vendor, por cloud provider. Busca de regra cross-device: "quais devices têm regra que permite tráfego para 10.0.5.0/24?" — responde cruzando todos os firewalls e SGs.
+
+#### Cloud Misconfiguration Detection — Alta
+Mesmos checks de qualidade de regras (F29) aplicados a cloud: SG com porta 22 aberta para 0.0.0.0/0 (CRITICAL), NSG sem logging habilitado (HIGH), GCP FW com `target = all` (HIGH), SG sem description (LOW). Resultados no mesmo dashboard de qualidade de regras. Integração com compliance packs F30: checks CIS AWS Foundations, CIS Azure, CIS GCP.
+
+#### Golden Config para Cloud — Média
+Bundles (F26) com suporte a `apply_strategy: cloud_api` além de `cli_ssh` e `rest_api`. Permite criar um bundle "Padrão de segurança de VPC" que aplica regras de baseline em AWS SG + Azure NSG + Fortinet on-premise do mesmo cliente em uma única operação.
+
+---
+
+### Fase 39 — Identidade Self-Service e Automação Proativa
+*Extensão natural da governança de identidade (F36) para operações de baixo risco sem analista*
+
+**Princípio:** Algumas operações de identidade são repetitivas, de baixo risco e consomem tempo de analista desnecessariamente (reset de senha, desbloqueio de conta). Automatizá-las dentro do escopo de governança de identidade já estabelecido em F21/F22/F36 é extensão natural do propósito. Esta fase NÃO cria um ServiceDesk — integra com o ServiceDesk existente via F23.
+
+#### Reset de Senha Self-Service — Alta
+Portal web leve e separado (não o app principal — URL dedicada como `reset.eternity.io` configurável por tenant via white-label F31). Fluxo: usuário informa email corporativo → OTP enviado por email (6 dígitos, válido 10 min) → usuário confirma OTP → define nova senha (validação de política: tamanho, complexidade) → Eternity SecOps aplica via `ldap3.MODIFY_REPLACE` (AD on-premise) ou `PATCH /users/{id}` (Azure AD Graph API). Evento registrado no audit hash-chain (F28): user_email, timestamp, source_ip, ad_source.
+
+#### Desbloqueio de Conta Self-Service — Alta
+Mesmo fluxo OTP → Eternity SecOps executa `userAccountControl` clear lock (AD) ou `POST /users/{id}/revokeSignInSessions` (Azure AD). Registrado no audit. Admin do tenant pode desativar por fonte (só on-premise, só Azure AD, ou ambos).
+
+#### Lembretes Proativos de Expiração — Alta
+Celery beat diário `check_password_expiry`: consulta `AdUser` onde `pwdLastSet + maxPwdAge < now + 14 dias`. Envia email personalizado ao usuário com template configurável por tenant: "Sua senha expira em X dias. Clique aqui para renovar antes de ser bloqueado." Link direciona para o portal de reset self-service. Configurable: 14 dias, 7 dias e 1 dia antes da expiração (3 lembretes).
+
+#### Catálogo de Acesso Simplificado — Alta
+Usuário final solicita acesso a grupo pré-aprovado (Admin configura quais grupos são elegíveis para solicitação self-service). Formulário: grupo desejado + justificativa mínima 30 chars + data de fim (opcional, para acesso temporário). Solicitação gera `AccessReviewTask` no fluxo F36 para o manager aprovar. Aprovação via email com link direto (sem precisar logar na plataforma). Rejeição com comentário notifica o solicitante por email.
+
+#### Relatórios AD Pré-prontos — Média
+Para o Admin do tenant (não usuário final). Relatórios exportáveis em CSV e PDF:
+
+| Relatório | Dados | Frequência sugerida |
+|---|---|---|
+| Senha expirada | Usuários com senha expirada há >0 dias | Semanal |
+| Senha expirando | Usuários com senha expirando em <30 dias | Semanal |
+| Contas inativas | Usuários sem login há >60 dias (configurável) | Mensal |
+| Membros do grupo | Lista completa de membros de um grupo AD/M365 | Sob demanda |
+| Histórico de membros | Quem entrou/saiu de um grupo nos últimos N dias | Sob demanda |
+| Admins sem MFA | Domain Admins e Global Admins sem MFA registrado | Semanal |
+
+Complementa os compliance checks automáticos de F30 — esses relatórios são operacionais (para o Admin agir), não de auditoria (para o auditor verificar).
+
+#### Notificação Proativa de Anomalias ao Manager — Média
+Quando F36 detecta: conta sem uso há +60 dias, SoD violation, membro novo em grupo crítico — além de alertar via F23, envia email direto ao manager do usuário (campo `manager` do AdUser) com contexto e link para revisão. Manager não precisa logar na plataforma para tomar ação simples (aprovar/rejeitar via link tokenizado no email).
 
 ---
 
@@ -588,9 +738,11 @@ F27 pode rodar em paralelo com F25-26 (módulo independente)
 F28 (segurança + IA safety)  ──► F33 (governança IA) ──► F35 (SOAR)
 F28 (hash-chained audit)     ──► F33 (ancoragem RFC 3161)
 F29 (AI observability)       ──► F33 (red team + SIRP)
+F29 (multi-agente)           ──► F37 (agente SIEM usa IdentityAgent + FirewallAgent em resposta)
 F31 (RBAC granular)          ──► F33 (four-eyes + aprovação dupla)
 F34 (infra segurança)        pode rodar em paralelo com F33
 F35 (SOAR) depende de F23 (alertas) + F33 (SIRP) + F34 (infra)
+F35 (PlaybookRules)          ──► F37 (trigger_type: siem_alert alimenta os playbooks)
 
 F21 + F22 (identidade)       ──► F36 (governança AD/M365: reutiliza conectores AD/Graph)
 F23 (alertas)                ──► F36 (canal de notificação para campanhas e anomalias)
@@ -598,4 +750,19 @@ F28 (audit hash-chain)       ──► F36 (toda decisão de revisão e revogaç
 F33 (four-eyes)              ──► F36 (JIT approval e grant_ad_privileged_role)
 F35 (SOAR)                   ──► F36 (playbooks disparam por anomalias de identidade)
 F36 pode rodar em paralelo com F29-F35 (módulo independente de identidade)
+
+F23 (alertas/webhook)        ──► F37 (SiemConnector reutiliza infra de webhook de F23)
+F35 (PlaybookRules)          ──► F37 (siem_alert como novo trigger_type)
+F37 pode rodar em paralelo com F36 (módulo independente de integração)
+
+F6 + F25 (vendors firewall)  ──► F38 (mesmo padrão de connector, novos vendors cloud)
+F17 + F26 (Golden Config)    ──► F38 (bundles com apply_strategy: cloud_api)
+F29 (qualidade de regras)    ──► F38 (mesmos checks aplicados a SG/NSG/GCP FW)
+F38 pode rodar em paralelo com F36-F37 (módulo independente de cloud)
+
+F21 + F22 (lifecycle)        ──► F39 (reutiliza conectores AD/Graph para reset/unlock)
+F36 (access certification)   ──► F39 (catálogo de acesso gera AccessReviewTask de F36)
+F28 (audit hash-chain)       ──► F39 (reset/desbloqueio auditados)
+F31 (white-label)            ──► F39 (portal self-service com domínio e branding do tenant)
+F39 depende de F36 para catálogo de acesso (AccessReviewTask)
 ```

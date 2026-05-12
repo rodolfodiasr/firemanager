@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Shield, Users, AlertTriangle, Server, Database, TrendingUp, Download, Loader2, RefreshCw, CheckCircle, XCircle, Clock } from "lucide-react";
 import { executiveApi } from "../api/executive";
+import { FirmwareRiskCard } from "../components/dashboard/FirmwareRiskCard";
 
 function RiskGauge({ score }: { score: number }) {
   const color = score < 30 ? "text-green-500" : score < 60 ? "text-yellow-500" : "text-red-500";
@@ -113,6 +114,11 @@ export function Executive() {
                 sub={`${posture.alerts_7d.total} total`} />
               <MetricCard label="Ações Pendentes" value={posture.lifecycle_30d.pending_actions} icon={Clock} color="bg-yellow-500"
                 sub="Offboardings aguardando" />
+            </div>
+
+            {/* Firmware Risk */}
+            <div className="grid grid-cols-4 gap-4">
+              <FirmwareRiskCard />
             </div>
 
             {/* Identity + Lifecycle */}

@@ -2,6 +2,7 @@ import { Shield, Route, Network, Layers, RefreshCw, Trash2, Pencil, Camera } fro
 import { useState } from "react";
 import type { Device, DeviceCategory } from "../../types/device";
 import { HealthBadge } from "./HealthBadge";
+import { FirmwareBadge } from "./FirmwareBadge";
 import { devicesApi } from "../../api/devices";
 
 interface DeviceCardProps {
@@ -96,7 +97,12 @@ export function DeviceCard({
 
       <div className="text-xs text-gray-500 space-y-0.5 mb-3">
         <p>{device.host}:{device.port}</p>
-        {device.firmware_version && <p>v{device.firmware_version}</p>}
+        {device.firmware_version && (
+          <p className="flex items-center gap-1.5">
+            v{device.firmware_version}
+            <FirmwareBadge deviceId={device.id} />
+          </p>
+        )}
         {device.last_seen && (
           <p>Visto: {new Date(device.last_seen).toLocaleString("pt-BR")}</p>
         )}
