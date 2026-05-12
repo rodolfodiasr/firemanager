@@ -30,6 +30,7 @@ async def _chat_response(
     db: AsyncSession, ctx: TenantContext, operation: Operation, agent_response: str
 ) -> dict:
     ready = operation.status.value == "approved"
+    clarifying = operation.status == OperationStatus.clarifying
     requires_approval = False
     if ready and operation.intent:
         if ctx.role == TenantRole.analyst_n1:
@@ -57,6 +58,9 @@ async def _chat_response(
         "status": operation.status.value,
         "agent_message": agent_response,
         "ready_to_execute": ready,
+        "clarifying": clarifying,
+        "clarification_questions": operation.clarification_questions or [],
+        "confidence_score": operation.confidence_score,
         "requires_approval": requires_approval,
         "intent": operation.intent,
         "preview_commands": preview_commands,
@@ -197,6 +201,50 @@ async def execute_op(
         pass
 
     return OperationRead.model_validate(operation)
+
+
+class ClarificationPayload(BaseModel):
+    answers: list[dict]  # [{"id": "q1", "answer": "LAN"}, ...]
+
+
+@router.post("/{operation_id}/clarify", response_model=dict)
+async def submit_clarification(
+    operation_id: UUID,
+    payload: ClarificationPayload,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Analista responde às perguntas de clarificação; agente regenera o plano."""
+    operation = await _get_tenant_operation(db, operation_id, ctx.tenant.id)
+
+    if operation.status != OperationStatus.clarifying:
+        raise HTTPException(status_code=400, detail="Operação não está aguardando clarificação.")
+
+    # Salvar respostas
+    operation.clarification_answers = payload.answers
+    await db.flush()
+
+    # Montar mensagem de retorno com as respostas para o agente reprocessar
+    answer_text = " | ".join(
+        f"{a.get('id', '?')}: {a.get('answer', '')}" for a in payload.answers
+    )
+    user_message = f"[Respostas de clarificação] {answer_text}"
+
+    # Resetar status para pending antes de reprocessar
+    operation.status = OperationStatus.pending
+    await db.flush()
+
+    _, agent_response = await start_or_continue_operation(
+        db=db,
+        user_id=ctx.user.id,
+        operation_id=operation_id,
+        device_id=operation.device_id,
+        user_message=user_message,
+    )
+
+    result2 = await db.execute(select(Operation).where(Operation.id == operation_id))
+    updated_op = result2.scalar_one()
+    return await _chat_response(db, ctx, updated_op, agent_response)
 
 
 @router.post("/{operation_id}/submit-review", response_model=OperationRead)

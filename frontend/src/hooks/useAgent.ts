@@ -10,12 +10,17 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
     readyToExecute,
     requiresApproval,
     loading,
+    clarifying,
+    clarificationQuestions,
+    confidenceScore,
     addMessage,
     setOperationId,
     setReadyToExecute,
     setRequiresApproval,
     setIntent,
     setLoading,
+    setClarifying,
+    setConfidenceScore,
     resetSession,
     reset,
   } = useAgentStore();
@@ -45,6 +50,8 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
         setReadyToExecute(response.ready_to_execute);
         setRequiresApproval(response.requires_approval ?? false);
         setIntent(response.intent ?? null);
+        setClarifying(response.clarifying ?? false, response.clarification_questions ?? []);
+        setConfidenceScore(response.confidence_score ?? null);
       } catch {
         toast.error("Erro ao comunicar com o agente");
         addMessage("assistant", "Desculpe, ocorreu um erro. Tente novamente.");
@@ -320,5 +327,28 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
     }
   }, [currentOperationId, addMessage, setLoading, resetSession]);
 
-  return { messages, readyToExecute, requiresApproval, loading, send, execute, submitForReview, reset };
+  const submitClarification = useCallback(
+    async (answers: { id: string; answer: string }[]) => {
+      if (!currentOperationId) return;
+      setLoading(true);
+      try {
+        const response = await operationsApi.clarify(currentOperationId, answers);
+        const answerSummary = answers.map((a) => a.answer).join(", ");
+        addMessage("user", `[Clarificação] ${answerSummary}`);
+        addMessage("assistant", response.agent_message);
+        setReadyToExecute(response.ready_to_execute);
+        setRequiresApproval(response.requires_approval ?? false);
+        setIntent(response.intent ?? null);
+        setClarifying(response.clarifying ?? false, response.clarification_questions ?? []);
+        setConfidenceScore(response.confidence_score ?? null);
+      } catch {
+        toast.error("Erro ao enviar respostas de clarificação");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [currentOperationId, addMessage, setLoading, setReadyToExecute, setRequiresApproval, setIntent, setClarifying, setConfidenceScore]
+  );
+
+  return { messages, readyToExecute, requiresApproval, loading, clarifying, clarificationQuestions, confidenceScore, send, execute, submitForReview, submitClarification, reset };
 }

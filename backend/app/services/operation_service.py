@@ -220,6 +220,37 @@ async def start_or_continue_operation(
 
     response = await session.process(user_message)
 
+    # Clarification loop: se há campos faltando e a confiança é baixa, perguntar ao analista
+    if not session.ready_to_execute and session.missing_fields and session.intent:
+        from app.agent.clarification_engine import (
+            compute_confidence_score,
+            format_clarification_message,
+            generate_clarification_questions,
+        )
+        confidence = await compute_confidence_score(
+            intent=session.intent,
+            collected_data=session.collected_data,
+            conversation_history=session.conversation_history,
+            natural_language_input=user_message,
+        )
+        operation.confidence_score = confidence
+        _CONFIDENCE_THRESHOLD = 0.65
+        if confidence < _CONFIDENCE_THRESHOLD:
+            questions = await generate_clarification_questions(
+                natural_language_input=operation.natural_language_input,
+                missing_fields=session.missing_fields,
+                collected_data=session.collected_data,
+                conversation_history=session.conversation_history,
+                intent=session.intent,
+            )
+            if questions:
+                operation.status = OperationStatus.clarifying
+                operation.clarification_questions = questions
+                response = format_clarification_message(questions)
+                await db.flush()
+                await db.refresh(operation)
+                return operation, response
+
     if session.ready_to_execute and session.plan:
         intent_value = session.plan.intent.value
         operation.intent = intent_value

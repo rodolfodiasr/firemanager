@@ -34,6 +34,10 @@ class OperationRead(BaseModel):
     parent_operation_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
+    # Clarification loop (Fase 40-A)
+    clarification_questions: list[dict] | None = None
+    clarification_answers: list[dict] | None = None
+    confidence_score: float | None = None
     # Populated when fetched as part of BulkJobDetail (JOIN with devices)
     device_name: str | None = None
     device_category: str | None = None

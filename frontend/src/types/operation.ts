@@ -1,5 +1,6 @@
 export type OperationStatus =
   | "pending"
+  | "clarifying"
   | "awaiting_approval"
   | "approved"
   | "executing"
@@ -29,6 +30,13 @@ export interface Operation {
   device_category: string | null;
 }
 
+export interface ClarificationQuestion {
+  id: string;
+  question: string;
+  field: string;
+  options?: string[];
+}
+
 export interface ChatResponse {
   operation_id: string;
   status: OperationStatus;
@@ -39,4 +47,8 @@ export interface ChatResponse {
   preview_commands: string[];
   guardrail_blocked: boolean;
   device_id: string;
+  // Clarification loop (Fase 40-A)
+  clarifying: boolean;
+  clarification_questions: ClarificationQuestion[];
+  confidence_score: number | null;
 }

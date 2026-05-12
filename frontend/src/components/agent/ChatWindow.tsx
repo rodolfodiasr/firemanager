@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, Loader2 } from "lucide-react";
-import type { ChatMessage } from "../../store/agentStore";
+import type { ChatMessage, ClarificationQuestion } from "../../store/agentStore";
 import { MessageBubble } from "./MessageBubble";
 import { ActionPlanCard } from "./ActionPlanCard";
+import { ClarificationCard } from "./ClarificationCard";
 
 interface ChatWindowProps {
   messages: ChatMessage[];
@@ -14,6 +15,11 @@ interface ChatWindowProps {
   onSubmitForReview: () => void;
   onCancel: () => void;
   defaultInput?: string;
+  // Clarification loop (Fase 40-A)
+  clarifying?: boolean;
+  clarificationQuestions?: ClarificationQuestion[];
+  onSubmitClarification?: (answers: { id: string; answer: string }[]) => void;
+  confidenceScore?: number | null;
 }
 
 export function ChatWindow({
@@ -26,6 +32,10 @@ export function ChatWindow({
   onSubmitForReview,
   onCancel,
   defaultInput,
+  clarifying = false,
+  clarificationQuestions = [],
+  onSubmitClarification,
+  confidenceScore,
 }: ChatWindowProps) {
   const [input, setInput] = useState(defaultInput ?? "");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -67,8 +77,32 @@ export function ChatWindow({
         <div ref={bottomRef} />
       </div>
 
+      {clarifying && clarificationQuestions.length > 0 && onSubmitClarification && (
+        <ClarificationCard
+          questions={clarificationQuestions}
+          onSubmit={onSubmitClarification}
+          loading={loading}
+        />
+      )}
+
       {readyToExecute && (
         <div className="px-4 pb-2">
+          {confidenceScore !== null && confidenceScore !== undefined && (
+            <div className="mb-2 flex items-center gap-1.5 text-xs text-gray-500">
+              <span>Confiança do agente:</span>
+              <span
+                className={`font-semibold ${
+                  confidenceScore >= 0.8
+                    ? "text-green-600"
+                    : confidenceScore >= 0.65
+                    ? "text-yellow-600"
+                    : "text-red-600"
+                }`}
+              >
+                {Math.round(confidenceScore * 100)}%
+              </span>
+            </div>
+          )}
           <ActionPlanCard
             requiresApproval={requiresApproval}
             onConfirm={onExecute}
@@ -86,11 +120,11 @@ export function ChatWindow({
             onChange={(e) => setInput(e.target.value)}
             placeholder="Descreva a operação desejada..."
             className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            disabled={loading || readyToExecute}
+            disabled={loading || readyToExecute || clarifying}
           />
           <button
             type="submit"
-            disabled={loading || !input.trim() || readyToExecute}
+            disabled={loading || !input.trim() || readyToExecute || clarifying}
             className="bg-brand-600 text-white rounded-xl px-4 py-2.5 hover:bg-brand-700 disabled:opacity-50 transition-colors"
           >
             <Send size={18} />

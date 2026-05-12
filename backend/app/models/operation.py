@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, TIMESTAMP, Text
+from sqlalchemy import Boolean, Enum, Float, ForeignKey, Integer, String, TIMESTAMP, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -12,6 +12,7 @@ from app.database import Base
 
 class OperationStatus(str, enum.Enum):
     pending = "pending"
+    clarifying = "clarifying"          # agente fez perguntas, aguarda respostas do analista
     awaiting_approval = "awaiting_approval"
     approved = "approved"
     executing = "executing"
@@ -87,6 +88,9 @@ class Operation(Base):
     )
     required_approvals: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     co_approvals: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    clarification_questions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    clarification_answers: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     bulk_job_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("bulk_jobs.id", ondelete="SET NULL"), nullable=True, index=True
     )

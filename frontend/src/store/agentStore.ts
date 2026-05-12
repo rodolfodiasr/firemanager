@@ -18,6 +18,13 @@ export interface ChatMessage {
   directModeDeviceId?: string;
 }
 
+export interface ClarificationQuestion {
+  id: string;
+  question: string;
+  field: string;
+  options?: string[];
+}
+
 interface AgentState {
   messages: ChatMessage[];
   currentOperationId: string | null;
@@ -25,12 +32,18 @@ interface AgentState {
   requiresApproval: boolean;
   intent: string | null;
   loading: boolean;
+  // Clarification loop (Fase 40-A)
+  clarifying: boolean;
+  clarificationQuestions: ClarificationQuestion[];
+  confidenceScore: number | null;
   addMessage: (role: "user" | "assistant", content: string, tableData?: TableData, directModeDeviceId?: string) => void;
   setOperationId: (id: string | null) => void;
   setReadyToExecute: (ready: boolean) => void;
   setRequiresApproval: (v: boolean) => void;
   setIntent: (v: string | null) => void;
   setLoading: (loading: boolean) => void;
+  setClarifying: (clarifying: boolean, questions?: ClarificationQuestion[]) => void;
+  setConfidenceScore: (score: number | null) => void;
   resetSession: () => void;
   reset: () => void;
 }
@@ -42,6 +55,9 @@ export const useAgentStore = create<AgentState>((set) => ({
   requiresApproval: false,
   intent: null,
   loading: false,
+  clarifying: false,
+  clarificationQuestions: [],
+  confidenceScore: null,
 
   addMessage: (role, content, tableData?, directModeDeviceId?) =>
     set((state) => ({
@@ -53,10 +69,32 @@ export const useAgentStore = create<AgentState>((set) => ({
   setRequiresApproval: (v) => set({ requiresApproval: v }),
   setIntent: (v) => set({ intent: v }),
   setLoading: (loading) => set({ loading }),
+  setClarifying: (clarifying, questions = []) =>
+    set({ clarifying, clarificationQuestions: questions }),
+  setConfidenceScore: (score) => set({ confidenceScore: score }),
 
   resetSession: () =>
-    set({ currentOperationId: null, readyToExecute: false, requiresApproval: false, intent: null, loading: false }),
+    set({
+      currentOperationId: null,
+      readyToExecute: false,
+      requiresApproval: false,
+      intent: null,
+      loading: false,
+      clarifying: false,
+      clarificationQuestions: [],
+      confidenceScore: null,
+    }),
 
   reset: () =>
-    set({ messages: [], currentOperationId: null, readyToExecute: false, requiresApproval: false, intent: null, loading: false }),
+    set({
+      messages: [],
+      currentOperationId: null,
+      readyToExecute: false,
+      requiresApproval: false,
+      intent: null,
+      loading: false,
+      clarifying: false,
+      clarificationQuestions: [],
+      confidenceScore: null,
+    }),
 }));

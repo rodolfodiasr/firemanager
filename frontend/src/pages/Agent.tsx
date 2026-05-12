@@ -164,8 +164,11 @@ export function Agent() {
     staleTime: Infinity,
   });
 
-  const { messages, readyToExecute, requiresApproval, loading, send, execute, submitForReview, reset } =
-    useAgent(selectedDeviceId, editOp?.id ?? null, useBookstackContext);
+  const {
+    messages, readyToExecute, requiresApproval, loading,
+    clarifying, clarificationQuestions, confidenceScore,
+    send, execute, submitForReview, submitClarification, reset,
+  } = useAgent(selectedDeviceId, editOp?.id ?? null, useBookstackContext);
 
   useEffect(() => {
     if (!editOp) return;
@@ -294,6 +297,10 @@ export function Agent() {
                 onSubmitForReview={submitForReview}
                 onCancel={reset}
                 defaultInput={editSeedInput}
+                clarifying={clarifying}
+                clarificationQuestions={clarificationQuestions}
+                onSubmitClarification={submitClarification}
+                confidenceScore={confidenceScore}
               />
             </div>
           </div>

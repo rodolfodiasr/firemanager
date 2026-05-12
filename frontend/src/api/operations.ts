@@ -30,6 +30,11 @@ export const operationsApi = {
   getTutorial: (id: string) =>
     apiClient.get<{ tutorial: string }>(`/operations/${id}/tutorial`).then((r) => r.data),
 
+  clarify: (operationId: string, answers: { id: string; answer: string }[]) =>
+    apiClient
+      .post<ChatResponse>(`/operations/${operationId}/clarify`, { answers })
+      .then((r) => r.data),
+
   createDirectSSH: (body: {
     device_id: string;
     description: string;
