@@ -313,9 +313,10 @@ function FolderSection({
           {folder.isTeam
             ? <Users size={11} className="shrink-0 text-gray-500" />
             : <Folder size={11} className="shrink-0 text-gray-500" />}
-          <span className="text-xs text-gray-600 truncate">{folder.name}</span>
+          <span className="text-xs text-gray-600 truncate flex-1">{folder.name}</span>
+          {folder.isTeam && <RoleBadge minRole={folder.minRole} />}
           {sessions.length > 0 && (
-            <span className="text-[10px] text-gray-400 ml-auto shrink-0">{sessions.length}</span>
+            <span className="text-[10px] text-gray-400 shrink-0">{sessions.length}</span>
           )}
         </button>
 
@@ -372,17 +373,44 @@ function FolderSection({
   );
 }
 
+// ── Helpers de role ───────────────────────────────────────────────────────────
+
+const ROLE_LABELS: Record<string, { label: string; color: string }> = {
+  readonly:   { label: "Todos",    color: "text-gray-400" },
+  analyst_n1: { label: "N1+",      color: "text-green-600" },
+  analyst:    { label: "N1+",      color: "text-green-600" },
+  analyst_n2: { label: "N2+",      color: "text-orange-500" },
+  admin:      { label: "Admin",    color: "text-red-500" },
+};
+
+function RoleBadge({ minRole }: { minRole: string }) {
+  const info = ROLE_LABELS[minRole] ?? { label: minRole, color: "text-gray-400" };
+  if (minRole === "analyst_n1" || minRole === "analyst") return null;
+  return (
+    <span className={`text-[9px] font-bold uppercase tracking-wide ${info.color}`}>
+      {info.label}
+    </span>
+  );
+}
+
 // ── CreateFolderModal ─────────────────────────────────────────────────────────
 
 interface CreateFolderModalProps {
   isTeam: boolean;
   onClose: () => void;
-  onCreate: (name: string, color: string, isTeam: boolean) => void;
+  onCreate: (name: string, color: string, isTeam: boolean, minRole: string) => void;
 }
+
+const VISIBILITY_OPTIONS = [
+  { value: "analyst_n1", label: "Analistas N1 e acima", description: "Toda a equipe pode ver" },
+  { value: "analyst_n2", label: "Analistas N2 e acima", description: "Apenas N2, N3 e admin" },
+  { value: "admin",      label: "Somente administradores", description: "Restrito ao admin" },
+];
 
 function CreateFolderModal({ isTeam, onClose, onCreate }: CreateFolderModalProps) {
   const [name, setName] = useState("");
   const [color, setColor] = useState(FOLDER_COLORS[0]);
+  const [minRole, setMinRole] = useState("analyst_n1");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -401,14 +429,14 @@ function CreateFolderModal({ isTeam, onClose, onCreate }: CreateFolderModalProps
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && name.trim()) onCreate(name.trim(), color, isTeam);
+            if (e.key === "Enter" && name.trim()) onCreate(name.trim(), color, isTeam, minRole);
             if (e.key === "Escape") onClose();
           }}
           placeholder="Nome da pasta..."
           className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500 mb-4"
         />
 
-        <div className="flex gap-2 flex-wrap mb-5">
+        <div className="flex gap-2 flex-wrap mb-4">
           {FOLDER_COLORS.map((c) => (
             <button
               key={c}
@@ -419,6 +447,37 @@ function CreateFolderModal({ isTeam, onClose, onCreate }: CreateFolderModalProps
           ))}
         </div>
 
+        {isTeam && (
+          <div className="mb-4">
+            <p className="text-xs text-gray-500 mb-2 font-medium">Visível para:</p>
+            <div className="flex flex-col gap-1.5">
+              {VISIBILITY_OPTIONS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex items-start gap-2.5 p-2 rounded-xl border cursor-pointer transition-colors ${
+                    minRole === opt.value
+                      ? "border-brand-500 bg-brand-50"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="minRole"
+                    value={opt.value}
+                    checked={minRole === opt.value}
+                    onChange={() => setMinRole(opt.value)}
+                    className="mt-0.5 accent-brand-600"
+                  />
+                  <div>
+                    <span className="text-xs font-medium text-gray-800">{opt.label}</span>
+                    <p className="text-[10px] text-gray-400">{opt.description}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2">
           <button
             onClick={onClose}
@@ -427,7 +486,7 @@ function CreateFolderModal({ isTeam, onClose, onCreate }: CreateFolderModalProps
             Cancelar
           </button>
           <button
-            onClick={() => name.trim() && onCreate(name.trim(), color, isTeam)}
+            onClick={() => name.trim() && onCreate(name.trim(), color, isTeam, minRole)}
             disabled={!name.trim()}
             className="flex-1 text-xs bg-brand-600 hover:bg-brand-700 text-white rounded-xl py-2 disabled:opacity-40"
           >
@@ -577,10 +636,10 @@ export function AssistantPage() {
 
   // ── Folder actions ──────────────────────────────────────────────────────────
 
-  const handleCreateFolder = useCallback(async (name: string, color: string, isTeam: boolean) => {
+  const handleCreateFolder = useCallback(async (name: string, color: string, isTeam: boolean, minRole: string) => {
     setCreateFolderModal(null);
     try {
-      const f = await assistantApi.createFolder({ name, color, is_team: isTeam });
+      const f = await assistantApi.createFolder({ name, color, is_team: isTeam, min_role: minRole });
       addFolder(f);
     } catch {
       toast.error("Erro ao criar pasta.");

@@ -30,6 +30,7 @@ export interface AssistantFolder {
   name: string;
   color: string;
   isTeam: boolean;
+  minRole: string;
   userId: string | null;
   createdAt: string;
 }

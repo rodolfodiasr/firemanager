@@ -25,6 +25,7 @@ class AssistantFolder(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     color: Mapped[str] = mapped_column(String(7), nullable=False, default="#6366f1")
     is_team: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    min_role: Mapped[str] = mapped_column(String(20), nullable=False, default="analyst_n1")
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

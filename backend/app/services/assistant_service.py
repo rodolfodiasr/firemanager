@@ -5,13 +5,39 @@ import hashlib
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select, desc, or_
+from sqlalchemy import select, desc, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assistant import AssistantFolder, AssistantMessage, AssistantSession
 from app.models.user_tenant_role import TenantRole
 from app.services.assistant_data_scope import build_context_for_query
 from app.services.llm_provider import get_provider
+
+# ── Hierarquia de roles para controle de visibilidade de pastas ───────────────
+
+_ROLE_ORDER: dict[str, int] = {
+    "readonly":   0,
+    "analyst_n1": 1,
+    "analyst":    1,   # alias legado
+    "analyst_n2": 2,
+    "admin":      3,
+}
+
+def _roles_visible_to(user_role: TenantRole) -> list[str]:
+    """Retorna todos os valores de min_role acessíveis para este role."""
+    level = _ROLE_ORDER.get(user_role.value, 0)
+    return [r for r, lv in _ROLE_ORDER.items() if lv <= level]
+
+# ── Pastas padrão por domínio ─────────────────────────────────────────────────
+
+_DEFAULT_TEAM_FOLDERS: list[dict] = [
+    {"name": "Firewalls — Geral",        "color": "#f97316", "min_role": "analyst_n1"},
+    {"name": "Firewalls — N2 Avançado",  "color": "#ef4444", "min_role": "analyst_n2"},
+    {"name": "Redes — Geral",            "color": "#3b82f6", "min_role": "analyst_n1"},
+    {"name": "Redes — N2 Avançado",      "color": "#6366f1", "min_role": "analyst_n2"},
+    {"name": "Servidores — Geral",       "color": "#10b981", "min_role": "analyst_n1"},
+    {"name": "Administração",            "color": "#8b5cf6", "min_role": "admin"},
+]
 
 _ASSISTANT_SYSTEM_TEMPLATE = """\
 Você é o AI Assistant do Eternity SecOps, plataforma de operação de infraestrutura \
@@ -191,9 +217,11 @@ async def list_team_sessions(
     db: AsyncSession,
     tenant_id: UUID,
     user_id: UUID,
+    user_role: TenantRole,
     limit: int = 100,
 ) -> list[AssistantSession]:
-    """Sessões visíveis para a equipe: is_shared=True ou em pasta de equipe."""
+    """Sessões visíveis para a equipe: is_shared=True ou em pasta de equipe acessível."""
+    visible_roles = _roles_visible_to(user_role)
     result = await db.execute(
         select(AssistantSession)
         .outerjoin(AssistantFolder, AssistantSession.folder_id == AssistantFolder.id)
@@ -202,7 +230,10 @@ async def list_team_sessions(
             AssistantSession.user_id != user_id,
             or_(
                 AssistantSession.is_shared.is_(True),
-                AssistantFolder.is_team.is_(True),
+                and_(
+                    AssistantFolder.is_team.is_(True),
+                    AssistantFolder.min_role.in_(visible_roles),
+                ),
             ),
         )
         .order_by(desc(AssistantSession.updated_at))
@@ -371,19 +402,48 @@ async def pin_session(
 
 # ── Folder CRUD ───────────────────────────────────────────────────────────────
 
+async def _seed_default_folders(db: AsyncSession, tenant_id: UUID) -> None:
+    """Cria pastas de equipe padrão se o tenant ainda não tiver nenhuma."""
+    existing = await db.execute(
+        select(AssistantFolder).where(
+            AssistantFolder.tenant_id == tenant_id,
+            AssistantFolder.is_team.is_(True),
+        ).limit(1)
+    )
+    if existing.scalar_one_or_none():
+        return
+    for spec in _DEFAULT_TEAM_FOLDERS:
+        db.add(AssistantFolder(
+            tenant_id=tenant_id,
+            user_id=None,
+            name=spec["name"],
+            color=spec["color"],
+            is_team=True,
+            min_role=spec["min_role"],
+        ))
+    await db.flush()
+    await db.commit()
+
+
 async def list_folders(
     db: AsyncSession,
     tenant_id: UUID,
     user_id: UUID,
+    user_role: TenantRole,
 ) -> list[AssistantFolder]:
-    """Pastas pessoais do usuário + pastas de equipe do tenant."""
+    """Pastas pessoais do usuário + pastas de equipe visíveis pelo seu role."""
+    await _seed_default_folders(db, tenant_id)
+    visible_roles = _roles_visible_to(user_role)
     result = await db.execute(
         select(AssistantFolder)
         .where(
             AssistantFolder.tenant_id == tenant_id,
             or_(
                 AssistantFolder.user_id == user_id,
-                AssistantFolder.is_team.is_(True),
+                and_(
+                    AssistantFolder.is_team.is_(True),
+                    AssistantFolder.min_role.in_(visible_roles),
+                ),
             ),
         )
         .order_by(AssistantFolder.is_team, AssistantFolder.name)
@@ -398,6 +458,7 @@ async def create_folder(
     name: str,
     color: str,
     is_team: bool,
+    min_role: str = "analyst_n1",
 ) -> AssistantFolder:
     folder = AssistantFolder(
         tenant_id=tenant_id,
@@ -405,6 +466,7 @@ async def create_folder(
         name=name[:80],
         color=color,
         is_team=is_team,
+        min_role=min_role if is_team else "readonly",
     )
     db.add(folder)
     await db.flush()

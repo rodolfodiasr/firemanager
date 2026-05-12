@@ -37,6 +37,7 @@ interface AssistantFolderResponse {
   name: string;
   color: string;
   is_team: boolean;
+  min_role: string;
   user_id: string | null;
   created_at: string;
 }
@@ -83,6 +84,7 @@ function mapFolder(r: AssistantFolderResponse): AssistantFolder {
     name: r.name,
     color: r.color,
     isTeam: r.is_team,
+    minRole: r.min_role ?? "analyst_n1",
     userId: r.user_id,
     createdAt: r.created_at,
   };
@@ -163,7 +165,7 @@ export const assistantApi = {
       .get<AssistantFolderResponse[]>("/assistant/folders")
       .then((r) => r.data.map(mapFolder)),
 
-  createFolder: (data: { name: string; color?: string; is_team: boolean }) =>
+  createFolder: (data: { name: string; color?: string; is_team: boolean; min_role?: string }) =>
     apiClient
       .post<AssistantFolderResponse>("/assistant/folders", data)
       .then((r) => mapFolder(r.data)),

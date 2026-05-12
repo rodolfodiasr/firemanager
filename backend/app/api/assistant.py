@@ -85,6 +85,7 @@ class AssistantFolderRead(BaseModel):
     name: str
     color: str
     is_team: bool
+    min_role: str
     user_id: str | None
     created_at: str
 
@@ -95,6 +96,7 @@ class AssistantFolderRead(BaseModel):
             name=f.name,
             color=f.color,
             is_team=f.is_team,
+            min_role=getattr(f, "min_role", "analyst_n1"),
             user_id=str(f.user_id) if f.user_id else None,
             created_at=f.created_at.isoformat(),
         )
@@ -109,6 +111,7 @@ class CreateFolderRequest(BaseModel):
     name: str
     color: str = "#6366f1"
     is_team: bool = False
+    min_role: str = "analyst_n1"
 
 
 class UpdateFolderRequest(BaseModel):
@@ -192,7 +195,7 @@ async def list_team_sessions(
     from app.models.assistant import AssistantSession
     from app.models.user import User
 
-    sessions = await assistant_service.list_team_sessions(db, ctx.tenant.id, ctx.user.id)
+    sessions = await assistant_service.list_team_sessions(db, ctx.tenant.id, ctx.user.id, ctx.role)
 
     # Buscar nomes dos autores em batch
     user_ids = list({s.user_id for s in sessions})
@@ -303,7 +306,7 @@ async def list_folders(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[AssistantFolderRead]:
-    folders = await assistant_service.list_folders(db, ctx.tenant.id, ctx.user.id)
+    folders = await assistant_service.list_folders(db, ctx.tenant.id, ctx.user.id, ctx.role)
     return [AssistantFolderRead.from_orm(f) for f in folders]
 
 
@@ -317,7 +320,7 @@ async def create_folder(
         raise HTTPException(status_code=400, detail="Nome da pasta não pode ser vazio.")
     folder = await assistant_service.create_folder(
         db, ctx.tenant.id, ctx.user.id,
-        data.name.strip(), data.color, data.is_team,
+        data.name.strip(), data.color, data.is_team, data.min_role,
     )
     return AssistantFolderRead.from_orm(folder)
 
