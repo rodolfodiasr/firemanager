@@ -88,13 +88,22 @@ class SonicWallConnector(BaseConnector):
                 **auth_kwargs,
                 auth=httpx.DigestAuth(self.username, self.password),
             )
+
+            # HTTP 406 means the device rejected {"override": True} — it's a Gen6 device
+            # with unknown firmware_version. Retry without override to auto-detect Gen6.
+            if resp.status_code == 406 and not is_v6_hint:
+                logger.info("SonicWall auth 406 with override=True, retrying as Gen6 (no override)")
+                resp = await client.post(
+                    "/api/sonicos/auth",
+                    auth=httpx.DigestAuth(self.username, self.password),
+                )
+                if resp.is_success:
+                    self._v6 = True  # confirmed Gen6
+
             if not resp.is_success:
                 logger.warning(
-                    "SonicWall auth HTTP %s | is_v6=%s os_version=%s | "
-                    "req_headers=%s | resp_headers=%s | body=%r",
+                    "SonicWall auth HTTP %s | is_v6=%s os_version=%s | body=%r",
                     resp.status_code, is_v6_hint, self.os_version,
-                    dict(resp.request.headers),
-                    dict(resp.headers),
                     resp.text[:500],
                 )
                 raise Exception(
