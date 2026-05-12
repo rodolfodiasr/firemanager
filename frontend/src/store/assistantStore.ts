@@ -17,8 +17,21 @@ export interface AssistantSession {
   title?: string | null;
   modelUsed: string;
   messageCount: number;
+  folderId?: string | null;
+  isShared: boolean;
+  pinned: boolean;
+  userName?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AssistantFolder {
+  id: string;
+  name: string;
+  color: string;
+  isTeam: boolean;
+  userId: string | null;
+  createdAt: string;
 }
 
 interface AssistantState {
@@ -26,6 +39,8 @@ interface AssistantState {
   currentSessionId: string | null;
   messages: AssistantMessage[];
   sessions: AssistantSession[];
+  teamSessions: AssistantSession[];
+  folders: AssistantFolder[];
   loading: boolean;
   selectedModel: "claude" | "openai";
   openaiAvailable: boolean;
@@ -39,8 +54,17 @@ interface AssistantState {
   addMessage: (msg: AssistantMessage) => void;
   setMessages: (msgs: AssistantMessage[]) => void;
   setSessions: (s: AssistantSession[]) => void;
+  setTeamSessions: (s: AssistantSession[]) => void;
+  setFolders: (f: AssistantFolder[]) => void;
   setCurrentSessionId: (id: string | null) => void;
   newSession: () => void;
+
+  // Mutações locais (otimistas)
+  updateSession: (id: string, patch: Partial<AssistantSession>) => void;
+  removeSession: (id: string) => void;
+  addFolder: (f: AssistantFolder) => void;
+  updateFolder: (id: string, patch: Partial<AssistantFolder>) => void;
+  removeFolder: (id: string) => void;
 }
 
 export const useAssistantStore = create<AssistantState>((set) => ({
@@ -48,6 +72,8 @@ export const useAssistantStore = create<AssistantState>((set) => ({
   currentSessionId: null,
   messages: [],
   sessions: [],
+  teamSessions: [],
+  folders: [],
   loading: false,
   selectedModel: "claude",
   openaiAvailable: false,
@@ -61,6 +87,33 @@ export const useAssistantStore = create<AssistantState>((set) => ({
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
   setMessages: (msgs) => set({ messages: msgs }),
   setSessions: (sessions) => set({ sessions }),
+  setTeamSessions: (teamSessions) => set({ teamSessions }),
+  setFolders: (folders) => set({ folders }),
   setCurrentSessionId: (id) => set({ currentSessionId: id }),
   newSession: () => set({ currentSessionId: null, messages: [] }),
+
+  updateSession: (id, patch) =>
+    set((s) => ({
+      sessions: s.sessions.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+      teamSessions: s.teamSessions.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+    })),
+  removeSession: (id) =>
+    set((s) => ({
+      sessions: s.sessions.filter((x) => x.id !== id),
+      teamSessions: s.teamSessions.filter((x) => x.id !== id),
+      currentSessionId: s.currentSessionId === id ? null : s.currentSessionId,
+      messages: s.currentSessionId === id ? [] : s.messages,
+    })),
+  addFolder: (f) => set((s) => ({ folders: [...s.folders, f] })),
+  updateFolder: (id, patch) =>
+    set((s) => ({
+      folders: s.folders.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+    })),
+  removeFolder: (id) =>
+    set((s) => ({
+      folders: s.folders.filter((x) => x.id !== id),
+      sessions: s.sessions.map((x) =>
+        x.folderId === id ? { ...x, folderId: null } : x
+      ),
+    })),
 }));
