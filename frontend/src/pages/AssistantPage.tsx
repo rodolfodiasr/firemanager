@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Bot, Send, Loader2, Plus, Trash2, Sparkles, Database,
   Pin, PinOff, FolderOpen, Folder, Users, MoreHorizontal,
-  Pencil, Share2, FolderInput, Check, X, ChevronRight, ChevronDown,
+  Pencil, Share2, FolderInput, Check, X, ChevronRight, ChevronDown, FileText,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import {
@@ -11,7 +11,8 @@ import {
   type AssistantSession,
   type AssistantFolder,
 } from "../store/assistantStore";
-import { assistantApi } from "../api/assistant";
+import { assistantApi, assistantDocsApi, type DocDraft } from "../api/assistant";
+import { DocDraftModal } from "../components/assistant/DocDraftModal";
 import toast from "react-hot-toast";
 
 // ── Paleta de cores para pastas ───────────────────────────────────────────────
@@ -553,6 +554,8 @@ export function AssistantPage() {
   const [input, setInput] = useState("");
   const [createFolderModal, setCreateFolderModal] = useState<{ isTeam: boolean } | null>(null);
   const [renameFolderTarget, setRenameFolderTarget] = useState<AssistantFolder | null>(null);
+  const [generatingDoc, setGeneratingDoc] = useState(false);
+  const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Carregamento inicial
@@ -633,6 +636,22 @@ export function AssistantPage() {
       toast.error("Erro ao remover sessão.");
     }
   }, []);
+
+  const handleGenerateDoc = async () => {
+    if (!currentSessionId || generatingDoc) return;
+    setGeneratingDoc(true);
+    try {
+      const draft = await assistantDocsApi.generateDoc(currentSessionId);
+      setDocDraft(draft);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        "Erro ao gerar documentação.";
+      toast.error(msg);
+    } finally {
+      setGeneratingDoc(false);
+    }
+  };
 
   // ── Folder actions ──────────────────────────────────────────────────────────
 
@@ -921,15 +940,27 @@ export function AssistantPage() {
                 </span>
               )}
             </div>
-            {openaiAvailable && (
-              <button
-                onClick={() => setModel(selectedModel === "claude" ? "openai" : "claude")}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors shrink-0"
-              >
-                <Bot size={12} />
-                Modelo: {selectedModel === "claude" ? "Claude" : "GPT-4o"}
-              </button>
-            )}
+            <div className="flex items-center gap-2 shrink-0">
+              {currentSessionId && messages.length > 0 && (
+                <button
+                  onClick={handleGenerateDoc}
+                  disabled={generatingDoc}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-brand-50 hover:border-brand-300 text-gray-600 hover:text-brand-700 disabled:opacity-50 transition-colors"
+                >
+                  {generatingDoc ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
+                  {generatingDoc ? "Gerando…" : "Documentar"}
+                </button>
+              )}
+              {openaiAvailable && (
+                <button
+                  onClick={() => setModel(selectedModel === "claude" ? "openai" : "claude")}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors"
+                >
+                  <Bot size={12} />
+                  Modelo: {selectedModel === "claude" ? "Claude" : "GPT-4o"}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Mensagens */}
@@ -1004,6 +1035,13 @@ export function AssistantPage() {
           folder={renameFolderTarget}
           onClose={() => setRenameFolderTarget(null)}
           onRename={(name) => handleRenameFolder(renameFolderTarget.id, name)}
+        />
+      )}
+      {docDraft && (
+        <DocDraftModal
+          draft={docDraft}
+          onClose={() => setDocDraft(null)}
+          onUpdated={(updated) => setDocDraft(updated)}
         />
       )}
     </PageWrapper>
