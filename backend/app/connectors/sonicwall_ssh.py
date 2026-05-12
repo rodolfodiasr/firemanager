@@ -493,6 +493,22 @@ class SonicWallSSHConnector:
             error=None if success else output,
         )
 
+    async def get_firmware_version(self) -> str | None:
+        """Get SonicOS firmware version via SSH show version (normal mode, no configure).
+
+        Works even when another admin has a REST or configure-mode session open,
+        because show commands run at exec level without occupying the config session.
+        Returns a string like 'SonicOS 6.5.4.15-115n' or None if unavailable.
+        """
+        import re
+        result = await self.execute_show_commands(["show version"])
+        if not result.success:
+            return None
+        m = re.search(r"SonicOS(?:\s+Enhanced)?\s+([\d]+\.[\d\.]+[\-\w]*)", result.output, re.IGNORECASE)
+        if m:
+            return f"SonicOS {m.group(1)}"
+        return None
+
     # ------------------------------------------------------------------
     # Security services collection (GAV / Anti-Spyware / IPS)
     # ------------------------------------------------------------------

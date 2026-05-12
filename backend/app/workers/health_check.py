@@ -17,7 +17,7 @@ def run_health_checks(self: object) -> dict[str, int]:
 async def _async_health_checks() -> dict[str, int]:
     import app.models  # ensure all models are registered in SQLAlchemy metadata
     from app.database import AsyncSessionLocal
-    from app.models.device import Device, DeviceStatus
+    from app.models.device import Device, DeviceStatus, VendorEnum
     from app.connectors.factory import CLI_VENDORS, get_connector, get_ssh_connector
     from sqlalchemy import select
 
@@ -34,6 +34,20 @@ async def _async_health_checks() -> dict[str, int]:
                 else:
                     connector = get_connector(device)
                 check_result = await connector.test_connection()
+
+                # SonicWall REST may fail (406) when a session is occupied.
+                # Fall back to SSH: confirms device is online and reads firmware version.
+                if not check_result.success and device.vendor == VendorEnum.sonicwall:
+                    try:
+                        ssh = get_ssh_connector(device)
+                        fw = await ssh.get_firmware_version()
+                        if fw:
+                            from app.connectors.base import ConnectionResult
+                            check_result = ConnectionResult(success=True, firmware_version=fw, latency_ms=0)
+                            log.info("sonicwall_ssh_firmware_fallback", device_id=str(device.id), firmware=fw)
+                    except Exception as ssh_exc:
+                        log.debug("sonicwall_ssh_fallback_failed", device_id=str(device.id), error=str(ssh_exc))
+
                 if check_result.success:
                     device.status = DeviceStatus.online
                     fw = getattr(check_result, "firmware_version", None)
