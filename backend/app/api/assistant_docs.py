@@ -18,6 +18,13 @@ router = APIRouter()
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+class SimilarDocRead(BaseModel):
+    bs_page_id: int
+    title: str
+    url: str
+    similarity: float
+
+
 class DocDraftRead(BaseModel):
     id: str
     session_id: str
@@ -28,6 +35,7 @@ class DocDraftRead(BaseModel):
     status: str
     review_deadline: str | None
     sanitizer_warnings: list[dict]
+    similar_docs: list[SimilarDocRead]
     bookstack_page_id: int | None
     bookstack_page_url: str | None
     created_at: str
@@ -45,6 +53,7 @@ class DocDraftRead(BaseModel):
             status=d.status,
             review_deadline=d.review_deadline.isoformat() if d.review_deadline else None,
             sanitizer_warnings=d.sanitizer_warnings or [],
+            similar_docs=[SimilarDocRead(**s) for s in (d.similar_docs or [])],
             bookstack_page_id=d.bookstack_page_id,
             bookstack_page_url=d.bookstack_page_url,
             created_at=d.created_at.isoformat(),

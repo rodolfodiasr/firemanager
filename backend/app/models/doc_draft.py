@@ -35,6 +35,8 @@ class AssistantDocDraft(Base):
     )
     # [{pattern, excerpt, field}]
     sanitizer_warnings: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # [{bs_page_id, title, url, similarity}]
+    similar_docs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     bookstack_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bookstack_page_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

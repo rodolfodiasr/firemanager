@@ -1,6 +1,7 @@
 """DocPublisher — orquestra extração, sanitização e publicação no BookStack."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -12,6 +13,8 @@ from app.models.doc_draft import AssistantDocDraft
 from app.services import doc_extractor, doc_sanitizer
 from app.services.integration_service import resolve_integration
 from app.models.integration import IntegrationType
+
+log = logging.getLogger(__name__)
 
 
 # ── Geração de rascunho ───────────────────────────────────────────────────────
@@ -49,6 +52,9 @@ async def generate_draft(
     # Sanitiza
     sanitized_content, warnings = doc_sanitizer.sanitize(raw_content)
 
+    # Busca documentos similares no BookStack (não bloqueia em caso de falha)
+    similar = await _find_similar_docs(db, tenant_id, sanitized_content)
+
     # Persiste draft
     draft = AssistantDocDraft(
         session_id=session_id,
@@ -59,6 +65,7 @@ async def generate_draft(
         status="draft",
         review_deadline=datetime.now(timezone.utc) + timedelta(hours=48),
         sanitizer_warnings=warnings,
+        similar_docs=similar,
     )
     db.add(draft)
     await db.flush()
@@ -206,6 +213,66 @@ async def get_draft(
         )
     )
     return result.scalar_one_or_none()
+
+
+# ── Similaridade semântica ────────────────────────────────────────────────────
+
+_SIMILARITY_THRESHOLD = 0.75
+_SIMILARITY_TOP_K = 3
+
+
+async def _find_similar_docs(
+    db: AsyncSession,
+    tenant_id: UUID,
+    content: str,
+) -> list[dict]:
+    """Busca páginas similares no BookStack via pgvector (cosine similarity).
+
+    Retorna lista de {bs_page_id, title, url, similarity} ordenada por relevância.
+    Retorna [] silenciosamente se OpenAI não estiver configurado ou tabela vazia.
+    """
+    try:
+        from app.services.embedding_service import generate_embeddings
+        from app.models.bookstack_embedding import BookstackEmbedding
+
+        # Trunca conteúdo para economizar tokens (~2000 chars é suficiente para capturar o tema)
+        text = content[:2000]
+        vectors = await generate_embeddings([text])
+        query_vector = vectors[0]
+
+        stmt = (
+            select(
+                BookstackEmbedding.bs_page_id,
+                BookstackEmbedding.bs_page_name,
+                BookstackEmbedding.bs_page_url,
+                BookstackEmbedding.embedding.cosine_distance(query_vector).label("distance"),
+            )
+            .where(BookstackEmbedding.tenant_id == tenant_id)
+            .order_by(BookstackEmbedding.embedding.cosine_distance(query_vector))
+            .limit(_SIMILARITY_TOP_K * 5)  # busca mais chunks para deduplicar por página
+        )
+
+        rows = (await db.execute(stmt)).all()
+
+        # Deduplica por bs_page_id mantendo a maior similaridade do chunk mais próximo
+        seen: dict[int, dict] = {}
+        for row in rows:
+            sim = round(1.0 - float(row.distance), 3)
+            if sim < _SIMILARITY_THRESHOLD:
+                continue
+            if row.bs_page_id not in seen or sim > seen[row.bs_page_id]["similarity"]:
+                seen[row.bs_page_id] = {
+                    "bs_page_id": row.bs_page_id,
+                    "title": row.bs_page_name or f"Página {row.bs_page_id}",
+                    "url": row.bs_page_url or "",
+                    "similarity": sim,
+                }
+
+        return sorted(seen.values(), key=lambda x: x["similarity"], reverse=True)[:_SIMILARITY_TOP_K]
+
+    except Exception as exc:
+        log.debug("Similarity check ignorado: %s", exc)
+        return []
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────

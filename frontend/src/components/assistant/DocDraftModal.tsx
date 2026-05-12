@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  X, AlertTriangle, CheckCircle, BookOpen, Loader2, Edit2, XCircle,
+  X, AlertTriangle, CheckCircle, BookOpen, Loader2, Edit2, XCircle, Copy,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { assistantDocsApi, type DocDraft } from "../../api/assistant";
@@ -44,6 +44,7 @@ export function DocDraftModal({ draft: initialDraft, onClose, onUpdated }: Props
   const isPublished = draft.status === "published";
   const isRejected = draft.status === "rejected";
   const hasWarnings = draft.sanitizer_warnings.length > 0;
+  const hasSimilar = (draft.similar_docs ?? []).length > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -81,6 +82,40 @@ export function DocDraftModal({ draft: initialDraft, onClose, onUpdated }: Props
                     >
                       {w.pattern}
                     </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Documentos similares */}
+        {hasSimilar && (
+          <div className="px-6 py-3 bg-orange-50 border-b border-orange-200 shrink-0">
+            <div className="flex items-start gap-2">
+              <Copy size={15} className="text-orange-500 mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-orange-800">
+                  {draft.similar_docs.length} documento(s) similar(es) já existe(m) no BookStack
+                </p>
+                <p className="text-[10px] text-orange-600 mt-0.5">
+                  Considere atualizar um existente antes de publicar um novo.
+                </p>
+                <div className="mt-2 space-y-1">
+                  {draft.similar_docs.map((doc) => (
+                    <div key={doc.bs_page_id} className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded shrink-0">
+                        {Math.round(doc.similarity * 100)}%
+                      </span>
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-orange-700 hover:text-orange-900 hover:underline truncate"
+                      >
+                        {doc.title}
+                      </a>
+                    </div>
                   ))}
                 </div>
               </div>

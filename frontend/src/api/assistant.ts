@@ -7,6 +7,13 @@ import type {
 
 // ── Doc Draft types ───────────────────────────────────────────────────────────
 
+export interface SimilarDoc {
+  bs_page_id: number;
+  title: string;
+  url: string;
+  similarity: number;
+}
+
 export interface DocDraft {
   id: string;
   session_id: string;
@@ -17,6 +24,7 @@ export interface DocDraft {
   status: "draft" | "approved" | "published" | "rejected";
   review_deadline: string | null;
   sanitizer_warnings: { pattern: string; excerpt: string }[];
+  similar_docs: SimilarDoc[];
   bookstack_page_id: number | null;
   bookstack_page_url: string | null;
   created_at: string;
