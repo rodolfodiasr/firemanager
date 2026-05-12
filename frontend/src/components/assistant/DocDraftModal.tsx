@@ -1,4 +1,3 @@
-"""Modal de preview, revisão e publicação de rascunhos de documentação."""
 import { useState } from "react";
 import {
   X, AlertTriangle, CheckCircle, BookOpen, Loader2, Edit2, XCircle,
