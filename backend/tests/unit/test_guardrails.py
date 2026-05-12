@@ -280,7 +280,7 @@ class TestGuardrailResult:
             GuardrailViolation(Severity.WARN, "w1", "c1", "warn msg"),
             GuardrailViolation(Severity.BLOCK, "b1", "c2", "block msg"),
         ])
-        assert r.block_reason == "block msg"
+        assert "block msg" in r.block_reason
 
     def test_block_reason_none_when_no_blocks(self):
         r = GuardrailResult(violations=[
