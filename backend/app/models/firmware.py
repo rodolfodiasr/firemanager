@@ -1,8 +1,8 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Float, ForeignKey, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMPTZ
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -18,7 +18,7 @@ class DeviceFirmwareVersion(Base):
     vendor_label: Mapped[str] = mapped_column(String(100))
     model: Mapped[str | None] = mapped_column(String(200))
     build: Mapped[str | None] = mapped_column(String(50))
-    read_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, server_default=func.now())
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     read_method: Mapped[str] = mapped_column(String(20), server_default="rest")
     raw_output: Mapped[str | None] = mapped_column(Text)
 
@@ -35,11 +35,11 @@ class FirmwareCVE(Base):
     cvss_v2: Mapped[float | None] = mapped_column(Float)
     severity: Mapped[str] = mapped_column(String(20), server_default="UNKNOWN")
     description: Mapped[str] = mapped_column(Text, server_default="")
-    published_at: Mapped[datetime | None] = mapped_column(TIMESTAMPTZ)
-    modified_at: Mapped[datetime | None] = mapped_column(TIMESTAMPTZ)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cpe_uri: Mapped[str | None] = mapped_column(String(500))
     nvd_url: Mapped[str] = mapped_column(String(300), server_default="")
-    synced_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, server_default=func.now())
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class DeviceFirmwareVulnerability(Base):
@@ -50,8 +50,8 @@ class DeviceFirmwareVulnerability(Base):
     device_id: Mapped[UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
     cve_id: Mapped[str] = mapped_column(String(30))
     device_version: Mapped[str] = mapped_column(String(100))
-    detected_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, server_default=func.now())
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     status: Mapped[str] = mapped_column(String(20), server_default="open")
     accepted_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     accepted_reason: Mapped[str | None] = mapped_column(Text)
-    patched_at: Mapped[datetime | None] = mapped_column(TIMESTAMPTZ)
+    patched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
