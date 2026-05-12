@@ -186,23 +186,7 @@ async def inspect_device(
             return {"resource": resource, "items": items}
 
         # ── REST API resources ────────────────────────────────────────────────
-        # SonicWall routes: SSH with full pagination (--MORE-- handled), then fallback to REST
-        # Rules and NAT use REST directly — gives structured data; SSH output is raw and truncated
-        if device.vendor == VendorEnum.sonicwall and resource == "routes":
-            ssh = get_ssh_connector(device)
-            try:
-                ssh_result = await ssh.execute_show_commands_full(["show route ipv4"])
-                if ssh_result.success and ssh_result.output:
-                    raw = _ANSI_RE.sub("", ssh_result.output).strip()
-                    return {
-                        "resource": resource,
-                        "items": [{"type": "Raw", "name": "show route ipv4", "details": raw}],
-                    }
-                logger.warning("inspect SSH for %s/routes: %s", device_id, ssh_result.error)
-            except Exception as exc_ssh:
-                logger.warning("inspect SSH exception for %s/routes: %s", device_id, exc_ssh)
-            # SSH failed — fall through to REST
-
+        # All SonicWall resources (rules, nat, routes) use REST for structured data
         connector = get_connector(device)
 
         if resource == "rules":
