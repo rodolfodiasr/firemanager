@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ShieldAlert, RefreshCw, CheckCircle, ExternalLink, Loader2 } from "lucide-react";
-import { firmwareApi, type FirmwareVulnRead } from "../../api/firmware";
+import { firmwareApi, type FirmwareVulnRead, type FirmwareVersionRead } from "../../api/firmware";
 
 const SEVERITY_COLORS: Record<string, string> = {
   CRITICAL: "text-red-600 bg-red-50 border-red-200",
@@ -170,7 +170,7 @@ export function FirmwareTab({ deviceId }: FirmwareTabProps) {
         <div className="bg-gray-50 rounded-lg p-3">
           <p className="text-xs font-medium text-gray-500 mb-2">Histórico de versões lidas</p>
           <div className="space-y-1">
-            {versions.slice(0, 5).map(v => (
+            {versions.slice(0, 5).map((v: FirmwareVersionRead) => (
               <div key={v.id} className="flex items-center justify-between text-xs text-gray-600">
                 <span className="font-medium">{v.version}</span>
                 <span className="text-gray-400">{v.vendor_label} · {new Date(v.read_at).toLocaleString("pt-BR")}</span>
@@ -208,7 +208,7 @@ export function FirmwareTab({ deviceId }: FirmwareTabProps) {
         )}
 
         <div className="space-y-2">
-          {vulns?.map(v => (
+          {vulns?.map((v: FirmwareVulnRead) => (
             <VulnRow key={v.id} vuln={v} onAccept={setAcceptTarget} />
           ))}
         </div>
