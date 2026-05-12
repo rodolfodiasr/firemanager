@@ -9,9 +9,10 @@ import { PageWrapper } from "../components/layout/PageWrapper";
 import { devicesApi } from "../api/devices";
 import type { Device } from "../types/device";
 import { InspectorRecommendations } from "./InspectorRecommendations";
+import { FirmwareTab } from "../components/devices/FirmwareTab";
 
 type Resource = "rules" | "nat" | "routes" | "security" | "content_filter" | "app_rules";
-type ActiveTab = Resource | "recommendations";
+type ActiveTab = Resource | "recommendations" | "firmware";
 
 const RESOURCE_TABS: { key: Resource; label: string }[] = [
   { key: "rules", label: "Regras de Acesso" },
@@ -492,6 +493,24 @@ export function Inspector() {
               <ScanSearch size={14} />
               Recomendações
             </button>
+            <button
+              onClick={() => setActiveTab("firmware")}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                activeTab === "firmware"
+                  ? "bg-white shadow-sm text-orange-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <ShieldCheck size={14} />
+              Firmware / CVEs
+            </button>
+          </div>
+        )}
+
+        {/* Firmware / CVEs tab */}
+        {deviceId && activeTab === "firmware" && (
+          <div className="bg-white rounded-xl border border-gray-200">
+            <FirmwareTab deviceId={deviceId} />
           </div>
         )}
 
