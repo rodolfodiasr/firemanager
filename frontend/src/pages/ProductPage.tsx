@@ -17,7 +17,7 @@ type Tab = "billing" | "onboarding" | "help" | "preferences";
 export function ProductPage() {
   const [tab, setTab] = useState<Tab>("billing");
 
-  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number | string }> }[] = [
     { id: "billing", label: "Billing & Planos", icon: Coins },
     { id: "onboarding", label: "Onboarding", icon: Sparkles },
     { id: "help", label: "Central de Ajuda", icon: BookOpen },

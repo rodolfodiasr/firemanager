@@ -17,7 +17,7 @@ type Tab = "vault" | "opa" | "profiles" | "pentest";
 export function SecurityInfraPage() {
   const [tab, setTab] = useState<Tab>("vault");
 
-  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number | string }> }[] = [
     { id: "vault", label: "HashiCorp Vault", icon: Database },
     { id: "opa", label: "OPA Políticas", icon: Shield },
     { id: "profiles", label: "Perfis de Hardening", icon: ShieldCheck },

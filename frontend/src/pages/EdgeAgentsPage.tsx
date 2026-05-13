@@ -17,7 +17,7 @@ type Tab = "agents" | "sso" | "marketplace" | "rbac";
 export function EdgeAgentsPage() {
   const [tab, setTab] = useState<Tab>("agents");
 
-  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number | string }> }[] = [
     { id: "agents", label: "Edge Agents", icon: Cpu },
     { id: "sso", label: "SSO / OIDC", icon: KeyRound },
     { id: "marketplace", label: "Marketplace", icon: Store },
