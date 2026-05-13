@@ -281,13 +281,16 @@ async def _collect_ssh_resources(device, data):
 
 **3 planos:** Starter (R$490, 10 devices), Pro (R$1490, 50 devices), Enterprise (R$3490, unlimited).
 
-### F28.1 — DLP (em progresso)
+### F28.1 — DLP (backend completo, frontend pendente)
 | Arquivo | Descrição |
 |---|---|
-| `migrations/0067_dlp.py` | `dlp_configs` (config por tenant), `dlp_rules` (builtin+custom, UniqueConstraint tenant+rule_key), `dlp_incidents` (log sem dado original) |
+| `migrations/0067_dlp.py` | `dlp_configs` (unique por tenant), `dlp_rules` (UniqueConstraint tenant+rule_key), `dlp_incidents` (sem dado original) |
 | `app/models/dlp.py` | ORM: `DLPConfig`, `DLPRule`, `DLPIncident` |
-| `app/services/dlp_service.py` | **PENDENTE** — scanner PII, 15+ regras built-in, integração com assistant_service |
-| `app/api/dlp.py` | **PENDENTE** — GET/PATCH /dlp/config, GET /dlp/rules (+ seed + toggle), GET /dlp/incidents |
+| `app/services/dlp_service.py` | 17 regras builtin + validate_docbr CPF/CNPJ; `scan_text()`, `scan_message()` (pipeline completo), `seed_builtin_rules()`, `log_incidents()`; mascaramento `[DLP:RULE:hash8]` |
+| `app/api/dlp.py` | GET/PUT /config, GET/POST /rules, PUT/DELETE /rules/{id}, GET /incidents (+ seed automático) |
+| Integração `assistant.py` | `scan_message()` antes do envio ao Claude; bloqueia (HTTP 400) se `has_blocks`; envia `masked_text` se só warns |
+
+**Frontend pendente:** `frontend/src/pages/DLPPage.tsx` — `frontend/src/api/dlp.ts` já existe.
 
 ### Rotas registradas (main.py)
 | Prefix | Router | Tags |

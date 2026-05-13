@@ -170,13 +170,13 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 34 | Infraestrutura de Segurança Avançada | `vault_configs` + `vault_secret_refs` + `opa_policies` + `opa_evaluations` + `security_profiles` + `pentest_schedules` (migration 0064); `security_infra_service.py` (seed 3 políticas Rego built-in, `_evaluate_rego_simple`); API `/security-infra/*`; `SecurityInfraPage.tsx` (tabs: HashiCorp Vault, OPA Políticas, Perfis de Hardening, Pentest Tracker) | ✅ (parcial — CRUD config store; mTLS, microsegmentação Docker e container hardening real pendentes) |
 | 31 | Edge Agents, SSO/OIDC, Marketplace, RBAC Granular | `edge_agents` (token SHA-256) + `sso_configs` + `marketplace_plugins` + `tenant_plugins` + `rbac_custom_roles` + `rbac_role_assignments` (migration 0065); `edge_agent_service.py` (5 plugins builtin, `generate_agent_token`); API `/platform/*`; `EdgeAgentsPage.tsx` (tabs: Edge Agents, SSO/OIDC, Marketplace, RBAC Granular) | ✅ (parcial — CRUD + registro de agentes; WebSocket on-premise, fluxo OIDC real e CGNAT pendentes) |
 | 32 | Produto: Billing, Onboarding, Help Center, Preferências | `billing_plans` + `billing_subscriptions` + `billing_invoices` + `onboarding_checklists` + `help_articles` + `user_preferences` (migration 0066); `product_service.py` (3 planos seed, 4 artigos, checklist 4 etapas); API `/product/*`; `ProductPage.tsx` (tabs: Billing & Planos, Onboarding, Central de Ajuda, Preferências) | ✅ (parcial — CRUD completo; integração Stripe, i18n real e WCAG AA pendentes) |
-| 28.1 | DLP — Prevenção de Perda de Dados no Chat | `dlp_configs` + `dlp_rules` + `dlp_incidents` (migration 0067); `app/models/dlp.py` (`DLPConfig`, `DLPRule`, `DLPIncident`) | 🔄 Em progresso — migration + modelos criados; service, API e frontend pendentes |
+| 28.1 | DLP — Prevenção de Perda de Dados no Chat | `dlp_configs` + `dlp_rules` + `dlp_incidents` (migration 0067); `dlp_service.py` (17 regras builtin: CPF/CNPJ/PIS com validate_docbr, SSH key, JWT, AWS key, conn string, SNMP, VPN PSK, TACACS+, BGP…); API `/dlp/*` (config, rules CRUD, incidents); integração no `assistant.py` (bloqueia se `has_blocks`, mascara tokens `[DLP:CPF:abc123]`); `frontend/src/api/dlp.ts` | 🔄 Em progresso — backend 100% completo; pendente: `DLPPage.tsx` (frontend) |
 
 ### Próximas Fases (resumo)
 
 | Fase | Descrição | Entregáveis pendentes |
 |---|---|---|
-| 28.1 | DLP — Prevenção de Perda de Dados | 🔄 **Em progresso** — `dlp_service.py` (scanner PII, 15+ regras built-in), API `/dlp/*`, `DLPPage.tsx` (dashboard de incidentes, gestão de regras, configuração por tenant) |
+| 28.1 | DLP — Prevenção de Perda de Dados | 🔄 **Em progresso** — backend 100% completo (service, API, integração assistant); pendente: `DLPPage.tsx` (dashboard de incidentes, gestão de regras, config por tenant) |
 | 30 | Compliance Enterprise e BC/DR | Compliance packs (CIS/PCI/BACEN/LGPD + vertical Identidade), DPA/LGPD, RTO/RPO, SLA formal, relatório executivo |
 | 31.cont | Edge Agent — WebSocket on-premise + OIDC real | Edge agent WebSocket sainte para ambientes CGNAT; fluxo PKCE OIDC completo (Azure AD/Okta/Google); provisionamento JIT de usuários via SSO |
 | 32.cont | Produto — Stripe + i18n + Acessibilidade | Integração Stripe (checkout, webhooks `invoice.paid`/`payment_failed`); `react-i18next` (pt-BR/en-US); auditoria WCAG 2.1 AA com axe-core |
@@ -214,7 +214,7 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | Rate limiting por API key | Limites configuráveis por tenant e rota; headers `X-RateLimit-*` | Média | ⏳ F29 |
 | **Canal público de reporte de vuln** | E-mail `security@` com PGP key; SLA: crítico 24h, alto 7d, médio 30d | Média | ⏳ F33 |
 | **Suite de testes de segurança** | `tests/security/`: test_auth_boundaries (16), test_guardrails_advanced (25), test_role_enforcement (8), test_tenant_isolation (9); `tests/integration/test_multisig` (12) — 70 testes no total; cobertura: JWT expirado/adulterado, bypass de guardrails com Unicode/encoding, RBAC ops, isolamento multi-tenant, multi-sig approval | Alta | ✅ |
-| **DLP — Prevenção de Perda de Dados no Chat** | `dlp_configs` (config por tenant: enabled, compliance_mode, threshold) + `dlp_rules` (regras builtin+custom por categoria: pii/credential/network/sensitive) + `dlp_incidents` (log sem dado original: pii_type, action_taken, source, ip_address); migration 0067; modelos ORM criados | Alta | 🔄 Em progresso |
+| **DLP — Prevenção de Perda de Dados no Chat** | `dlp_configs` (config por tenant: enabled, compliance_mode, threshold) + `dlp_rules` (17 regras builtin: CPF/CNPJ validate_docbr, SSH key, JWT, AWS key, conn string, SNMP, VPN PSK, TACACS+, BGP…) + `dlp_incidents` (log sem dado original); `dlp_service.scan_message()` integrado ao `assistant.py` — mascara com token `[DLP:RULE:hash]` e bloqueia se `has_blocks`; API `/dlp/*` completa; `frontend/src/api/dlp.ts` pronto | Alta | 🔄 Em progresso — pendente: `DLPPage.tsx` |
 
 ---
 
@@ -279,21 +279,25 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 ---
 
 ### Fase 28.1 — DLP: Prevenção de Perda de Dados no Chat 🔄 (em progresso)
-*Interceptação de PII e dados sensíveis antes do envio ao LLM — proteção de chat do assistente IA*
+*Interceptação de PII e dados sensíveis antes do envio ao LLM — backend 100% completo, frontend pendente*
 
 **Implementado (migration 0067):**
 
 | Componente | Detalhe |
 |---|---|
-| `dlp_configs` | Config global DLP por tenant (unique): enabled, compliance_mode (bloqueia em vez de alertar), incident_threshold_count (default 5 incidentes), incident_threshold_hours (default 24h) |
-| `dlp_rules` | Regras por tenant (UniqueConstraint tenant+rule_key): rule_key, rule_name, category (pii/credential/network/sensitive), action (block/warn), is_enabled, is_builtin, pattern (regex custom) |
-| `dlp_incidents` | Log de incidentes SEM o dado original: pii_type, action_taken (block/warn), source (chat/api), ip_address |
+| `dlp_configs` | Config global DLP por tenant (unique): enabled, compliance_mode (bloqueia desativação por não-superadmin quando ativo), incident_threshold_count/hours |
+| `dlp_rules` | Regras por tenant (UniqueConstraint tenant+rule_key): builtin + custom; categorias: `pii_br`, `credentials`, `infra_mssp`, `custom`; action: block/warn; pattern (regex) |
+| `dlp_incidents` | Log de incidentes SEM o dado original: pii_type, action_taken, source (chat/api), ip_address |
 | `app/models/dlp.py` | ORM: `DLPConfig`, `DLPRule`, `DLPIncident` — SQLAlchemy 2.0 `Mapped[]` |
+| `app/services/dlp_service.py` | 17 regras builtin compiladas no import; `scan_text()` com validate_docbr (CPF/CNPJ dígitos verificadores); mascaramento com token `[DLP:RULE_KEY:sha256[:8]]`; `scan_message()` = pipeline completo (load config → load/seed rules → scan → log incidents) |
+| **17 regras builtin** | pii_br: CPF, CNPJ, PIS/PASEP, Título Eleitor, Dados Bancários, Chave PIX — credentials: Senha plain, SSH Private Key, PEM cert, AWS Access Key, JWT Token, Connection String, HTTP Basic Auth, API Token genérico — infra_mssp: SNMP Community, VPN PSK, TACACS+/RADIUS Key, LDAP Bind Password, Enable Secret, BGP MD5 Password |
+| `app/api/dlp.py` | GET/PUT `/dlp/config` (compliance_mode protege desativação), GET `/dlp/rules` (seed automático na 1ª chamada), PUT `/dlp/rules/{id}` (toggle action/enabled), POST `/dlp/rules` (custom com validação regex), DELETE `/dlp/rules/{id}` (só custom — builtin retorna 403), GET `/dlp/incidents` (limit 200) |
+| Integração `assistant.py` | `scan_message()` chamado antes do envio ao Claude; se `has_blocks` → HTTP 400 com `type: dlp_block` + lista de findings; senão → envia `masked_text` ao LLM (warns não bloqueiam) |
+| `frontend/src/api/dlp.ts` | Interfaces `DLPConfig`, `DLPRule`, `DLPIncident`; `dlpApi` com todos os endpoints; suporte a `tenantId` para super admin |
+| Router registrado | `app.include_router(dlp.router, prefix="/dlp", tags=["dlp"])` em `main.py` |
 
 **Pendente:**
-- `app/services/dlp_service.py` — scanner PII: 15+ regras built-in (CPF, CNPJ, cartão de crédito, senha, token/API key, IP interno, dados bancários, email corporativo), `scan_text()` → `DLPScanResult`, integração com `assistant_service.py` (intercepta antes do envio ao Claude)
-- `app/api/dlp.py` — GET/PATCH `/dlp/config`, GET `/dlp/rules` (+ seed + toggle), GET `/dlp/incidents` (com filtros tenant/user/date)
-- `frontend/src/pages/DLPPage.tsx` — dashboard de incidentes (timeline, breakdown por categoria), gestão de regras (toggle builtin + criar custom), configuração por tenant
+- `frontend/src/pages/DLPPage.tsx` — dashboard de incidentes (timeline, breakdown por categoria), gestão de regras (toggle builtin + criar custom com regex), painel de configuração por tenant
 
 ---
 
