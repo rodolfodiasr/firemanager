@@ -5,6 +5,7 @@ import {
   Building2, Plus, UserPlus, Trash2, Edit2, Check, X,
   KeyRound, ToggleLeft, ToggleRight, Users, ShieldCheck,
   Globe, ChevronDown, ChevronUp, Loader2, CheckCircle2, XCircle,
+  ShieldAlert, AlertTriangle, Lock,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
@@ -12,6 +13,7 @@ import { PageWrapper } from "../components/layout/PageWrapper";
 import { useAuth } from "../hooks/useAuth";
 import { tenantsApi } from "../api/tenants";
 import { inviteApi } from "../api/invite";
+import { dlpApi, type DLPRule, type DLPIncident } from "../api/dlp";
 import { permissionsApi, type DeviceCategory, type FunctionalModule } from "../api/permissions";
 import { integrationsApi } from "../api/integrations";
 import { glpiApi } from "../api/glpi";
@@ -1500,9 +1502,375 @@ function IntegracoesTab() {
   );
 }
 
+// ── DLP Tab ───────────────────────────────────────────────────────────────────
+
+const CATEGORY_LABELS: Record<string, string> = {
+  pii_br:     "PII Brasileira (LGPD)",
+  credentials:"Credenciais e Secrets",
+  infra_mssp: "Infraestrutura MSSP",
+  custom:     "Padrões Personalizados",
+};
+
+const ACTION_COLORS: Record<string, string> = {
+  block: "bg-red-100 text-red-700",
+  warn:  "bg-amber-100 text-amber-700",
+};
+
+function DLPTab() {
+  const qc = useQueryClient();
+  const { user, tenant } = useAuth();
+  const isSuperAdmin = user?.is_super_admin ?? false;
+  const [selectedTenantId, setSelectedTenantId] = useState<string>(
+    isSuperAdmin ? "" : (tenant?.id ?? "")
+  );
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customForm, setCustomForm] = useState({
+    rule_key: "", rule_name: "", description: "",
+    pattern: "", action: "warn" as "block" | "warn",
+  });
+
+  const { data: tenants = [] } = useQuery({
+    queryKey: ["tenants"],
+    queryFn: tenantsApi.list,
+    enabled: isSuperAdmin,
+  });
+
+  const tid = isSuperAdmin ? selectedTenantId : (tenant?.id ?? "");
+
+  const { data: config, isLoading: loadingConfig } = useQuery({
+    queryKey: ["dlp-config", tid],
+    queryFn: () => dlpApi.getConfig(isSuperAdmin ? tid : undefined),
+    enabled: !!tid,
+  });
+
+  const { data: rules = [], isLoading: loadingRules } = useQuery({
+    queryKey: ["dlp-rules", tid],
+    queryFn: () => dlpApi.listRules(isSuperAdmin ? tid : undefined),
+    enabled: !!tid,
+  });
+
+  const { data: incidents = [] } = useQuery({
+    queryKey: ["dlp-incidents", tid],
+    queryFn: () => dlpApi.listIncidents(isSuperAdmin ? tid : undefined, 30),
+    enabled: !!tid,
+  });
+
+  const configMut = useMutation({
+    mutationFn: (data: Parameters<typeof dlpApi.updateConfig>[0]) =>
+      dlpApi.updateConfig(data, isSuperAdmin ? tid : undefined),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dlp-config", tid] }),
+  });
+
+  const ruleMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { action?: "block" | "warn"; is_enabled?: boolean } }) =>
+      dlpApi.updateRule(id, data, isSuperAdmin ? tid : undefined),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dlp-rules", tid] }),
+  });
+
+  const createRuleMut = useMutation({
+    mutationFn: () => dlpApi.createRule({ ...customForm }, isSuperAdmin ? tid : undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dlp-rules", tid] });
+      setShowCustomForm(false);
+      setCustomForm({ rule_key: "", rule_name: "", description: "", pattern: "", action: "warn" });
+    },
+  });
+
+  const deleteRuleMut = useMutation({
+    mutationFn: (id: string) => dlpApi.deleteRule(id, isSuperAdmin ? tid : undefined),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dlp-rules", tid] }),
+  });
+
+  const categories = Array.from(new Set(rules.map((r: DLPRule) => r.category)));
+
+  return (
+    <div className="space-y-6">
+      {isSuperAdmin && (
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-gray-700 shrink-0">Tenant:</label>
+          <select
+            value={selectedTenantId}
+            onChange={(e) => setSelectedTenantId(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 min-w-[240px]"
+          >
+            <option value="">Selecione um tenant...</option>
+            {tenants.map((t: { id: string; name: string }) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {!tid ? (
+        <div className="text-center py-14 text-gray-400">
+          <ShieldAlert size={36} className="mx-auto mb-3 text-gray-200" />
+          <p className="text-sm">Selecione um tenant para configurar o DLP.</p>
+        </div>
+      ) : loadingConfig || loadingRules ? (
+        <p className="text-sm text-gray-400 py-6 text-center">Carregando...</p>
+      ) : (
+        <>
+          {/* Configurações Gerais */}
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-4">
+            <div className="flex items-center gap-2 mb-1">
+              <ShieldAlert size={16} className="text-brand-600" />
+              <h3 className="text-sm font-semibold text-gray-800">Configurações Gerais</h3>
+            </div>
+
+            {config?.compliance_mode && (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                <Lock size={12} />
+                Modo compliance ativo — DLP não pode ser desativado por admin do tenant.
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="flex items-center justify-between px-3 py-2.5 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">DLP habilitado</p>
+                  <p className="text-xs text-gray-500">Escaneia mensagens antes de enviar ao agente</p>
+                </div>
+                <button
+                  onClick={() => configMut.mutate({ enabled: !config?.enabled })}
+                  disabled={configMut.isPending || (config?.compliance_mode && !isSuperAdmin)}
+                  className="ml-3 shrink-0"
+                >
+                  {config?.enabled
+                    ? <ToggleRight size={24} className="text-brand-600" />
+                    : <ToggleLeft  size={24} className="text-gray-300" />}
+                </button>
+              </label>
+
+              <label className="flex items-center justify-between px-3 py-2.5 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Modo compliance</p>
+                  <p className="text-xs text-gray-500">Bloqueia desativação do DLP por admin do tenant</p>
+                </div>
+                <button
+                  onClick={() => configMut.mutate({ compliance_mode: !config?.compliance_mode })}
+                  disabled={configMut.isPending || (!isSuperAdmin && config?.compliance_mode)}
+                  className="ml-3 shrink-0"
+                >
+                  {config?.compliance_mode
+                    ? <ToggleRight size={24} className="text-amber-500" />
+                    : <ToggleLeft  size={24} className="text-gray-300" />}
+                </button>
+              </label>
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm text-gray-600">Alertar após</span>
+              <input
+                type="number" min={1} max={100}
+                defaultValue={config?.incident_threshold_count ?? 5}
+                onBlur={(e) => configMut.mutate({ incident_threshold_count: parseInt(e.target.value) || 5 })}
+                className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <span className="text-sm text-gray-600">incidentes em</span>
+              <input
+                type="number" min={1} max={168}
+                defaultValue={config?.incident_threshold_hours ?? 24}
+                onBlur={(e) => configMut.mutate({ incident_threshold_hours: parseInt(e.target.value) || 24 })}
+                className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <span className="text-sm text-gray-600">horas</span>
+            </div>
+          </div>
+
+          {/* Regras por categoria */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Regras de Detecção</p>
+            <div className="space-y-4">
+              {categories.map((cat) => {
+                const catRules = rules.filter((r: DLPRule) => r.category === cat);
+                return (
+                  <div key={cat} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-100">
+                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                        {CATEGORY_LABELS[cat] ?? cat}
+                      </span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <tbody className="divide-y divide-gray-50">
+                        {catRules.map((rule: DLPRule) => (
+                          <tr key={rule.id} className={`hover:bg-gray-50 ${!rule.is_enabled ? "opacity-50" : ""}`}>
+                            <td className="px-4 py-2.5">
+                              <p className="font-medium text-gray-800 text-xs">{rule.rule_name}</p>
+                              {rule.description && (
+                                <p className="text-xs text-gray-400 mt-0.5">{rule.description}</p>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 w-32">
+                              <select
+                                value={rule.action}
+                                onChange={(e) => ruleMut.mutate({ id: rule.id, data: { action: e.target.value as "block" | "warn" } })}
+                                disabled={ruleMut.isPending}
+                                className={`text-xs font-medium px-2 py-0.5 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand-500 ${ACTION_COLORS[rule.action]}`}
+                              >
+                                <option value="block">BLOCK</option>
+                                <option value="warn">WARN</option>
+                              </select>
+                            </td>
+                            <td className="px-3 py-2.5 w-16 text-right">
+                              <button
+                                onClick={() => ruleMut.mutate({ id: rule.id, data: { is_enabled: !rule.is_enabled } })}
+                                disabled={ruleMut.isPending}
+                                title={rule.is_enabled ? "Desativar" : "Ativar"}
+                              >
+                                {rule.is_enabled
+                                  ? <ToggleRight size={18} className="text-brand-600" />
+                                  : <ToggleLeft  size={18} className="text-gray-300" />}
+                              </button>
+                            </td>
+                            {!rule.is_builtin && (
+                              <td className="px-3 py-2.5 w-10 text-right">
+                                <button
+                                  onClick={() => { if (confirm(`Remover regra "${rule.rule_name}"?`)) deleteRuleMut.mutate(rule.id); }}
+                                  className="text-gray-300 hover:text-red-500 transition-colors"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Padrões customizados */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Padrões Personalizados</p>
+              <button
+                onClick={() => setShowCustomForm((v) => !v)}
+                className="flex items-center gap-1.5 text-xs font-medium bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700"
+              >
+                <Plus size={12} /> Adicionar padrão
+              </button>
+            </div>
+
+            {showCustomForm && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">rule_key (único)</label>
+                    <input
+                      value={customForm.rule_key}
+                      onChange={(e) => setCustomForm({ ...customForm, rule_key: e.target.value })}
+                      placeholder="ex: matricula_interna"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
+                    <input
+                      value={customForm.rule_name}
+                      onChange={(e) => setCustomForm({ ...customForm, rule_name: e.target.value })}
+                      placeholder="ex: Matrícula Interna"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Regex (padrão)</label>
+                  <input
+                    value={customForm.pattern}
+                    onChange={(e) => setCustomForm({ ...customForm, pattern: e.target.value })}
+                    placeholder="ex: EMP-\d{6}"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-xs font-medium text-gray-600">Ação:</label>
+                  <select
+                    value={customForm.action}
+                    onChange={(e) => setCustomForm({ ...customForm, action: e.target.value as "block" | "warn" })}
+                    className="border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <option value="block">BLOCK</option>
+                    <option value="warn">WARN</option>
+                  </select>
+                </div>
+                {createRuleMut.isError && (
+                  <p className="text-xs text-red-600">
+                    {(createRuleMut.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao criar"}
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => createRuleMut.mutate()}
+                    disabled={!customForm.rule_key || !customForm.rule_name || !customForm.pattern || createRuleMut.isPending}
+                    className="flex-1 bg-brand-600 text-white text-xs font-medium py-1.5 rounded-lg hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {createRuleMut.isPending ? "Criando..." : "Criar regra"}
+                  </button>
+                  <button onClick={() => setShowCustomForm(false)}
+                    className="flex-1 border border-gray-300 text-gray-600 text-xs font-medium py-1.5 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Histórico de Incidentes */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Incidentes Recentes
+              <span className="ml-2 text-gray-400 font-normal normal-case">(dado original não é armazenado)</span>
+            </p>
+            {incidents.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">Nenhum incidente registrado.</p>
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide border-b border-gray-100">
+                    <tr>
+                      <th className="text-left px-4 py-2">Tipo</th>
+                      <th className="text-left px-4 py-2">Ação</th>
+                      <th className="text-left px-4 py-2">Origem</th>
+                      <th className="text-left px-4 py-2">IP</th>
+                      <th className="text-left px-4 py-2">Data/Hora</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {incidents.map((inc: DLPIncident) => (
+                      <tr key={inc.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5">
+                          <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">{inc.pii_type}</span>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ACTION_COLORS[inc.action_taken]}`}>
+                            {inc.action_taken.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-gray-500">{inc.source}</td>
+                        <td className="px-4 py-2.5 text-xs font-mono text-gray-400">{inc.ip_address ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-xs text-gray-500">
+                          {new Date(inc.created_at).toLocaleString("pt-BR")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-type Tab = "tenants" | "equipe" | "politica" | "integracoes";
+type Tab = "tenants" | "equipe" | "politica" | "integracoes" | "dlp";
 
 export function Organisation() {
   const { user, tenantRole } = useAuth();
@@ -1526,6 +1894,7 @@ export function Organisation() {
     { id: "equipe",       label: "Equipe" },
     { id: "politica",     label: "Política" },
     { id: "integracoes",  label: "Integrações" },
+    { id: "dlp",          label: "DLP" },
   ];
 
   return (
@@ -1551,6 +1920,7 @@ export function Organisation() {
           {tab === "equipe"       && <EquipeTab />}
           {tab === "politica"     && <PoliticaTab />}
           {tab === "integracoes"  && <IntegracoesTab />}
+          {tab === "dlp"          && <DLPTab />}
         </div>
       </div>
     </PageWrapper>

@@ -94,9 +94,23 @@ async def chat_with_agent(
         raise HTTPException(status_code=404, detail="Dispositivo não encontrado")
 
     from app.services.variable_service import resolve_and_substitute
+    from app.services import dlp_service as _dlp
+
     resolved_input, _vars, _unresolved = await resolve_and_substitute(
         db, data.device_id, ctx.tenant.id, data.natural_language_input
     )
+
+    _dlp_result = await _dlp.scan_message(db, ctx.tenant.id, ctx.user.id, resolved_input, source="chat")
+    if _dlp_result.has_blocks:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "dlp_block",
+                "message": "Dados sensíveis detectados e bloqueados pelo DLP",
+                "findings": _dlp_result.blocked_findings,
+            },
+        )
+    resolved_input = _dlp_result.masked_text
 
     operation, agent_response = await start_or_continue_operation(
         db=db,
@@ -119,12 +133,25 @@ async def continue_chat(
 ) -> dict:
     operation = await _get_tenant_operation(db, operation_id, ctx.tenant.id)
 
+    from app.services import dlp_service as _dlp
+    _dlp_result = await _dlp.scan_message(db, ctx.tenant.id, ctx.user.id, message.content, source="chat")
+    if _dlp_result.has_blocks:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "dlp_block",
+                "message": "Dados sensíveis detectados e bloqueados pelo DLP",
+                "findings": _dlp_result.blocked_findings,
+            },
+        )
+    safe_content = _dlp_result.masked_text
+
     _, agent_response = await start_or_continue_operation(
         db=db,
         user_id=ctx.user.id,
         operation_id=operation_id,
         device_id=operation.device_id,
-        user_message=message.content,
+        user_message=safe_content,
     )
 
     result2 = await db.execute(select(Operation).where(Operation.id == operation_id))

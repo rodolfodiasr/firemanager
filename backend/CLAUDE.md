@@ -196,10 +196,10 @@ async def _collect_ssh_resources(device, data):
 
 ---
 
-## Fases implementadas nesta sessão (F29 → F36 → F39 → F35)
+## Fases implementadas
 
-### Cadeia de migrations
-`0051` (GLPI bridge) → `0052` (F29 AI observability) → `0053` (F36 identity governance) → `0054` (F39 self-service OTP) → `0055` (F35 SOAR playbooks)
+### Cadeia de migrations completa
+`0051` (GLPI bridge) → `0052` (F29 AI observability) → `0053` (F36 identity governance) → `0054` (F39 self-service OTP) → `0055` (F35 SOAR playbooks) → `0056` (F29.cont API key rate limit) → `0057` (F37 SIEM) → `0058` (F38 CSPM) → `0059` (F36.cont identity advanced) → `0060` (F35.cont SOAR builder) → `0061` (F30 compliance enterprise) → `0062` (F33 AI safety) → `0063` (F39.cont selfservice portal) → `0064` (F34 security infra) → `0065` (F31 edge agents) → `0066` (F32 product) → `0067` (F28.1 DLP — em progresso)
 
 ### F29 — Multi-Agent Orchestrator
 | Arquivo | Descrição |
@@ -253,6 +253,42 @@ async def _collect_ssh_resources(device, data):
 | `identity_sync.check_sod_all` | `0 1 * * *` | Scan SoD todos os tenants |
 | `expiry_reminders.check_password_expiry` | `0 8 * * *` | Lembretes de senha expirando |
 
+### F34 — Infraestrutura de Segurança Avançada (config store)
+| Arquivo | Descrição |
+|---|---|
+| `migrations/0064_f34_security_infra.py` | `vault_configs`, `vault_secret_refs`, `opa_policies`, `opa_evaluations`, `security_profiles`, `pentest_schedules` |
+| `app/models/security_infra.py` | ORM: `VaultConfig`, `VaultSecretRef`, `OpaPolicy`, `OpaEvaluation`, `SecurityProfile`, `PentestSchedule` |
+| `app/services/security_infra_service.py` | `seed_builtin_policies` (3 políticas Rego), `evaluate_policy`, `_evaluate_rego_simple` (simulação local) |
+| `app/api/security_infra.py` | CRUD vault-configs + secrets, opa-policies (+ /seed + /{id}/evaluate), security-profiles (+ /{id}/apply), pentest-schedules |
+
+### F31 — Edge Agents, SSO, Marketplace, RBAC
+| Arquivo | Descrição |
+|---|---|
+| `migrations/0065_f31_edge_agents.py` | `edge_agents`, `sso_configs`, `marketplace_plugins`, `tenant_plugins`, `rbac_custom_roles`, `rbac_role_assignments` |
+| `app/models/edge_agents.py` | ORM: `EdgeAgent`, `SsoConfig`, `MarketplacePlugin`, `TenantPlugin`, `RbacCustomRole`, `RbacRoleAssignment` |
+| `app/services/edge_agent_service.py` | `generate_agent_token` (SHA-256), `create_agent`, `seed_marketplace_plugins` (5 built-in), `install_plugin` |
+| `app/api/edge_agents.py` | CRUD /agents, PUT /sso (upsert), /marketplace (+ /seed + /installed + /{id}/install + /{id}/uninstall), /rbac-roles, /rbac-assignments |
+
+**5 plugins built-in:** fortinet-fortigate, sonicwall-sonicos, wazuh-siem, lgpd-compliance, executive-risk-dashboard.
+
+### F32 — Produto: Billing, Onboarding, Help Center, Preferências
+| Arquivo | Descrição |
+|---|---|
+| `migrations/0066_f32_product.py` | `billing_plans`, `billing_subscriptions`, `billing_invoices`, `onboarding_checklists`, `help_articles`, `user_preferences` |
+| `app/models/product.py` | ORM: `BillingPlan`, `BillingSubscription`, `BillingInvoice`, `OnboardingChecklist`, `HelpArticle`, `UserPreference` |
+| `app/services/product_service.py` | `seed_plans` (3 planos), `seed_articles` (4 artigos), `get_or_create_checklist`, `complete_step`, `get_or_create_preferences`, `create_subscription` |
+| `app/api/product.py` | /billing/plans (+ /seed), /billing/subscription (+ /start), /billing/invoices, /onboarding/checklist (+ /complete-step + /skip), /help/articles (+ /seed + /{slug}), /preferences |
+
+**3 planos:** Starter (R$490, 10 devices), Pro (R$1490, 50 devices), Enterprise (R$3490, unlimited).
+
+### F28.1 — DLP (em progresso)
+| Arquivo | Descrição |
+|---|---|
+| `migrations/0067_dlp.py` | `dlp_configs` (config por tenant), `dlp_rules` (builtin+custom, UniqueConstraint tenant+rule_key), `dlp_incidents` (log sem dado original) |
+| `app/models/dlp.py` | ORM: `DLPConfig`, `DLPRule`, `DLPIncident` |
+| `app/services/dlp_service.py` | **PENDENTE** — scanner PII, 15+ regras built-in, integração com assistant_service |
+| `app/api/dlp.py` | **PENDENTE** — GET/PATCH /dlp/config, GET /dlp/rules (+ seed + toggle), GET /dlp/incidents |
+
 ### Rotas registradas (main.py)
 | Prefix | Router | Tags |
 |---|---|---|
@@ -260,3 +296,6 @@ async def _collect_ssh_resources(device, data):
 | `/identity-governance` | `identity_governance.router` | identity-governance |
 | `/identity/self-service` | `self_service.router` | self-service |
 | `/playbooks` | `playbooks.router` | playbooks |
+| `/security-infra` | `security_infra.router` | security-infra |
+| `/platform` | `edge_agents.router` | edge-agents |
+| `/product` | `product.router` | product |

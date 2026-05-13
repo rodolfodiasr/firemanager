@@ -167,16 +167,21 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 37 | Integrador de SIEM | `siem_connectors` + `siem_alerts` (migration 0057); normalização Wazuh/Splunk/Sentinel/Log360/QRadar; webhook público `/webhooks/siem/{secret}`; trigger SOAR via `evaluate_trigger`; `SiemPage.tsx` com CRUD de conectores e feed de alertas | ✅ |
 | 38 | Cloud Security Posture (CSPM) | `cloud_accounts` + `cloud_security_findings` + `cloud_resources` (migration 0058); `cspm_service.py` (checks por provider, sync, upsert findings); API CRUD contas + findings; `CloudPosture.tsx` com grid de contas e tabela de findings | ✅ |
 | 39 | Identidade Self-Service | `otp_requests` (SHA-256, TTL 10 min); `POST /self-service/otp/request`, `/password/reset`, `/account/unlock`; reset/unlock via ldap3 (AD) e Graph (Azure AD); Celery beat `expiry_reminders` (lembretes 14d/7d/1d antes da expiração) | ✅ (parcial — pendente: portal web separado, catálogo de acesso visual, relatórios AD pré-prontos) |
+| 34 | Infraestrutura de Segurança Avançada | `vault_configs` + `vault_secret_refs` + `opa_policies` + `opa_evaluations` + `security_profiles` + `pentest_schedules` (migration 0064); `security_infra_service.py` (seed 3 políticas Rego built-in, `_evaluate_rego_simple`); API `/security-infra/*`; `SecurityInfraPage.tsx` (tabs: HashiCorp Vault, OPA Políticas, Perfis de Hardening, Pentest Tracker) | ✅ (parcial — CRUD config store; mTLS, microsegmentação Docker e container hardening real pendentes) |
+| 31 | Edge Agents, SSO/OIDC, Marketplace, RBAC Granular | `edge_agents` (token SHA-256) + `sso_configs` + `marketplace_plugins` + `tenant_plugins` + `rbac_custom_roles` + `rbac_role_assignments` (migration 0065); `edge_agent_service.py` (5 plugins builtin, `generate_agent_token`); API `/platform/*`; `EdgeAgentsPage.tsx` (tabs: Edge Agents, SSO/OIDC, Marketplace, RBAC Granular) | ✅ (parcial — CRUD + registro de agentes; WebSocket on-premise, fluxo OIDC real e CGNAT pendentes) |
+| 32 | Produto: Billing, Onboarding, Help Center, Preferências | `billing_plans` + `billing_subscriptions` + `billing_invoices` + `onboarding_checklists` + `help_articles` + `user_preferences` (migration 0066); `product_service.py` (3 planos seed, 4 artigos, checklist 4 etapas); API `/product/*`; `ProductPage.tsx` (tabs: Billing & Planos, Onboarding, Central de Ajuda, Preferências) | ✅ (parcial — CRUD completo; integração Stripe, i18n real e WCAG AA pendentes) |
+| 28.1 | DLP — Prevenção de Perda de Dados no Chat | `dlp_configs` + `dlp_rules` + `dlp_incidents` (migration 0067); `app/models/dlp.py` (`DLPConfig`, `DLPRule`, `DLPIncident`) | 🔄 Em progresso — migration + modelos criados; service, API e frontend pendentes |
 
 ### Próximas Fases (resumo)
 
 | Fase | Descrição | Entregáveis pendentes |
 |---|---|---|
+| 28.1 | DLP — Prevenção de Perda de Dados | 🔄 **Em progresso** — `dlp_service.py` (scanner PII, 15+ regras built-in), API `/dlp/*`, `DLPPage.tsx` (dashboard de incidentes, gestão de regras, configuração por tenant) |
 | 30 | Compliance Enterprise e BC/DR | Compliance packs (CIS/PCI/BACEN/LGPD + vertical Identidade), DPA/LGPD, RTO/RPO, SLA formal, relatório executivo |
-| 31 | Edge Agent e White-label Completo | Edge agent on-premise, CGNAT, white-label, SSO/OIDC, RBAC granular, open core OSS, marketplace |
-| 32 | Produto, UX e Documentação | Docs por persona (Admin MSSP / Analista N2-N3 / Admin Cliente / Analista Identidade), billing Stripe, i18n, acessibilidade WCAG AA, onboarding wizard |
+| 31.cont | Edge Agent — WebSocket on-premise + OIDC real | Edge agent WebSocket sainte para ambientes CGNAT; fluxo PKCE OIDC completo (Azure AD/Okta/Google); provisionamento JIT de usuários via SSO |
+| 32.cont | Produto — Stripe + i18n + Acessibilidade | Integração Stripe (checkout, webhooks `invoice.paid`/`payment_failed`); `react-i18next` (pt-BR/en-US); auditoria WCAG 2.1 AA com axe-core |
 | 33 | IA Safety & Governança | Aprovação dupla, janelas de manutenção, SIRP, red team trimestral, four-eyes AD, direito ao esquecimento, RFC 3161 |
-| 34 | Infraestrutura de Segurança Avançada | mTLS interno, HashiCorp Vault, microsegmentação Docker, OPA, container hardening, pentest anual |
+| 34.cont | Infra Segurança — mTLS + Microsegmentação | mTLS interno entre serviços (step-ca), redes Docker isoladas (frontend_net/backend_net/worker_net), AppArmor/Seccomp profiles, Vault HA real |
 | 39.cont | Identidade Self-Service — Portal e Relatórios | Portal web separado (URL dedicada via white-label), catálogo de acesso visual com AccessReviewTask, relatórios AD pré-prontos (senha expirada, contas inativas, membros de grupo, admins sem MFA) |
 
 ---
@@ -209,6 +214,86 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | Rate limiting por API key | Limites configuráveis por tenant e rota; headers `X-RateLimit-*` | Média | ⏳ F29 |
 | **Canal público de reporte de vuln** | E-mail `security@` com PGP key; SLA: crítico 24h, alto 7d, médio 30d | Média | ⏳ F33 |
 | **Suite de testes de segurança** | `tests/security/`: test_auth_boundaries (16), test_guardrails_advanced (25), test_role_enforcement (8), test_tenant_isolation (9); `tests/integration/test_multisig` (12) — 70 testes no total; cobertura: JWT expirado/adulterado, bypass de guardrails com Unicode/encoding, RBAC ops, isolamento multi-tenant, multi-sig approval | Alta | ✅ |
+| **DLP — Prevenção de Perda de Dados no Chat** | `dlp_configs` (config por tenant: enabled, compliance_mode, threshold) + `dlp_rules` (regras builtin+custom por categoria: pii/credential/network/sensitive) + `dlp_incidents` (log sem dado original: pii_type, action_taken, source, ip_address); migration 0067; modelos ORM criados | Alta | 🔄 Em progresso |
+
+---
+
+### Fase 34 — Infraestrutura de Segurança Avançada ✅ (parcial)
+*Config store para Vault/OPA/hardening — CRUD completo; integração real com Vault HA e mTLS pendentes*
+
+**Implementado (migration 0064):**
+
+| Componente | Detalhe |
+|---|---|
+| `vault_configs` | Config HashiCorp Vault por tenant: vault_url, auth_method (token/approle), role_id, secret_id_encrypted, default_mount, namespace, last_verified_ok |
+| `vault_secret_refs` | Referências a secrets no Vault: alias, vault_path, vault_key, category (per tenant; FK → vault_configs) |
+| `opa_policies` | Políticas Rego por tenant: name, package_name, rego_source, version, is_active; 3 políticas built-in: `allow_read_devices`, `require_admin_for_write`, `block_critical_ops_without_approval` |
+| `opa_evaluations` | Log de avaliações de política: input_data, result, allowed — `_evaluate_rego_simple()` é simulação local em Python (sem sidecar OPA real) |
+| `security_profiles` | Perfis de hardening por tenant: profile_type (hardening/baseline/cis/pci), controls JSONB, status (draft/applied), applied_at |
+| `pentest_schedules` | Tracker de pentests: title, scope, pentest_type (external/internal/red_team), vendor, scheduled_at, completed_at, findings C/H/M/L, report_url |
+| API `/security-infra/*` | CRUD vault-configs, vault-configs/{id}/secrets, opa-policies (+ /seed + /{id}/evaluate), security-profiles (+ /{id}/apply), pentest-schedules |
+| `SecurityInfraPage.tsx` | 4 tabs: HashiCorp Vault (form + list com badge last_verified_ok), OPA Políticas (seed + create + evaluate modal JSON), Perfis de Hardening (grid cards + Apply), Pentest Tracker (create + update findings C/H/M/L) |
+
+**Pendente (F34.cont):** mTLS real entre serviços (step-ca), redes Docker isoladas (frontend_net/backend_net/worker_net), AppArmor/Seccomp profiles, Vault HA em 3 nodes, sidecar OPA real.
+
+---
+
+### Fase 31 — Edge Agents, SSO/OIDC, Marketplace e RBAC Granular ✅ (parcial)
+*Registro de agentes e config store para SSO/RBAC — WebSocket on-premise e fluxo OIDC real pendentes*
+
+**Implementado (migration 0065):**
+
+| Componente | Detalhe |
+|---|---|
+| `edge_agents` | Agentes por tenant: name, token_hash (SHA-256 de `secrets.token_urlsafe(32)`), status (online/offline/stale), version, last_seen, ip_address, device_ids JSONB; token raw exibido UMA vez no registro |
+| `sso_configs` | Config SSO por tenant (unique): provider (azure_ad/okta/google/custom_oidc), client_id, client_secret_encrypted, discovery_url, group_claim, group_mapping JSONB, sso_required |
+| `marketplace_plugins` | Plugins globais: name, slug, version, category (connector/report/workflow/alert_rule), is_builtin, download_count, approved_at; 5 built-in: fortinet-fortigate, sonicwall-sonicos, wazuh-siem, lgpd-compliance, executive-risk-dashboard |
+| `tenant_plugins` | Plugins instalados por tenant (UniqueConstraint tenant+plugin): installed_at, installed_by |
+| `rbac_custom_roles` | Roles customizadas por tenant (UniqueConstraint tenant+name): name, description, permissions JSONB |
+| `rbac_role_assignments` | Assignments: user_id × role_id por tenant, assigned_by |
+| API `/platform/*` | CRUD /agents, PUT /sso (upsert), /marketplace (+ /seed + /installed + /{id}/install + /{id}/uninstall), /rbac-roles, /rbac-assignments |
+| `EdgeAgentsPage.tsx` | 4 tabs: Edge Agents (token reveal one-time, online/offline badge), SSO/OIDC (upsert form Azure AD/Okta/Google/custom), Marketplace (install/uninstall com set tracking), RBAC Granular (custom roles CRUD) |
+
+**Pendente (F31.cont):** Edge agent Python/Docker real com WebSocket sainte, suporte CGNAT com reconexão exponencial, fluxo PKCE OIDC completo, provisionamento JIT de usuários via SSO.
+
+---
+
+### Fase 32 — Produto: Billing, Onboarding, Help Center e Preferências ✅ (parcial)
+*CRUD completo de billing e experiência do produto — integração Stripe e i18n real pendentes*
+
+**Implementado (migration 0066):**
+
+| Componente | Detalhe |
+|---|---|
+| `billing_plans` | Planos globais: name, slug, monthly_price_brl (Decimal), max_devices, max_users, ai_token_quota, sla_target_pct, features JSONB, is_active; 3 planos seed: Starter (R$490, 10 devices), Pro (R$1490, 50 devices), Enterprise (R$3490, unlimited) |
+| `billing_subscriptions` | Assinatura por tenant (unique): plan_id, status (active/trialing/canceled/past_due), cancel_at_period_end, current_period_start/end, trial_end |
+| `billing_invoices` | Faturas por tenant: amount_brl, status (draft/open/paid/void), period_start/end, paid_at, due_date, invoice_pdf_url |
+| `onboarding_checklists` | Checklist por tenant+user (UniqueConstraint): step_add_device, step_run_snapshot, step_ask_agent, step_configure_alert (bools), completed, skipped, completed_at |
+| `help_articles` | Artigos de ajuda globais: title, slug (unique), category, persona, content_md, is_published, view_count (incrementado no GET), sort_order; 4 artigos built-in |
+| `user_preferences` | Prefs por user (unique): language (pt-BR/en-US/es-LA), timezone, theme (dark/light/system), notifications_enabled, onboarding_step, onboarding_completed |
+| API `/product/*` | /billing/plans (+ /seed), /billing/subscription (+ /start), /billing/invoices, /onboarding/checklist (+ /complete-step + /skip), /help/articles (+ /seed + /{slug} com view_count++), /preferences |
+| `ProductPage.tsx` | 4 tabs: Billing & Planos (subscription card + plan comparison grid + invoices list), Onboarding (4-step checklist com progress bar + skip), Central de Ajuda (listing com category filter + article detail), Preferências (language/timezone/theme dropdowns com save imediato) |
+
+**Pendente (F32.cont):** Integração Stripe (`stripe.Customer`, `stripe.Subscription`, webhooks invoice.paid/payment_failed), `react-i18next` pt-BR/en-US, auditoria WCAG 2.1 AA com axe-core, geração de PDF de fatura (WeasyPrint).
+
+---
+
+### Fase 28.1 — DLP: Prevenção de Perda de Dados no Chat 🔄 (em progresso)
+*Interceptação de PII e dados sensíveis antes do envio ao LLM — proteção de chat do assistente IA*
+
+**Implementado (migration 0067):**
+
+| Componente | Detalhe |
+|---|---|
+| `dlp_configs` | Config global DLP por tenant (unique): enabled, compliance_mode (bloqueia em vez de alertar), incident_threshold_count (default 5 incidentes), incident_threshold_hours (default 24h) |
+| `dlp_rules` | Regras por tenant (UniqueConstraint tenant+rule_key): rule_key, rule_name, category (pii/credential/network/sensitive), action (block/warn), is_enabled, is_builtin, pattern (regex custom) |
+| `dlp_incidents` | Log de incidentes SEM o dado original: pii_type, action_taken (block/warn), source (chat/api), ip_address |
+| `app/models/dlp.py` | ORM: `DLPConfig`, `DLPRule`, `DLPIncident` — SQLAlchemy 2.0 `Mapped[]` |
+
+**Pendente:**
+- `app/services/dlp_service.py` — scanner PII: 15+ regras built-in (CPF, CNPJ, cartão de crédito, senha, token/API key, IP interno, dados bancários, email corporativo), `scan_text()` → `DLPScanResult`, integração com `assistant_service.py` (intercepta antes do envio ao Claude)
+- `app/api/dlp.py` — GET/PATCH `/dlp/config`, GET `/dlp/rules` (+ seed + toggle), GET `/dlp/incidents` (com filtros tenant/user/date)
+- `frontend/src/pages/DLPPage.tsx` — dashboard de incidentes (timeline, breakdown por categoria), gestão de regras (toggle builtin + criar custom), configuração por tenant
 
 ---
 

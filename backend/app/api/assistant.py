@@ -172,6 +172,20 @@ async def chat(
 ) -> AssistantMessageRead:
     if not data.content.strip():
         raise HTTPException(status_code=400, detail="Mensagem não pode ser vazia.")
+
+    from app.services import dlp_service as _dlp
+    _dlp_result = await _dlp.scan_message(db, ctx.tenant.id, ctx.user.id, data.content.strip(), source="assistant")
+    if _dlp_result.has_blocks:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "dlp_block",
+                "message": "Dados sensíveis detectados e bloqueados pelo DLP",
+                "findings": _dlp_result.blocked_findings,
+            },
+        )
+    safe_content = _dlp_result.masked_text
+
     try:
         _, ai_msg = await assistant_service.send_message(
             db=db,
@@ -179,7 +193,7 @@ async def chat(
             user_id=ctx.user.id,
             user_role=ctx.role,
             session_id=data.session_id,
-            content=data.content.strip(),
+            content=safe_content,
             model_preference=data.model,
             folder_id=data.folder_id,
             mode=data.mode,
