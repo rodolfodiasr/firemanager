@@ -38,7 +38,7 @@ def upgrade() -> None:
     """)
     op.execute("CREATE INDEX IF NOT EXISTS ix_ai_interactions_tenant ON ai_interactions(tenant_id)")
     op.execute("CREATE INDEX IF NOT EXISTS ix_ai_interactions_op ON ai_interactions(operation_id) WHERE operation_id IS NOT NULL")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_ai_interactions_month ON ai_interactions(tenant_id, date_trunc('month', created_at))")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_ai_interactions_month ON ai_interactions(tenant_id, created_at)")
 
     # ------------------------------------------------------------------
     # ai_token_usage — agregação mensal por tenant (billing / quotas)
