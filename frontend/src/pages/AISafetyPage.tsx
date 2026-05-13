@@ -111,7 +111,7 @@ function MaintenanceTab() {
             </div>
             <div>
               <label className="text-xs text-gray-400 block mb-1">Recorrência</label>
-              <select value={form.recurrence} onChange={e => setForm({...form, recurrence: e.target.value})}
+              <select value={form.recurrence} onChange={e => setForm({...form, recurrence: e.target.value as "once" | "weekly" | "monthly"})}
                 className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm">
                 <option value="once">Uma vez</option>
                 <option value="weekly">Semanal</option>
@@ -418,7 +418,7 @@ function ErasureTab() {
                   <CheckCircle size={12} /> Aprovar
                 </button>
               )}
-              {(req.status === "in_progress" || req.status === "approved") && (
+              {req.status === "in_progress" && (
                 <button onClick={() => { if (confirm(`Executar eliminação para ${req.target_user_email}? Esta ação não pode ser desfeita.`)) executeMut.mutate(req.id); }}
                   disabled={executeMut.isPending}
                   className="flex items-center gap-1 bg-red-800 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs">
