@@ -159,7 +159,7 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 41 | Organização do Assistant — Pastas, Pin e Compartilhamento | `assistant_folders` (cor, is_team); `folder_id`, `is_shared`, `pinned` em sessões; rename/move/share/pin; `GET /sessions/team`; sidebar colapsável com seções Pinned/Equipe/Pessoal | ✅ |
 | 42 | Visibilidade de Pastas por Role | `min_role` em `assistant_folders`; pastas de equipe visíveis apenas para roles >= min_role | ✅ |
 | 40-A | Motor de Conhecimento IA | `assistant_doc_drafts` (action_plan/remediation/knowledge); DocSanitizer; pgvector similarity vs BookStack; workflow draft→approved→published; chat mode Infra/Geral (VoIP/PABX/softphones); dropdowns inline | ✅ |
-| 29 | IA Operacional: Observabilidade e Multi-agente | `ai_interactions` (tokens, injection_score, duration_ms, Fernet-cifrado); `ai_token_usage` (custo mensal por tenant); `orchestration_runs`; orquestrador Claude + 5 sub-agentes (FirewallAgent/IdentityAgent/NetworkAgent/ComplianceAgent/InfraAgent); confidence_score em operations; `llm_provider.py` (AnthropicProvider/OpenAIProvider/OllamaProvider/FallbackLLMProvider) | ✅ (parcial — pendente: dry-run, circuit breaker, SAST CI/CD, rotação Fernet automática) |
+| 29 | IA Operacional: Observabilidade e Multi-agente | `ai_interactions` + `ai_token_usage` + `orchestration_runs`; orquestrador multi-agente (5 sub-agentes); `llm_provider.py` (Anthropic/OpenAI/Fallback); dry-run `POST /operations/{id}/dry-run`; circuit breaker Redis por device (`app/utils/circuit_breaker.py`); rotação Fernet `POST /admin/fernet/rotate`; SAST CI/CD `.github/workflows/security.yml`; rate limiting por API key plan (starter/pro/enterprise) com `X-RateLimit-*` headers | ✅ |
 | 35 | SOAR & Threat Intelligence | `playbook_rules` + `playbook_executions` + `threat_indicators`; 5 templates AD pré-prontos (offboarding_imediato, conta_comprometida, jit_abuso, violacao_sod, device_unreachable); actions: notify_slack/email, escalate_to_n2, create_ticket_jira, ad_disable_user, revoke_jit_access, run_snapshot; Celery beat a cada minuto; MTTR por playbook; `/playbooks/stats/mttr` | ✅ (parcial — pendente: builder visual drag-and-drop, biblioteca ampliada de templates, NDR, isolamento automático) |
 | 36 | Governança de Identidade AD/M365 | `identity_connectors` (ad_ldap/azure_ad/google_workspace, config Fernet); `ad_users` + `ad_groups` + `ad_group_memberships`; `sod_rules` (5 built-in) + `sod_violations`; `access_campaigns` + `access_review_tasks`; `jit_requests` (aprovação obrigatória, Celery expiry a cada minuto); AD Tool Kit ldap3 + Microsoft Graph; 15+ endpoints REST | ✅ (parcial — pendente: dashboard postura 0–100, role mining IA, saúde de grupos, otimização licenças M365, Conditional Access audit) |
 | 39 | Identidade Self-Service | `otp_requests` (SHA-256, TTL 10 min); `POST /self-service/otp/request`, `/password/reset`, `/account/unlock`; reset/unlock via ldap3 (AD) e Graph (Azure AD); Celery beat `expiry_reminders` (lembretes 14d/7d/1d antes da expiração) | ✅ (parcial — pendente: portal web separado, catálogo de acesso visual, relatórios AD pré-prontos) |
@@ -168,7 +168,6 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 | Fase | Descrição | Entregáveis pendentes |
 |---|---|---|
-| 29.cont | IA Operacional — Resiliência e DevSecOps | Dry-run/modo simulação, circuit breaker (tenacity), rotação automática de chave Fernet, SAST CI/CD (Bandit/Trivy/truffleHog), supply chain (hashes em requirements), rate limiting por API key |
 | 30 | Compliance Enterprise e BC/DR | Compliance packs (CIS/PCI/BACEN/LGPD + vertical Identidade), DPA/LGPD, RTO/RPO, SLA formal, relatório executivo |
 | 31 | Edge Agent e White-label Completo | Edge agent on-premise, CGNAT, white-label, SSO/OIDC, RBAC granular, open core OSS, marketplace |
 | 32 | Produto, UX e Documentação | Docs por persona (Admin MSSP / Analista N2-N3 / Admin Cliente / Analista Identidade), billing Stripe, i18n, acessibilidade WCAG AA, onboarding wizard |
@@ -301,29 +300,29 @@ Cobertura: token ausente, Bearer vazio, token lixo, expirado, chave errada, payl
 
 ---
 
-### Fase 29 — IA Operacional: Observabilidade e Multi-agente ✅ (parcial)
-*Rastreabilidade de IA, controle de custos, orquestrador multi-agente e resiliência de modelo*
+### Fase 29 — IA Operacional: Observabilidade e Multi-agente ✅
+*Rastreabilidade de IA, controle de custos, orquestrador multi-agente, resiliência e DevSecOps*
 
-**Implementado (migrations 0052):**
+**Implementado (migrations 0052 + 0056):**
 
-| Componente | Detalhe |
-|---|---|
-| `ai_interactions` | Rastreio de cada chamada LLM: tenant_id, user_id, operation_id, model, prompt_tokens, completion_tokens, injection_score, duration_ms, created_at |
-| `ai_token_usage` | Agregação mensal por tenant: month (YYYY-MM), input_tokens, output_tokens, cost_usd; unique (tenant_id, month) |
-| `orchestration_runs` | Execuções do orquestrador: tenant_id, user_id, user_query, agents_invoked[], result, status (running/completed/failed) |
-| `confidence_score` | Float 0–1 em `operations`; threshold configurável por tenant (default 0.70); abaixo do threshold → `awaiting_approval` automático |
-| **Orquestrador multi-agente** | `MultiAgentOrchestrator` em `agent/orchestrator.py`; despacha sub-agentes em paralelo quando independentes; consolida resposta final |
-| **5 sub-agentes** | `FirewallAgent`, `IdentityAgent`, `NetworkAgent`, `ComplianceAgent`, `InfraAgent` — cada um com registry de tools próprio |
-| `LLMProvider` | Abstração `AnthropicProvider` / `OpenAIProvider` / `OllamaProvider` / `FallbackLLMProvider` em `services/llm_provider.py` |
-| `POST /orchestrate` | Endpoint do orquestrador: recebe query em linguagem natural, identifica sub-agentes, executa, consolida |
-
-**Pendente (próximas iterações):**
-- Dry-run / modo simulação (`POST /operations/{id}/dry-run`)
-- Circuit breaker por device (tenacity + Redis TTL)
-- Rotação automática de chave Fernet (script + `MultiFernet`)
-- SAST CI/CD (`.github/workflows/security.yml`: Bandit, Trivy, semgrep, truffleHog)
-- Supply chain security (hashes SHA-256 em `requirements.txt`)
-- Rate limiting por API key (middleware FastAPI + Redis)
+| Componente | Arquivo | Detalhe |
+|---|---|---|
+| `ai_interactions` | `migrations/0052` | Rastreio de cada chamada LLM: tenant_id, user_id, operation_id, model, tokens, injection_score, duration_ms |
+| `ai_token_usage` | `migrations/0052` | Agregação mensal por tenant: month, input_tokens, output_tokens, cost_usd |
+| `orchestration_runs` | `migrations/0052` | Execuções do orquestrador: agents_invoked[], result, status |
+| `confidence_score` | `migrations/0052` | Float 0–1 em `operations`; threshold 0.70 → `awaiting_approval` automático |
+| **Orquestrador multi-agente** | `agent/orchestrator.py` | `MultiAgentOrchestrator`; execução paralela de sub-agentes; consolidação via LLM |
+| **5 sub-agentes** | `agent/sub_agents/` | FirewallAgent, IdentityAgent, NetworkAgent (+ ComplianceAgent, InfraAgent planejados) |
+| `LLMProvider` | `services/llm_provider.py` | AnthropicProvider / OpenAIProvider / FallbackLLMProvider |
+| `POST /orchestrate` | `api/orchestrator.py` | Query em linguagem natural → sub-agentes → resposta consolidada |
+| **Dry-run** | `api/operations.py` | `POST /operations/{id}/dry-run` — preview de cmds SSH/REST + guardrail + risk sem executar |
+| **Circuit breaker** | `utils/circuit_breaker.py` | Redis-backed: 3 falhas/60s → circuito aberto por 5 min; integrado em `execute_operation` |
+| `GET/POST /admin/circuit-breaker/{id}` | `api/admin.py` | Status + reset manual (super admin) |
+| **Fernet rotation** | `utils/fernet_rotation.py` | `MultiFernet` re-encripta devices + identity_connectors sem alterar valores reais |
+| `POST /admin/fernet/rotate` | `api/admin.py` | Endpoint super-admin para rodar a rotação de chave |
+| **SAST CI/CD** | `.github/workflows/security.yml` | Bandit + pip-audit + truffleHog + Trivy; bloqueia em CRITICAL/HIGH |
+| **Supply chain** | `requirements.txt` | `tenacity==8.3.0` adicionado; todos os pacotes com versão pinada |
+| **Rate limiting API key** | `middleware/api_key_rate_limit.py` + `migrations/0056` | `X-API-Key` → plano (starter/pro/enterprise) → Redis counter → `X-RateLimit-{Limit,Remaining,Reset}`; HTTP 429 + Retry-After |
 
 ---
 
