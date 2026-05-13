@@ -173,6 +173,9 @@ async def chat(
     if not data.content.strip():
         raise HTTPException(status_code=400, detail="Mensagem não pode ser vazia.")
 
+    if data.mode == "platform" and not ctx.user.is_super_admin:
+        raise HTTPException(status_code=403, detail="Modo Guia da Plataforma disponível apenas para super admins.")
+
     from app.services import dlp_service as _dlp
     _dlp_result = await _dlp.scan_message(db, ctx.tenant.id, ctx.user.id, data.content.strip(), source="assistant")
     if _dlp_result.has_blocks:

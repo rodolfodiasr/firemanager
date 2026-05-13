@@ -49,13 +49,13 @@ interface AssistantState {
   loading: boolean;
   selectedModel: "claude" | "openai";
   openaiAvailable: boolean;
-  chatMode: "infrastructure" | "general";
+  chatMode: "infrastructure" | "general" | "platform";
 
   toggle: () => void;
   open: () => void;
   close: () => void;
   setModel: (m: "claude" | "openai") => void;
-  setChatMode: (m: "infrastructure" | "general") => void;
+  setChatMode: (m: "infrastructure" | "general" | "platform") => void;
   setLoading: (v: boolean) => void;
   setOpenaiAvailable: (v: boolean) => void;
   addMessage: (msg: AssistantMessage) => void;

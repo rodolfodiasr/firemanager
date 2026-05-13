@@ -4,7 +4,7 @@ import {
   Bot, ExternalLink, Send, Loader2, Plus, Trash2, Sparkles, Database,
   Pin, PinOff, FolderOpen, Folder, Users, MoreHorizontal,
   Pencil, Share2, FolderInput, Check, X, ChevronRight, ChevronDown, FileText,
-  Globe, Shield, Tag,
+  Globe, Shield, Tag, BookOpen,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import {
@@ -15,6 +15,7 @@ import {
 } from "../store/assistantStore";
 import { assistantApi, assistantDocsApi, type DocDraft } from "../api/assistant";
 import { DocDraftModal } from "../components/assistant/DocDraftModal";
+import { useAuthStore } from "../store/authStore";
 import toast from "react-hot-toast";
 
 // ── SelectControl reutilizável ────────────────────────────────────────────────
@@ -685,6 +686,8 @@ export function AssistantPage() {
     updateSession, removeSession, addFolder, updateFolder, removeFolder,
   } = useAssistantStore();
 
+  const isSuperAdmin = useAuthStore((s) => s.user?.is_super_admin ?? false);
+
   const [searchParams] = useSearchParams();
   const [input, setInput] = useState("");
   const [createFolderModal, setCreateFolderModal] = useState<{ isTeam: boolean } | null>(null);
@@ -1095,13 +1098,18 @@ export function AssistantPage() {
               {/* Seletor de modo */}
               <SelectControl
                 value={chatMode}
-                onChange={(v) => setChatMode(v as "infrastructure" | "general")}
+                onChange={(v) => setChatMode(v as "infrastructure" | "general" | "platform")}
                 options={[
                   { value: "infrastructure", label: "Infraestrutura" },
                   { value: "general",        label: "Tecnologia Geral" },
+                  ...(isSuperAdmin ? [{ value: "platform", label: "Guia da Plataforma" }] : []),
                 ]}
-                icon={chatMode === "general" ? <Globe size={12} /> : <Shield size={12} />}
-                active={chatMode === "general"}
+                icon={
+                  chatMode === "general" ? <Globe size={12} /> :
+                  chatMode === "platform" ? <BookOpen size={12} /> :
+                  <Shield size={12} />
+                }
+                active={chatMode === "general" || chatMode === "platform"}
               />
 
               {/* Seletor de tipo de documento + botão Gerar */}
@@ -1171,11 +1179,15 @@ export function AssistantPage() {
               <div className="text-center text-gray-400 mt-20 select-none">
                 {chatMode === "general"
                   ? <Globe size={40} className="mx-auto mb-3 opacity-20 text-purple-400" />
+                  : chatMode === "platform"
+                  ? <BookOpen size={40} className="mx-auto mb-3 opacity-20 text-emerald-400" />
                   : <Sparkles size={40} className="mx-auto mb-3 opacity-20" />}
                 <p className="font-medium text-base">Como posso ajudar?</p>
                 <p className="text-sm mt-1 text-gray-300 max-w-sm mx-auto">
                   {chatMode === "general"
                     ? "Pergunte sobre redes, servidores, telefonia IP, softphones, PABX, VoIP ou qualquer assunto de TI."
+                    : chatMode === "platform"
+                    ? "Pergunte como usar qualquer módulo da plataforma para resolver um problema específico."
                     : "Pergunte sobre dispositivos, compliance, operações recentes ou boas práticas de segurança."}
                 </p>
               </div>
@@ -1205,7 +1217,11 @@ export function AssistantPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
                 }}
-                placeholder={chatMode === "general" ? "Pergunte sobre qualquer assunto de TI… (Enter para enviar)" : "Pergunte sobre sua infraestrutura… (Enter para enviar)"}
+                placeholder={
+                  chatMode === "general" ? "Pergunte sobre qualquer assunto de TI… (Enter para enviar)" :
+                  chatMode === "platform" ? "Como faço para… na plataforma? (Enter para enviar)" :
+                  "Pergunte sobre sua infraestrutura… (Enter para enviar)"
+                }
                 disabled={loading}
                 rows={2}
                 className="flex-1 text-sm border border-gray-200 rounded-xl px-4 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-gray-50"

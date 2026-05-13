@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Bot, X, Send, Loader2, Plus, Trash2, ChevronDown, Sparkles, Database, FileText,
-  Globe, Shield,
+  Globe, Shield, BookOpen,
 } from "lucide-react";
 import { useAssistantStore, type AssistantMessage } from "../../store/assistantStore";
 import { assistantApi, assistantDocsApi, type DocDraft } from "../../api/assistant";
@@ -111,6 +111,8 @@ function AssistantPanelInner() {
     chatMode, close, setModel, setChatMode, setLoading, setOpenaiAvailable, addMessage, setMessages,
     setSessions, setCurrentSessionId, newSession,
   } = useAssistantStore();
+
+  const isSuperAdmin = useAuthStore((s) => s.user?.is_super_admin ?? false);
 
   const [input, setInput] = useState("");
   const [showSessions, setShowSessions] = useState(false);
@@ -258,13 +260,18 @@ function AssistantPanelInner() {
           {/* Modo */}
           <PanelSelect
             value={chatMode}
-            onChange={(v) => setChatMode(v as "infrastructure" | "general")}
+            onChange={(v) => setChatMode(v as "infrastructure" | "general" | "platform")}
             options={[
               { value: "infrastructure", label: "Infra" },
               { value: "general",        label: "Geral" },
+              ...(isSuperAdmin ? [{ value: "platform", label: "Guia" }] : []),
             ]}
-            icon={chatMode === "general" ? <Globe size={9} /> : <Shield size={9} />}
-            active={chatMode === "general"}
+            icon={
+              chatMode === "general" ? <Globe size={9} /> :
+              chatMode === "platform" ? <BookOpen size={9} /> :
+              <Shield size={9} />
+            }
+            active={chatMode === "general" || chatMode === "platform"}
           />
           {/* LLM */}
           {openaiAvailable && (
