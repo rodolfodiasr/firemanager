@@ -40,6 +40,9 @@ import { PlaybooksPage } from "./pages/PlaybooksPage";
 import { ComplianceEnterprisePage } from "./pages/ComplianceEnterprisePage";
 import { AISafetyPage } from "./pages/AISafetyPage";
 import { SelfServicePortalPage } from "./pages/SelfServicePortalPage";
+import { SecurityInfraPage } from "./pages/SecurityInfraPage";
+import { EdgeAgentsPage } from "./pages/EdgeAgentsPage";
+import { ProductPage } from "./pages/ProductPage";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -110,6 +113,9 @@ export function AppRouter() {
       <Route path="/compliance-enterprise" element={<ProtectedLayout><ComplianceEnterprisePage /></ProtectedLayout>} />
       <Route path="/ai-safety"             element={<ProtectedLayout><AISafetyPage /></ProtectedLayout>} />
       <Route path="/selfservice-portal"    element={<ProtectedLayout><SelfServicePortalPage /></ProtectedLayout>} />
+      <Route path="/security-infra"        element={<ProtectedLayout><SecurityInfraPage /></ProtectedLayout>} />
+      <Route path="/edge-agents"           element={<ProtectedLayout><EdgeAgentsPage /></ProtectedLayout>} />
+      <Route path="/product"               element={<ProtectedLayout><ProductPage /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

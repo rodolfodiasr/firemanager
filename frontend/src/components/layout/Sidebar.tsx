@@ -114,7 +114,7 @@ const navSections: NavSection[] = [
       { to: "/identity",           icon: Users,    label: "Identidade"          },
       { to: "/onboarding",         icon: UserPlus, label: "Onboarding"          },
       { to: "/selfservice-portal", icon: Store,    label: "Self-Service Portal" },
-      { to: "#", icon: KeyRound, label: "SSO / OIDC", upcoming: "F31" },
+      { to: "/edge-agents", icon: Cpu, label: "Edge Agents & SSO" },
     ],
   },
 
@@ -169,8 +169,8 @@ const navSections: NavSection[] = [
       { to: "/ai-safety",       icon: ShieldHalf,  label: "IA Safety"                     },
       { to: "/platform-config", icon: ShieldCheck, label: "Config. Plataforma"            },
       { to: "/settings",        icon: Settings,    label: "Configurações"                 },
-      { to: "#", icon: Cpu,   label: "Edge Agents", upcoming: "F31" },
-      { to: "#", icon: Store, label: "Marketplace",  upcoming: "F31" },
+      { to: "/security-infra", icon: ShieldCheck, label: "Infra de Segurança" },
+      { to: "/product",        icon: Coins,       label: "Produto & Billing" },
     ],
   },
 
