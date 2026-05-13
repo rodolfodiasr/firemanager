@@ -223,19 +223,24 @@ function AssistantPanelInner() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0 ml-2">
-          {/* Modo toggle */}
-          <button
-            onClick={() => setChatMode(chatMode === "infrastructure" ? "general" : "infrastructure")}
-            title={chatMode === "general" ? "Tecnologia Geral (clique para mudar)" : "Infraestrutura (clique para mudar)"}
-            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors ${
-              chatMode === "general"
-                ? "bg-purple-700 text-purple-100 hover:bg-purple-600"
-                : "bg-gray-800 hover:bg-gray-700 text-gray-300"
-            }`}
-          >
-            {chatMode === "general" ? <Globe size={10} /> : <Shield size={10} />}
-            {chatMode === "general" ? "Geral" : "Infra"}
-          </button>
+          {/* Mode selector dropdown */}
+          <div className="relative">
+            <select
+              value={chatMode}
+              onChange={(e) => setChatMode(e.target.value as "infrastructure" | "general")}
+              className={`appearance-none text-[10px] pl-5 pr-4 py-1 rounded cursor-pointer focus:outline-none transition-colors ${
+                chatMode === "general"
+                  ? "bg-purple-700 border border-purple-500 text-purple-100"
+                  : "bg-gray-800 border border-gray-600 text-gray-300 hover:bg-gray-700"
+              }`}
+            >
+              <option value="infrastructure">Infraestrutura</option>
+              <option value="general">Tecnologia Geral</option>
+            </select>
+            <span className="pointer-events-none absolute left-1 top-1/2 -translate-y-1/2">
+              {chatMode === "general" ? <Globe size={9} className="text-purple-200" /> : <Shield size={9} className="text-gray-400" />}
+            </span>
+          </div>
           {/* Seletor de modelo (apenas se OpenAI disponível) */}
           {openaiAvailable && (
             <button

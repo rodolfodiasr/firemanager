@@ -946,19 +946,27 @@ export function AssistantPage() {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {/* Mode toggle */}
-              <button
-                onClick={() => setChatMode(chatMode === "infrastructure" ? "general" : "infrastructure")}
-                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                  chatMode === "general"
-                    ? "bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100"
-                    : "border-gray-200 hover:bg-gray-50 text-gray-600"
-                }`}
-                title={chatMode === "general" ? "Modo: Tecnologia Geral (clique para mudar para Infraestrutura)" : "Modo: Infraestrutura (clique para mudar para Tecnologia Geral)"}
-              >
-                {chatMode === "general" ? <Globe size={12} /> : <Shield size={12} />}
-                {chatMode === "general" ? "Tecnologia Geral" : "Infraestrutura"}
-              </button>
+              {/* Mode selector dropdown */}
+              <div className="relative">
+                <select
+                  value={chatMode}
+                  onChange={(e) => setChatMode(e.target.value as "infrastructure" | "general")}
+                  className={`appearance-none text-xs pl-7 pr-6 py-1.5 rounded-lg border cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors ${
+                    chatMode === "general"
+                      ? "bg-purple-50 border-purple-300 text-purple-700"
+                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  <option value="infrastructure">Infraestrutura</option>
+                  <option value="general">Tecnologia Geral</option>
+                </select>
+                <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2">
+                  {chatMode === "general" ? <Globe size={12} className="text-purple-600" /> : <Shield size={12} className="text-gray-500" />}
+                </span>
+                <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400">
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>
+                </span>
+              </div>
 
               {currentSessionId && messages.length > 0 && (
                 <button
