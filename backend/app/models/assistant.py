@@ -64,6 +64,15 @@ class AssistantSession(Base):
         nullable=True
     )
     pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # GLPI bridge — populated when session is opened from a GLPI ticket
+    glpi_ticket_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    glpi_integration_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
+    )
+    glpi_itemtype: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    glpi_ticket_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

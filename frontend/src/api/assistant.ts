@@ -55,6 +55,10 @@ interface AssistantSessionResponse {
   is_shared: boolean;
   pinned: boolean;
   user_name: string | null;
+  glpi_ticket_id: number | null;
+  glpi_integration_id: string | null;
+  glpi_itemtype: string | null;
+  glpi_ticket_title: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -100,6 +104,10 @@ function mapSession(r: AssistantSessionResponse): AssistantSession {
     isShared: r.is_shared,
     pinned: r.pinned,
     userName: r.user_name,
+    glpiTicketId: r.glpi_ticket_id,
+    glpiIntegrationId: r.glpi_integration_id,
+    glpiItemtype: r.glpi_itemtype,
+    glpiTicketTitle: r.glpi_ticket_title,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -187,6 +195,14 @@ export const assistantApi = {
     apiClient
       .put<AssistantSessionResponse>(`/assistant/sessions/${id}/pin`, { pinned })
       .then((r) => mapSession(r.data)),
+
+  sendToGlpi: (sessionId: string, content: string, isPrivate = false) =>
+    apiClient
+      .post<{ followup_id: number; glpi_ticket_id: number; glpi_itemtype: string }>(
+        `/assistant/sessions/${sessionId}/send-to-glpi`,
+        { content, is_private: isPrivate }
+      )
+      .then((r) => r.data),
 
   // Folders
   listFolders: () =>

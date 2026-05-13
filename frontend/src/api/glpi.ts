@@ -46,4 +46,9 @@ export const glpiApi = {
 
   runAnalysis: (id: string, deviceIds: string[]) =>
     apiClient.post(`/glpi/analyses/${id}/run`, { device_ids: deviceIds }).then((r) => r.data),
+
+  openChatFromGlpi: (analysisId: string) =>
+    apiClient
+      .post<{ session_id: string }>(`/glpi/analyses/${analysisId}/open-chat`)
+      .then((r) => r.data),
 };

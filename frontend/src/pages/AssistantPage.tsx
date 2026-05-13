@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
-  Bot, Send, Loader2, Plus, Trash2, Sparkles, Database,
+  Bot, ExternalLink, Send, Loader2, Plus, Trash2, Sparkles, Database,
   Pin, PinOff, FolderOpen, Folder, Users, MoreHorizontal,
   Pencil, Share2, FolderInput, Check, X, ChevronRight, ChevronDown, FileText,
-  Globe, Shield,
+  Globe, Shield, Tag,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import {
@@ -582,6 +583,98 @@ function RenameFolderModal({
 
 // ── AssistantPage ─────────────────────────────────────────────────────────────
 
+// ── SendToGlpiModal ───────────────────────────────────────────────────────────
+
+function SendToGlpiModal({
+  sessionId,
+  ticketId,
+  itemtype,
+  onClose,
+}: {
+  sessionId: string;
+  ticketId: number;
+  itemtype: string | null | undefined;
+  onClose: () => void;
+}) {
+  const [content, setContent] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    const text = content.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      const result = await assistantApi.sendToGlpi(sessionId, text, isPrivate);
+      toast.success(`Followup #${result.followup_id} postado no ${itemtype ?? "ticket"} #${result.glpi_ticket_id}!`);
+      onClose();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        "Erro ao enviar para o GLPI.";
+      toast.error(msg);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+      <div className="bg-white rounded-2xl shadow-2xl w-[520px] p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800">Enviar resolução para GLPI</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {itemtype ?? "Ticket"} #{ticketId} — será postado como followup
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={16} />
+          </button>
+        </div>
+
+        <textarea
+          autoFocus
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Descreva a resolução, diagnóstico ou próximos passos..."
+          rows={7}
+          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 mb-3"
+        />
+
+        <label className="flex items-center gap-2 text-xs text-gray-600 mb-5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={isPrivate}
+            onChange={(e) => setIsPrivate(e.target.checked)}
+            className="accent-brand-600"
+          />
+          Nota privada (visível apenas para técnicos no GLPI)
+        </label>
+
+        <div className="flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 text-xs border border-gray-200 rounded-xl py-2.5 hover:bg-gray-50 text-gray-600"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={!content.trim() || sending}
+            className="flex-1 flex items-center justify-center gap-2 text-xs bg-brand-600 hover:bg-brand-700 text-white rounded-xl py-2.5 disabled:opacity-40 font-medium"
+          >
+            {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+            {sending ? "Enviando..." : "Enviar para GLPI"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AssistantPage ─────────────────────────────────────────────────────────────
+
 export function AssistantPage() {
   const {
     currentSessionId, messages, sessions, teamSessions, folders,
@@ -592,12 +685,14 @@ export function AssistantPage() {
     updateSession, removeSession, addFolder, updateFolder, removeFolder,
   } = useAssistantStore();
 
+  const [searchParams] = useSearchParams();
   const [input, setInput] = useState("");
   const [createFolderModal, setCreateFolderModal] = useState<{ isTeam: boolean } | null>(null);
   const [renameFolderTarget, setRenameFolderTarget] = useState<AssistantFolder | null>(null);
   const [generatingDoc, setGeneratingDoc] = useState(false);
   const [selectedDocType, setSelectedDocType] = useState<"knowledge" | "action_plan" | "remediation">("knowledge");
   const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
+  const [glpiSendOpen, setGlpiSendOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Carregamento inicial
@@ -606,6 +701,19 @@ export function AssistantPage() {
     assistantApi.listSessions().then(setSessions).catch(() => {});
     assistantApi.listTeamSessions().then(setTeamSessions).catch(() => {});
     assistantApi.listFolders().then(setFolders).catch(() => {});
+
+    // Carregar sessão da URL (?session=<id>) — deep link a partir do GLPI
+    const sessionParam = searchParams.get("session");
+    if (sessionParam) {
+      setLoading(true);
+      assistantApi.getSession(sessionParam)
+        .then(({ session, messages: msgs }) => {
+          setCurrentSessionId(session.id);
+          setMessages(msgs);
+        })
+        .catch(() => toast.error("Erro ao carregar sessão vinculada ao ticket."))
+        .finally(() => setLoading(false));
+    }
   }, []);
 
   useEffect(() => {
@@ -1035,6 +1143,28 @@ export function AssistantPage() {
             </div>
           </div>
 
+          {/* Banner GLPI — visível quando a sessão está vinculada a um ticket */}
+          {currentSession?.glpiTicketId && (
+            <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-2.5 bg-amber-50 border-b border-amber-100">
+              <div className="flex items-center gap-2 min-w-0">
+                <Tag size={13} className="text-amber-600 shrink-0" />
+                <span className="text-xs font-medium text-amber-800 shrink-0">
+                  {currentSession.glpiItemtype ?? "Ticket"} #{currentSession.glpiTicketId}
+                </span>
+                {currentSession.glpiTicketTitle && (
+                  <span className="text-xs text-amber-600 truncate">{currentSession.glpiTicketTitle}</span>
+                )}
+              </div>
+              <button
+                onClick={() => setGlpiSendOpen(true)}
+                className="flex items-center gap-1.5 shrink-0 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <ExternalLink size={11} />
+                Enviar para GLPI
+              </button>
+            </div>
+          )}
+
           {/* Mensagens */}
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 min-h-0">
             {messages.length === 0 && (
@@ -1118,6 +1248,14 @@ export function AssistantPage() {
           draft={docDraft}
           onClose={() => setDocDraft(null)}
           onUpdated={(updated) => setDocDraft(updated)}
+        />
+      )}
+      {glpiSendOpen && currentSessionId && currentSession?.glpiTicketId && (
+        <SendToGlpiModal
+          sessionId={currentSessionId}
+          ticketId={currentSession.glpiTicketId}
+          itemtype={currentSession.glpiItemtype}
+          onClose={() => setGlpiSendOpen(false)}
         />
       )}
     </PageWrapper>

@@ -147,10 +147,17 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 22 | Ciclo de Vida — Onboarding | Perfis de cargo; grupos AD (GLPI/Docs/SysPass automáticos); Guacamole; Tactical RMM; Unifi | ✅ |
 | 23 | Alertas & Integrações | Slack, Teams, Email SMTP, Webhook, Jira; regras por gatilho e severidade; histórico | ✅ |
 | 24 | Dashboard Executivo | Score de risco 0–100, métricas agregadas, relatório PDF executivo (WeasyPrint) | ✅ |
-| 25 | Plataforma Enterprise | API Keys, White-label branding, Cisco ASA + Palo Alto + Check Point connectors; migração 0038 | ✅ |
-| 26 | Golden Config Bundles REST | GoldenBundle + BundleSection + BundleApply; BundleRenderer; FortinetRestApply; Celery worker; migração 0039 | ✅ |
-| 27 | VM Migration Planner | VMware vCenter + Proxmox read-only; inventory sync; runbook IA (Claude); migração 0040 | ✅ |
-| 28 | Segurança Avançada e Resiliência | Denylist catastróficos, pre-snapshot, preview CLI, read_only_agent, JWT 15 min, audit hash-chain, SSRF guard | ✅ (parcial) |
+| 25 | Plataforma Enterprise | API Keys, White-label branding, Cisco ASA + Palo Alto + Check Point connectors | ✅ |
+| 26 | Golden Config Bundles REST | GoldenBundle + BundleSection + BundleApply; BundleRenderer; FortinetRestApply; Celery worker | ✅ |
+| 27 | VM Migration Planner | VMware vCenter + Proxmox read-only; inventory sync; runbook IA (Claude) | ✅ |
+| 28 | Segurança Avançada e Resiliência | Denylist catastróficos, pre-snapshot, preview CLI, read_only_agent, JWT 15 min, audit hash-chain, SSRF guard; suite 70 testes (JWT/guardrails/RBAC/tenant isolation/multi-sig) | ✅ |
+| 43 | Integração GLPI com IA | `glpi_integrations` + `glpi_ticket_analyses`; GlpiClient 11.0.4; Celery worker análise Claude (diagnóstico/ações/causa_raiz); enriquecimento Zabbix/Wazuh/device logs; correlação automática com devices; bridge AI Assistant via `open-session` | ✅ |
+| 44 | Firmware Intelligence e CVEs | `device_firmware_versions` (histórico); `firmware_cves` (NVD: CVSS v2/v3, CPE); `device_firmware_vulnerabilities` (device×CVE, status open/accepted/patched); `firmware_service` + `nvd_service` | ✅ |
+| 45 | Clarification Loop | `clarification_questions` + `clarification_answers` (JSONB) + `confidence_score` (FLOAT) em operations; agente pede esclarecimento quando confiança < threshold antes de executar | ✅ |
+| 40-B | AI Assistant Panel — Chat IA | `assistant_sessions` + `assistant_messages`; RAG com Claude/GPT-4o; hash-chain de mensagens; `AssistantPanel` (widget lateral) + `AssistantPage` (página dedicada); seletor de modelo; indicadores RAG | ✅ |
+| 41 | Organização do Assistant — Pastas, Pin e Compartilhamento | `assistant_folders` (cor, is_team); `folder_id`, `is_shared`, `pinned` em sessões; rename/move/share/pin; `GET /sessions/team`; sidebar colapsável com seções Pinned/Equipe/Pessoal | ✅ |
+| 42 | Visibilidade de Pastas por Role | `min_role` em `assistant_folders`; pastas de equipe visíveis apenas para roles >= min_role | ✅ |
+| 40-A | Motor de Conhecimento IA | `assistant_doc_drafts` (action_plan/remediation/knowledge); DocSanitizer; pgvector similarity vs BookStack; workflow draft→approved→published; chat mode Infra/Geral (VoIP/PABX/softphones); dropdowns inline | ✅ |
 
 ### Próximas Fases (resumo)
 
@@ -197,6 +204,64 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | Supply chain security | Pinagem de dependências com hash; Dependabot/Renovate; versionamento de parsers por firmware | Média | ⏳ F29 |
 | Rate limiting por API key | Limites configuráveis por tenant e rota; headers `X-RateLimit-*` | Média | ⏳ F29 |
 | **Canal público de reporte de vuln** | E-mail `security@` com PGP key; SLA: crítico 24h, alto 7d, médio 30d | Média | ⏳ F33 |
+| **Suite de testes de segurança** | `tests/security/`: test_auth_boundaries (16), test_guardrails_advanced (25), test_role_enforcement (8), test_tenant_isolation (9); `tests/integration/test_multisig` (12) — 70 testes no total; cobertura: JWT expirado/adulterado, bypass de guardrails com Unicode/encoding, RBAC ops, isolamento multi-tenant, multi-sig approval | Alta | ✅ |
+
+---
+
+### Fase 43 — Integração GLPI com Análise de Chamados IA
+*Análise automática de chamados GLPI com Claude AI, enriquecimento de dados e bridge com o AI Assistant*
+
+**Tabelas:**
+- `glpi_integrations` — configuração por tenant: URL, app_token, username, encrypted_password, filtros por prioridade/tipo/categoria, `poll_interval_minutes`, `lookback_hours`, `auto_analysis_enabled`, `enrich_zabbix`, `enrich_wazuh`, `enrich_device_logs`, `auto_correlate_devices`, `unmatched_to_manual_queue`, `force_analysis_on_security`, `force_analysis_on_recurrent`
+- `glpi_ticket_analyses` — resultado de análise por chamado: `glpi_ticket_id`, `glpi_itemtype` (Ticket/Problem/Change), `glpi_ticket_title`, `glpi_ticket_content`, status (`pending`/`pending_manual`/`analyzing`/`completed`/`failed`), `diagnostico`, `acoes_imediatas`, `plano_remediacao`, `causa_raiz`, `prevencao`, `confianca` (0–1), `is_security_incident`, `is_recurrent`, `recurrence_count`, `related_ticket_ids`, `glpi_followup_id`
+
+**Celery worker `glpi_sync.py`:**
+1. Para cada `GlpiIntegration` ativa: busca chamados abertos via `GlpiClient` (status: new/assigned/planned/pending; filtro por prioridade >= `min_priority`)
+2. Skip de tickets já analisados (unique constraint `tenant_id + glpi_ticket_id`)
+3. Detecção de recorrência: busca chamados similares fechados (threshold: >= 2)
+4. Correlação automática com devices: extrai IPs/hostnames do título+conteúdo; cruza com devices gerenciados
+5. Enriquecimento (opcional): coleta logs Zabbix, alertas Wazuh, logs SSH do device correlacionado
+6. Análise Claude: JSON estruturado com diagnostico, acoes_imediatas, plano_remediacao, causa_raiz, prevencao, confianca, is_security_incident
+7. Post do resultado como nota de acompanhamento no GLPI (`glpi_followup_id`)
+8. Persistência em `glpi_ticket_analyses`
+
+**GlpiClient (`glpi_service.py`):** async context-manager para GLPI 11.0.4 REST API; auth com `initSession`; strip de HTML nos conteúdos de ticket; paginação automática.
+
+**Bridge GLPI → AI Assistant (migration 0051):**
+Colunas adicionadas em `assistant_sessions`: `glpi_ticket_id`, `glpi_integration_id`, `glpi_itemtype`, `glpi_ticket_title`.
+Endpoint `POST /glpi/analyses/{id}/open-session` — cria ou reutiliza sessão do assistant pré-contextualizada com o chamado. Permite que o analista continue a investigação do chamado em linguagem natural dentro do Assistant.
+
+**Endpoints REST:**
+- `GET /glpi/integrations` — retorna config GLPI do tenant
+- `POST /glpi/integrations` — cria config (uma por tenant)
+- `PATCH /glpi/integrations/{id}` — atualiza config
+- `DELETE /glpi/integrations/{id}` — remove config
+- `POST /glpi/integrations/{id}/test` — testa conexão com GLPI
+- `POST /glpi/integrations/{id}/run-analysis` — dispara análise manual
+- `GET /glpi/analyses` — lista análises (com filtros de status, tipo)
+- `GET /glpi/analyses/{id}` — detalhe de uma análise
+- `POST /glpi/analyses/{id}/open-session` — abre sessão Assistant vinculada ao ticket
+
+---
+
+### Fase 44 — Firmware Intelligence e CVEs
+*Rastreamento automático de versões de firmware e correlação com CVEs do NVD*
+
+**Tabelas:**
+- `device_firmware_versions` — histórico de versões lidas de cada device: `device_id`, `version`, `vendor_label`, `model`, `build`, `read_at`, `read_method` (rest/ssh), `raw_output`
+- `firmware_cves` — banco de CVEs sincronizado do NVD: `cve_id` (único), `vendor`, `product`, `affected_versions` (JSONB), `cvss_v3`, `cvss_v2`, `severity`, `description`, `published_at`, `modified_at`, `cpe_uri`, `nvd_url`
+- `device_firmware_vulnerabilities` — vínculo device × CVE detectada: `device_id`, `cve_id`, `device_version`, `detected_at`, status (`open`/`accepted`/`patched`), `accepted_by`, `accepted_reason`, `patched_at`; unique constraint `(device_id, cve_id)`
+
+**Services:** `firmware_service.py` — lê versão de firmware de cada device via REST/SSH e persiste em `device_firmware_versions`; cruza com `firmware_cves` para gerar `device_firmware_vulnerabilities`. `nvd_service.py` — sincroniza CVEs do NVD por vendor/product; mapeia CPE para vendors do Eternity SecOps.
+
+---
+
+### Fase 45 — Clarification Loop (Confidence Score + Perguntas de Clarificação)
+*O agente pede esclarecimentos quando não tem confiança suficiente para executar*
+
+**Colunas adicionadas em `operations`:** `clarification_questions` (JSONB), `clarification_answers` (JSONB), `confidence_score` (FLOAT).
+
+Quando `confidence_score < threshold` (configurável por tenant), o agente retorna `clarification_questions` ao invés de executar diretamente. O analista responde via `clarification_answers` e a operação é reprocessada com o contexto adicional. Operação fica em status `awaiting_clarification` até resposta.
 
 ---
 
@@ -609,6 +674,178 @@ Complementa os compliance checks automáticos de F30 — esses relatórios são 
 
 #### Notificação Proativa de Anomalias ao Manager — Média
 Quando F36 detecta: conta sem uso há +60 dias, SoD violation, membro novo em grupo crítico — além de alertar via F23, envia email direto ao manager do usuário (campo `manager` do AdUser) com contexto e link para revisão. Manager não precisa logar na plataforma para tomar ação simples (aprovar/rejeitar via link tokenizado no email).
+
+---
+
+### Fase 40-B — AI Assistant Panel (Chat IA)
+*Chat em linguagem natural sobre a infraestrutura com memória de sessão e suporte a múltiplos modelos LLM*
+
+**Tabelas:** `assistant_sessions` — id (UUID), tenant_id, user_id, title, model_used, message_count, last_hash, created_at, updated_at. `assistant_messages` — id, session_id, role, content, model, input_tokens, output_tokens, rag_context_used, message_hash, created_at. Hash-chain de mensagens via SHA-256 para integridade do histórico.
+
+**Backend — endpoints REST:**
+- `GET /assistant/capabilities` — retorna `openai_available` e `default_model`; detecta se `OPENAI_API_KEY` está configurada
+- `POST /assistant/chat` — envia mensagem, cria sessão se `session_id=null`, injeta contexto RAG (F19), retorna `AssistantMessageRead` com tokens e `rag_context_used`
+- `GET /assistant/sessions` — lista sessões do usuário autenticado (incluindo pinned e por pasta)
+- `GET /assistant/sessions/{id}` — retorna sessão + histórico completo de mensagens
+- `DELETE /assistant/sessions/{id}` — remove sessão e mensagens
+- `PUT /assistant/sessions/{id}/rename` — atualiza title
+
+**Frontend — dois pontos de entrada:**
+- `AssistantPanel` (`components/assistant/AssistantPanel.tsx`) — widget lateral fixo (`right-0 top-0 h-full w-[420px]`), abre via ícone global na navbar; header dark com controles inline
+- `AssistantPage` (`pages/AssistantPage.tsx`) — página dedicada `/assistant` com sidebar de pastas + sessões e área de chat completa; suporte a renomear sessão inline
+
+**Seletor de modelo:** Quando `openai_available = true`, exibe dropdown para escolher entre Claude (claude-sonnet-4-6) e GPT-4o. `LLMProvider` abstrato com `AnthropicProvider` e `OpenAIProvider`.
+
+**Indicadores de mensagem:** Badge RAG (`<Database size={9} /> RAG`) quando contexto foi injetado; nome do modelo na bolha de resposta do assistente.
+
+| Arquivo | Conteúdo |
+|---|---|
+| `backend/migrations/versions/0045_assistant_panel.py` | Tabelas assistant_sessions + assistant_messages |
+| `backend/app/api/assistant.py` | Endpoints chat, sessions, capabilities |
+| `backend/app/services/assistant_service.py` | `send_message()`, RAG injection, `_ASSISTANT_SYSTEM_TEMPLATE` |
+| `backend/app/services/llm_provider.py` | `LLMProvider`, `AnthropicProvider`, `OpenAIProvider`, `openai_available()` |
+| `frontend/src/store/assistantStore.ts` | Estado global: sessions, messages, loading, selectedModel |
+| `frontend/src/api/assistant.ts` | Mappers + todos os endpoints REST |
+| `frontend/src/components/assistant/AssistantPanel.tsx` | Widget lateral |
+| `frontend/src/pages/AssistantPage.tsx` | Página dedicada |
+
+---
+
+### Fase 41 — Organização de Sessões: Pastas, Pin e Compartilhamento
+*Organização de conversas em pastas pessoais e de equipe com pin e compartilhamento*
+
+**Tabela `assistant_folders`:** id, tenant_id, user_id, name, color (hex #RRGGBB), is_team (boolean), created_at, updated_at.
+
+**Colunas adicionadas em `assistant_sessions`:** `folder_id` (FK → assistant_folders, nullable), `is_shared` (bool default false), `shared_by` (FK → users, nullable), `pinned` (bool default false).
+
+**Novos endpoints REST:**
+- `PUT /assistant/sessions/{id}/rename` — atualiza title
+- `PUT /assistant/sessions/{id}/move` — move sessão para pasta (`folder_id: uuid | null`)
+- `PUT /assistant/sessions/{id}/share` — toggle `is_shared` (sessão aparece para toda a equipe)
+- `PUT /assistant/sessions/{id}/pin` — toggle `pinned` (sessão aparece no topo da lista)
+- `GET /assistant/sessions/team` — retorna sessões marcadas como `is_shared=true` de todo o tenant, com `user_name` do autor
+- `GET /assistant/folders` — lista pastas do usuário + pastas de equipe visíveis
+- `POST /assistant/folders` — cria pasta (personal ou team)
+- `PUT /assistant/folders/{id}` — renomeia ou muda cor
+- `DELETE /assistant/folders/{id}` — remove pasta (sessões ficam sem pasta, não são deletadas)
+
+**Frontend — sidebar de `AssistantPage`:**
+- Seções colapsáveis: "Pinned", pastas de equipe, pastas pessoais, "Sem pasta"
+- Paleta de 8 cores para pastas (`FOLDER_COLORS`)
+- Menu de contexto por sessão: renomear inline, mover para pasta, pin/unpin, compartilhar, excluir
+- Sessões de equipe mostram o nome do autor (`user_name`)
+
+---
+
+### Fase 42 — Visibilidade de Pastas por Role
+*Controle de visibilidade de pastas de equipe baseado em role RBAC*
+
+**Coluna `min_role`** em `assistant_folders` (VARCHAR(20), NOT NULL, DEFAULT `analyst_n1`).
+
+Pastas de equipe (`is_team = true`) só são retornadas para usuários com role >= `min_role`. Ordem de roles: `analyst_n1 < analyst_n2 < analyst_n3 < manager < admin`. Pastas pessoais não são afetadas — sempre visíveis ao dono.
+
+Permite criar pastas de equipe restritas a N2/N3 (ex: "Investigações de Incidente") que não aparecem para analistas N1.
+
+---
+
+### Fase 40-A — Motor de Conhecimento IA (Knowledge Engine)
+*Geração, revisão e publicação de documentação técnica a partir de conversas do assistente IA*
+
+**Princípio:** Cada conversa de suporte contém conhecimento valioso que normalmente se perde. Esta fase captura esse conhecimento, sanitiza dados sensíveis, detecta duplicatas e publica documentação estruturada no BookStack — criando um ciclo contínuo de aprendizado organizacional.
+
+**Ciclo recomendado:** Plano de Ação → executar → validar → Plano de Remediação → publicar → Artigo de Conhecimento
+
+#### Tabela `assistant_doc_drafts` e workflow de estados — Alta
+
+Modelo ORM `AssistantDocDraft` com campos: `id` (UUID), `session_id` (FK), `tenant_id`, `created_by` (user_id), `title`, `content` (Markdown), `status` (`draft` / `approved` / `published` / `rejected`), `doc_type` (`knowledge` / `action_plan` / `remediation`), `review_deadline`, `sanitizer_warnings` (JSONB), `similar_docs` (JSONB), `bookstack_page_id`, `bookstack_page_url`, `created_at`, `updated_at`.
+
+Migrations: `0048_assistant_doc_drafts.py` (tabela base), `0049_doc_draft_similar.py` (campo `similar_docs`), `0050_doc_draft_type.py` (campo `doc_type` com server_default `knowledge`).
+
+Endpoints REST:
+- `POST /assistant/sessions/{id}/generate-doc` — gera rascunho com `doc_type` configurável
+- `GET /assistant/docs` — lista rascunhos por status
+- `PUT /assistant/docs/{id}` — edita título e conteúdo
+- `POST /assistant/docs/{id}/approve` — transição draft → approved
+- `POST /assistant/docs/{id}/reject` — transição qualquer → rejected
+- `POST /assistant/docs/{id}/publish` — publica no BookStack e atualiza status para published; dispara re-indexação RAG
+
+#### DocSanitizer — Alta
+
+`app/services/doc_sanitizer.py` — sanitiza o conteúdo antes de salvar, mascarando dados que não devem aparecer na documentação pública. Padrões detectados: IPs RFC1918 (`10.x`, `192.168.x`, `172.16-31.x`), tokens/hashes hexadecimais longos (>16 chars), passwords em contexto (`password=`, `senha=`, `token=`, `secret=`, `apikey=`), credenciais em URLs (`://user:pass@`).
+
+Cada ocorrência gera um `SanitizerWarning` com `pattern` (tipo detectado) e `excerpt` (trecho mascarado, máx 50 chars). Warnings exibidos no `DocDraftModal` com banner âmbar antes do conteúdo — técnico é avisado e pode editar antes de publicar.
+
+#### Similaridade semântica vs. BookStack — Alta
+
+`_find_similar_docs()` em `doc_publisher.py` — antes de salvar o rascunho, gera embedding do título+conteúdo e faz busca cosine no `bookstack_embeddings` (pgvector). Threshold: `0.75`, retorna top-3 matches.
+
+Cada match retorna `bs_page_id`, `title`, `url` e `similarity` (0.0–1.0). Armazenado em `similar_docs` JSONB. `DocDraftModal` exibe banner laranja listando documentos existentes com percentual de similaridade e link para o BookStack — técnico decide se atualiza um existente ou publica um novo.
+
+#### Extrator e renderizador por tipo de documento — Alta
+
+`app/services/doc_extractor.py` — três prompts Claude distintos e três renderizadores Markdown segundo o `doc_type`:
+
+| Tipo | Prompt foco | Seções Markdown |
+|---|---|---|
+| `knowledge` | Symptom, diagnosis, resolution, prevention | Sintoma, Diagnóstico, Solução, Prevenção, Referências |
+| `action_plan` | Problem statement, scope, timeline, owners, steps | Problema, Escopo, Prazo, Responsáveis, Etapas, Critério de Sucesso |
+| `remediation` | Root cause, fix applied, validation, recurrence prevention | Causa Raiz, Solução Aplicada, Validação, Prevenção de Recorrência |
+
+`extract_knowledge(session, messages, doc_type)` retorna dict JSON; `render_markdown(data, session, doc_type)` gera Markdown final com cabeçalho padronizado (data, autor, device).
+
+Títulos default por tipo: `"Documentação Técnica"` / `"Plano de Ação"` / `"Plano de Remediação"`.
+
+#### DocDraftModal — Alta
+
+`frontend/src/components/assistant/DocDraftModal.tsx` — modal de revisão completa do rascunho:
+
+- Header com `DocTypeBadge` (ícone + label colorido por tipo) e `StatusBadge`
+- Banner âmbar: warnings do DocSanitizer (padrão + excerpt por hover)
+- Banner laranja: documentos similares no BookStack com score e link direto
+- Visualização do conteúdo Markdown como `<pre>` monoespaçado
+- Modo edição inline: campos título e textarea de conteúdo
+- Rodapé de ações: **Editar**, **Rejeitar** (vermelho), **Aprovar** (verde, só no draft), **Publicar no BookStack** (brand)
+- Estado publicado: link direto para a página no BookStack
+
+#### Toggle de modo de chat: Infraestrutura vs. Tecnologia Geral — Alta
+
+`backend/app/services/assistant_service.py` — novo parâmetro `mode: str = "infrastructure"` em `send_message()`:
+
+- `"infrastructure"`: usa `_ASSISTANT_SYSTEM_TEMPLATE` com injeção RAG (contexto dos documentos indexados)
+- `"general"`: usa `_GENERAL_SYSTEM_TEMPLATE` com cobertura ampla de TI — redes, servidores, telefonia IP (VoIP, PABX, ramais SIP, softphones como Mesa Virtual Intelbras), cloud, virtualização, segurança; sem injeção RAG (`rag_context_used = False`)
+
+`frontend/src/store/assistantStore.ts` — campo `chatMode: "infrastructure" | "general"` e action `setChatMode`.
+
+`AssistantChatRequest` aceita `mode: str = "infrastructure"` e repassa ao service.
+
+#### Dropdowns inline nos painéis — Média
+
+Componente `PanelSelect` em `AssistantPanel.tsx` (dark header) e `SelectControl` em `AssistantPage.tsx` (light header) — `<select>` nativo com `appearance-none`, ícone absoluto esquerdo e chevron SVG direito.
+
+Três controles no header:
+1. **Modo** (Infra / Geral) — roxo quando Geral, cinza quando Infra; ícone `Shield` / `Globe`
+2. **Tipo de doc** (Artigo / Pl. Ação / Remediação) — visível apenas quando há sessão+mensagens; ícone `FileText`
+3. **LLM** (Claude / GPT-4o) — visível apenas quando `openai_available`; ícone `Bot`
+
+Botão **Gerar** ao lado do tipo de doc dispara `handleGenerateDoc(selectedDocType)` diretamente, sem modal intermediário de seleção.
+
+| Arquivo | Alteração |
+|---|---|
+| `backend/app/services/assistant_service.py` | `_GENERAL_SYSTEM_TEMPLATE`, `mode` param, skip RAG |
+| `backend/app/services/doc_publisher.py` | `generate_draft(doc_type)`, prompts e renderers por tipo |
+| `backend/app/services/doc_extractor.py` | `extract_knowledge()`, `render_markdown()` por tipo |
+| `backend/app/services/doc_sanitizer.py` | mascaramento + SanitizerWarning[] |
+| `backend/app/api/assistant.py` | `AssistantChatRequest.mode` |
+| `backend/app/api/assistant_docs.py` | `GenerateDocRequest`, `DocDraftRead.doc_type`, endpoints |
+| `backend/migrations/versions/0048_*` | tabela base assistant_doc_drafts |
+| `backend/migrations/versions/0049_*` | campo similar_docs |
+| `backend/migrations/versions/0050_*` | campo doc_type |
+| `frontend/src/store/assistantStore.ts` | `chatMode`, `setChatMode` |
+| `frontend/src/api/assistant.ts` | `DocDraft.doc_type`, `generateDoc(docType)`, `chat(mode)` |
+| `frontend/src/components/assistant/AssistantPanel.tsx` | `PanelSelect`, 3 dropdowns, `handleGenerateDoc` |
+| `frontend/src/components/assistant/DocDraftModal.tsx` | modal completo, `DocTypeBadge`, `StatusBadge` |
+| `frontend/src/components/assistant/DocTypeSelector.tsx` | seletor modal (criado, substituído por dropdown inline) |
+| `frontend/src/pages/AssistantPage.tsx` | `SelectControl`, 3 dropdowns, `selectedDocType`, `chatMode` |
 
 ---
 

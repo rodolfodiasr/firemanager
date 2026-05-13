@@ -21,6 +21,10 @@ export interface AssistantSession {
   isShared: boolean;
   pinned: boolean;
   userName?: string | null;
+  glpiTicketId?: number | null;
+  glpiIntegrationId?: string | null;
+  glpiItemtype?: string | null;
+  glpiTicketTitle?: string | null;
   createdAt: string;
   updatedAt: string;
 }

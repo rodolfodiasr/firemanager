@@ -92,6 +92,28 @@ def _compute_hash(prev_hash: str, role: str, content: str) -> str:
 
 # ── Session internals ─────────────────────────────────────────────────────────
 
+_GLPI_CONTEXT_TEMPLATE = """\
+
+CONTEXTO DO TICKET GLPI:
+Tipo: {itemtype} | ID: #{ticket_id}
+Título: {title}
+{content_block}
+Você está investigando este ticket. Use o contexto acima para orientar sua análise.
+Quando o analista finalizar a investigação, ele poderá clicar em "Enviar para GLPI" \
+para postar o resultado diretamente no ticket como followup.
+"""
+
+
+def _build_glpi_context(session: "AssistantSession", content: str | None = None) -> str:
+    content_block = f"Descrição: {content}" if content else ""
+    return _GLPI_CONTEXT_TEMPLATE.format(
+        itemtype=session.glpi_itemtype or "Ticket",
+        ticket_id=session.glpi_ticket_id,
+        title=session.glpi_ticket_title or "",
+        content_block=content_block,
+    )
+
+
 async def _get_or_create_session(
     db: AsyncSession,
     tenant_id: UUID,
@@ -181,7 +203,12 @@ async def send_message(
         context = None
     else:
         context = await build_context_for_query(db, tenant_id, user_role, content)
-        system = _ASSISTANT_SYSTEM_TEMPLATE.replace("{context}", context or "(nenhum contexto disponível)")
+        base_context = context or "(nenhum contexto disponível)"
+        # Append GLPI ticket context when session is linked to a ticket
+        if session.glpi_ticket_id:
+            glpi_ctx = _build_glpi_context(session)
+            base_context = base_context + "\n" + glpi_ctx
+        system = _ASSISTANT_SYSTEM_TEMPLATE.replace("{context}", base_context)
 
     history = await _load_history(db, session.id, limit=18)
     if not history or history[-1]["content"] != content:

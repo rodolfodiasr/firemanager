@@ -279,6 +279,61 @@ async def run_glpi_analysis(
     return {"queued": True, "analysis_id": str(analysis_id)}
 
 
+@router.post("/analyses/{analysis_id}/open-chat", status_code=200)
+async def open_chat_from_glpi(
+    analysis_id: UUID,
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Create (or retrieve existing) AssistantSession linked to this GLPI ticket.
+
+    Returns session_id so the frontend can navigate to /assistant?session=<id>.
+    Idempotent: if a session already exists for this ticket + user, reuses it.
+    """
+    from sqlalchemy import select as sa_select
+    from app.models.assistant import AssistantSession
+    from app.services.llm_provider import get_provider
+
+    result = await db.execute(
+        sa_select(GlpiTicketAnalysis).where(GlpiTicketAnalysis.id == analysis_id)
+    )
+    analysis = result.scalar_one_or_none()
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Análise não encontrada")
+    if analysis.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=403, detail="Sem acesso a esta análise")
+
+    # Reuse session if one already exists for this ticket + user
+    existing = await db.execute(
+        sa_select(AssistantSession).where(
+            AssistantSession.tenant_id == ctx.tenant.id,
+            AssistantSession.user_id == ctx.user.id,
+            AssistantSession.glpi_ticket_id == analysis.glpi_ticket_id,
+            AssistantSession.glpi_integration_id == analysis.glpi_integration_id,
+        )
+    )
+    session = existing.scalar_one_or_none()
+
+    if not session:
+        provider = get_provider(None)
+        session = AssistantSession(
+            tenant_id=ctx.tenant.id,
+            user_id=ctx.user.id,
+            model_used=provider.name,
+            title=f"[{analysis.glpi_itemtype} #{analysis.glpi_ticket_id}] {analysis.glpi_ticket_title or ''}".strip()[:120],
+            glpi_ticket_id=analysis.glpi_ticket_id,
+            glpi_integration_id=analysis.glpi_integration_id,
+            glpi_itemtype=analysis.glpi_itemtype,
+            glpi_ticket_title=analysis.glpi_ticket_title,
+        )
+        db.add(session)
+        await db.flush()
+        await db.refresh(session)
+        await db.commit()
+
+    return {"session_id": str(session.id)}
+
+
 @router.get("/analyses/{analysis_id}", response_model=GlpiTicketAnalysisRead)
 async def get_glpi_analysis(
     analysis_id: UUID,

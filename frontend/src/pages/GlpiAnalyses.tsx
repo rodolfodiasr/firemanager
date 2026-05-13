@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Bot,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -11,7 +13,6 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
-  Shield,
   X,
   XCircle,
 } from "lucide-react";
@@ -85,9 +86,19 @@ function AnalysisSlideOver({
   onClose: () => void;
   onRunAnalysis: () => void;
 }) {
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ["glpi-analysis", analysisId],
     queryFn: () => glpiApi.getAnalysis(analysisId),
+  });
+
+  const openChatMut = useMutation({
+    mutationFn: () => glpiApi.openChatFromGlpi(analysisId),
+    onSuccess: ({ session_id }) => {
+      onClose();
+      navigate(`/assistant?session=${session_id}`);
+    },
+    onError: () => toast.error("Erro ao abrir chat para este ticket"),
   });
 
   function Section({ title, content }: { title: string; content: string | null }) {
@@ -144,6 +155,22 @@ function AnalysisSlideOver({
               <X size={20} />
             </button>
           </div>
+        </div>
+
+        {/* Investigate CTA */}
+        <div className="shrink-0 px-5 py-3 border-b border-gray-100 bg-brand-50">
+          <button
+            onClick={() => openChatMut.mutate()}
+            disabled={openChatMut.isPending}
+            className="flex items-center gap-2 w-full justify-center text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-4 py-2.5 rounded-lg transition-colors"
+          >
+            {openChatMut.isPending ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Bot size={15} />
+            )}
+            Investigar no Eternity SecOps
+          </button>
         </div>
 
         {/* Body */}

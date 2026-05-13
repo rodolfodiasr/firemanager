@@ -62,6 +62,10 @@ class AssistantSessionRead(BaseModel):
     is_shared: bool
     pinned: bool
     user_name: str | None = None
+    glpi_ticket_id: int | None = None
+    glpi_integration_id: str | None = None
+    glpi_itemtype: str | None = None
+    glpi_ticket_title: str | None = None
     created_at: str
     updated_at: str
 
@@ -76,6 +80,10 @@ class AssistantSessionRead(BaseModel):
             is_shared=s.is_shared,
             pinned=s.pinned,
             user_name=user_name,
+            glpi_ticket_id=getattr(s, "glpi_ticket_id", None),
+            glpi_integration_id=str(s.glpi_integration_id) if getattr(s, "glpi_integration_id", None) else None,
+            glpi_itemtype=getattr(s, "glpi_itemtype", None),
+            glpi_ticket_title=getattr(s, "glpi_ticket_title", None),
             created_at=s.created_at.isoformat(),
             updated_at=s.updated_at.isoformat(),
         )
@@ -134,6 +142,11 @@ class ShareSessionRequest(BaseModel):
 
 class PinSessionRequest(BaseModel):
     pinned: bool
+
+
+class SendToGlpiRequest(BaseModel):
+    content: str   # texto da resolução que será postado como followup no GLPI
+    is_private: bool = False
 
 
 # ── Capabilities ──────────────────────────────────────────────────────────────
@@ -299,6 +312,77 @@ async def pin_session(
     if not session:
         raise HTTPException(status_code=404, detail="Sessão não encontrada.")
     return AssistantSessionRead.from_orm(session)
+
+
+# ── GLPI bridge ──────────────────────────────────────────────────────────────
+
+@router.post("/sessions/{session_id}/send-to-glpi", status_code=200)
+async def send_session_to_glpi(
+    session_id: UUID,
+    data: SendToGlpiRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Post a followup note to the GLPI ticket linked to this session.
+
+    The LLM never calls this directly — it is always triggered by the analyst.
+    Returns the GLPI followup ID created.
+    """
+    from sqlalchemy import select as sa_select
+    from app.models.assistant import AssistantSession
+    from app.models.glpi_integration import GlpiIntegration
+    from app.services.glpi_service import GlpiClient
+    from app.utils.crypto import decrypt_credentials
+
+    result = await db.execute(
+        sa_select(AssistantSession).where(
+            AssistantSession.id == session_id,
+            AssistantSession.tenant_id == ctx.tenant.id,
+            AssistantSession.user_id == ctx.user.id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada.")
+    if not session.glpi_ticket_id or not session.glpi_integration_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Esta sessão não está vinculada a um ticket GLPI.",
+        )
+
+    intg_result = await db.execute(
+        sa_select(GlpiIntegration).where(
+            GlpiIntegration.id == session.glpi_integration_id,
+            GlpiIntegration.tenant_id == ctx.tenant.id,
+        )
+    )
+    intg = intg_result.scalar_one_or_none()
+    if not intg:
+        raise HTTPException(status_code=404, detail="Integração GLPI não encontrada.")
+
+    creds = decrypt_credentials(intg.encrypted_password)
+    async with GlpiClient(
+        glpi_url=intg.glpi_url,
+        app_token=intg.app_token,
+        username=intg.username,
+        password=creds.get("password", ""),
+        verify_ssl=intg.verify_ssl,
+    ) as client:
+        followup_id = await client.add_followup(
+            ticket_id=session.glpi_ticket_id,
+            content=data.content,
+            is_private=data.is_private,
+            itemtype=session.glpi_itemtype or "Ticket",
+        )
+
+    if not followup_id:
+        raise HTTPException(status_code=502, detail="Falha ao criar followup no GLPI.")
+
+    return {
+        "followup_id": followup_id,
+        "glpi_ticket_id": session.glpi_ticket_id,
+        "glpi_itemtype": session.glpi_itemtype,
+    }
 
 
 # ── Folders ───────────────────────────────────────────────────────────────────
