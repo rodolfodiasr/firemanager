@@ -1,21 +1,20 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import get_current_user
-from app.api.module_roles import require_module_reviewer
+from app.api.auth import TenantContext, get_tenant_context, require_module_reviewer
 from app.database import get_db
 from app.models.security_infra import (
     OpaEvaluation, OpaPolicy, PentestSchedule, SecurityProfile,
     VaultConfig, VaultSecretRef,
 )
-from app.models.user import User
 from app.services.security_infra_service import evaluate_policy, seed_builtin_policies
 
 router = APIRouter()
@@ -47,9 +46,7 @@ class VaultConfigRead(BaseModel):
     last_verified_at: Optional[datetime]
     last_verified_ok: Optional[bool]
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class VaultSecretRefCreate(BaseModel):
@@ -69,9 +66,7 @@ class VaultSecretRefRead(BaseModel):
     description: Optional[str]
     category: Optional[str]
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class OpaPolicyCreate(BaseModel):
@@ -93,9 +88,7 @@ class OpaPolicyRead(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class OpaEvaluateRequest(BaseModel):
@@ -109,9 +102,7 @@ class OpaEvaluationRead(BaseModel):
     result: Optional[Any]
     allowed: Optional[bool]
     evaluated_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class SecurityProfileCreate(BaseModel):
@@ -130,9 +121,7 @@ class SecurityProfileRead(BaseModel):
     applied_at: Optional[datetime]
     notes: Optional[str]
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class PentestCreate(BaseModel):
@@ -161,9 +150,7 @@ class PentestRead(BaseModel):
     report_url: Optional[str]
     remediation_deadline: Optional[datetime]
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class PentestUpdate(BaseModel):
@@ -182,10 +169,9 @@ class PentestUpdate(BaseModel):
 @router.get("/vault-configs", response_model=list[VaultConfigRead])
 async def list_vault_configs(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
-    tenant_id = current_user.tenant_id
-    rows = await db.execute(select(VaultConfig).where(VaultConfig.tenant_id == tenant_id))
+    rows = await db.execute(select(VaultConfig).where(VaultConfig.tenant_id == ctx.tenant.id))
     return rows.scalars().all()
 
 
@@ -193,10 +179,10 @@ async def list_vault_configs(
 async def create_vault_config(
     body: VaultConfigCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     cfg = VaultConfig(
-        tenant_id=current_user.tenant_id,
+        tenant_id=ctx.tenant.id,
         name=body.name,
         vault_url=body.vault_url,
         auth_method=body.auth_method,
@@ -216,12 +202,10 @@ async def create_vault_config(
 async def delete_vault_config(
     config_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     cfg = await db.scalar(
-        select(VaultConfig).where(
-            VaultConfig.id == config_id, VaultConfig.tenant_id == current_user.tenant_id
-        )
+        select(VaultConfig).where(VaultConfig.id == config_id, VaultConfig.tenant_id == ctx.tenant.id)
     )
     if not cfg:
         raise HTTPException(404, "Vault config not found")
@@ -234,12 +218,12 @@ async def delete_vault_config(
 async def list_secret_refs(
     config_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     rows = await db.execute(
         select(VaultSecretRef).where(
             VaultSecretRef.vault_config_id == config_id,
-            VaultSecretRef.tenant_id == current_user.tenant_id,
+            VaultSecretRef.tenant_id == ctx.tenant.id,
         )
     )
     return rows.scalars().all()
@@ -250,20 +234,14 @@ async def create_secret_ref(
     config_id: uuid.UUID,
     body: VaultSecretRefCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     cfg = await db.scalar(
-        select(VaultConfig).where(
-            VaultConfig.id == config_id, VaultConfig.tenant_id == current_user.tenant_id
-        )
+        select(VaultConfig).where(VaultConfig.id == config_id, VaultConfig.tenant_id == ctx.tenant.id)
     )
     if not cfg:
         raise HTTPException(404, "Vault config not found")
-    ref = VaultSecretRef(
-        tenant_id=current_user.tenant_id,
-        vault_config_id=config_id,
-        **body.model_dump(),
-    )
+    ref = VaultSecretRef(tenant_id=ctx.tenant.id, vault_config_id=config_id, **body.model_dump())
     db.add(ref)
     await db.flush()
     await db.refresh(ref)
@@ -275,12 +253,11 @@ async def delete_secret_ref(
     config_id: uuid.UUID,
     ref_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     ref = await db.scalar(
         select(VaultSecretRef).where(
-            VaultSecretRef.id == ref_id,
-            VaultSecretRef.tenant_id == current_user.tenant_id,
+            VaultSecretRef.id == ref_id, VaultSecretRef.tenant_id == ctx.tenant.id
         )
     )
     if not ref:
@@ -293,33 +270,27 @@ async def delete_secret_ref(
 @router.get("/opa-policies", response_model=list[OpaPolicyRead])
 async def list_opa_policies(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
-    rows = await db.execute(
-        select(OpaPolicy).where(OpaPolicy.tenant_id == current_user.tenant_id)
-    )
+    rows = await db.execute(select(OpaPolicy).where(OpaPolicy.tenant_id == ctx.tenant.id))
     return rows.scalars().all()
 
 
 @router.post("/opa-policies/seed", response_model=list[OpaPolicyRead])
 async def seed_policies(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
-    return await seed_builtin_policies(db, current_user.tenant_id, current_user.id)
+    return await seed_builtin_policies(db, ctx.tenant.id, ctx.user.id)
 
 
 @router.post("/opa-policies", response_model=OpaPolicyRead, status_code=201)
 async def create_opa_policy(
     body: OpaPolicyCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
-    policy = OpaPolicy(
-        tenant_id=current_user.tenant_id,
-        created_by=current_user.id,
-        **body.model_dump(),
-    )
+    policy = OpaPolicy(tenant_id=ctx.tenant.id, created_by=ctx.user.id, **body.model_dump())
     db.add(policy)
     await db.flush()
     await db.refresh(policy)
@@ -331,30 +302,28 @@ async def evaluate_opa_policy(
     policy_id: uuid.UUID,
     body: OpaEvaluateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)] = ...,
 ):
     policy = await db.scalar(
         select(OpaPolicy).where(
             OpaPolicy.id == policy_id,
-            OpaPolicy.tenant_id == current_user.tenant_id,
+            OpaPolicy.tenant_id == ctx.tenant.id,
             OpaPolicy.is_active == True,
         )
     )
     if not policy:
         raise HTTPException(404, "Policy not found or inactive")
-    return await evaluate_policy(db, current_user.tenant_id, policy, body.input_data, current_user.id)
+    return await evaluate_policy(db, ctx.tenant.id, policy, body.input_data, ctx.user.id)
 
 
 @router.delete("/opa-policies/{policy_id}", status_code=204, response_model=None)
 async def delete_opa_policy(
     policy_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     policy = await db.scalar(
-        select(OpaPolicy).where(
-            OpaPolicy.id == policy_id, OpaPolicy.tenant_id == current_user.tenant_id
-        )
+        select(OpaPolicy).where(OpaPolicy.id == policy_id, OpaPolicy.tenant_id == ctx.tenant.id)
     )
     if not policy:
         raise HTTPException(404, "Policy not found")
@@ -366,11 +335,9 @@ async def delete_opa_policy(
 @router.get("/security-profiles", response_model=list[SecurityProfileRead])
 async def list_security_profiles(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
-    rows = await db.execute(
-        select(SecurityProfile).where(SecurityProfile.tenant_id == current_user.tenant_id)
-    )
+    rows = await db.execute(select(SecurityProfile).where(SecurityProfile.tenant_id == ctx.tenant.id))
     return rows.scalars().all()
 
 
@@ -378,9 +345,9 @@ async def list_security_profiles(
 async def create_security_profile(
     body: SecurityProfileCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
-    profile = SecurityProfile(tenant_id=current_user.tenant_id, **body.model_dump())
+    profile = SecurityProfile(tenant_id=ctx.tenant.id, **body.model_dump())
     db.add(profile)
     await db.flush()
     await db.refresh(profile)
@@ -392,12 +359,11 @@ async def update_security_profile(
     profile_id: uuid.UUID,
     body: SecurityProfileCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     profile = await db.scalar(
         select(SecurityProfile).where(
-            SecurityProfile.id == profile_id,
-            SecurityProfile.tenant_id == current_user.tenant_id,
+            SecurityProfile.id == profile_id, SecurityProfile.tenant_id == ctx.tenant.id
         )
     )
     if not profile:
@@ -413,19 +379,18 @@ async def update_security_profile(
 async def apply_security_profile(
     profile_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     profile = await db.scalar(
         select(SecurityProfile).where(
-            SecurityProfile.id == profile_id,
-            SecurityProfile.tenant_id == current_user.tenant_id,
+            SecurityProfile.id == profile_id, SecurityProfile.tenant_id == ctx.tenant.id
         )
     )
     if not profile:
         raise HTTPException(404, "Profile not found")
     profile.status = "applied"
     profile.applied_at = datetime.utcnow()
-    profile.applied_by = current_user.id
+    profile.applied_by = ctx.user.id
     await db.flush()
     await db.refresh(profile)
     return profile
@@ -435,12 +400,11 @@ async def apply_security_profile(
 async def delete_security_profile(
     profile_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     profile = await db.scalar(
         select(SecurityProfile).where(
-            SecurityProfile.id == profile_id,
-            SecurityProfile.tenant_id == current_user.tenant_id,
+            SecurityProfile.id == profile_id, SecurityProfile.tenant_id == ctx.tenant.id
         )
     )
     if not profile:
@@ -453,10 +417,10 @@ async def delete_security_profile(
 @router.get("/pentest-schedules", response_model=list[PentestRead])
 async def list_pentest_schedules(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     rows = await db.execute(
-        select(PentestSchedule).where(PentestSchedule.tenant_id == current_user.tenant_id)
+        select(PentestSchedule).where(PentestSchedule.tenant_id == ctx.tenant.id)
     )
     return rows.scalars().all()
 
@@ -465,13 +429,9 @@ async def list_pentest_schedules(
 async def create_pentest(
     body: PentestCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
-    pentest = PentestSchedule(
-        tenant_id=current_user.tenant_id,
-        created_by=current_user.id,
-        **body.model_dump(),
-    )
+    pentest = PentestSchedule(tenant_id=ctx.tenant.id, created_by=ctx.user.id, **body.model_dump())
     db.add(pentest)
     await db.flush()
     await db.refresh(pentest)
@@ -483,12 +443,11 @@ async def update_pentest(
     pentest_id: uuid.UUID,
     body: PentestUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     pentest = await db.scalar(
         select(PentestSchedule).where(
-            PentestSchedule.id == pentest_id,
-            PentestSchedule.tenant_id == current_user.tenant_id,
+            PentestSchedule.id == pentest_id, PentestSchedule.tenant_id == ctx.tenant.id
         )
     )
     if not pentest:
@@ -504,12 +463,11 @@ async def update_pentest(
 async def delete_pentest(
     pentest_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_admin),
+    ctx: Annotated[TenantContext, Depends(_require_admin)] = ...,
 ):
     pentest = await db.scalar(
         select(PentestSchedule).where(
-            PentestSchedule.id == pentest_id,
-            PentestSchedule.tenant_id == current_user.tenant_id,
+            PentestSchedule.id == pentest_id, PentestSchedule.tenant_id == ctx.tenant.id
         )
     )
     if not pentest:
