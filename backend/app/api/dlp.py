@@ -5,6 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select, func as sqlfunc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -257,7 +258,7 @@ async def delete_rule(
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     db:  Annotated[AsyncSession, Depends(get_db)],
     tenant_id: UUID | None = None,
-) -> None:
+) -> Response:
     _require_admin(ctx)
     tid = tenant_id if (ctx.user.is_super_admin and tenant_id) else ctx.tenant.id
 
@@ -271,6 +272,7 @@ async def delete_rule(
 
     await db.delete(row)
     await db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/incidents", response_model=list[DLPIncidentRead])
