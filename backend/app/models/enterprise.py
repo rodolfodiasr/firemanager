@@ -54,6 +54,7 @@ class ApiKey(Base):
     permissions: Mapped[list] = mapped_column(
         JSONB, nullable=False, default=list
     )  # e.g. ["devices:read", "operations:write"]
+    plan: Mapped[str] = mapped_column(String(20), nullable=False, default="starter")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_used_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)

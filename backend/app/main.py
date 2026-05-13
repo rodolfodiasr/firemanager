@@ -44,6 +44,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.middleware.api_key_rate_limit import ApiKeyRateLimitMiddleware  # noqa: E402
+app.add_middleware(ApiKeyRateLimitMiddleware)
+
 Instrumentator().instrument(app).expose(app)
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])

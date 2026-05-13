@@ -395,6 +395,65 @@ async def co_approve_operation(
     return OperationRead.model_validate(operation)
 
 
+@router.post("/{operation_id}/dry-run")
+async def dry_run_operation(
+    operation_id: UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Simula a execução sem enviar comandos ao device.
+
+    Retorna o plano completo (comandos SSH/REST, risk_level, vendor) para
+    revisão humana antes de confirmar. Não altera estado no device nem no DB.
+    """
+    operation = await _get_tenant_operation(db, operation_id, ctx.tenant.id)
+
+    if not operation.action_plan:
+        raise HTTPException(status_code=400, detail="Operação ainda não tem plano gerado.")
+
+    device_result = await db.execute(select(Device).where(Device.id == operation.device_id))
+    device = device_result.scalar_one_or_none()
+
+    plan = operation.action_plan
+    ssh_commands  = plan.get("ssh_commands") or []
+    rest_steps    = plan.get("steps") or []
+    show_commands = plan.get("ssh_show_commands") or []
+
+    from app.agent.guardrails import check_action_plan
+    guardrail = check_action_plan(plan, operation.natural_language_input)
+
+    return {
+        "operation_id": str(operation.id),
+        "mode": "dry_run",
+        "intent": operation.intent,
+        "risk_level": operation.risk_level.value if operation.risk_level else "medium",
+        "confidence_score": operation.confidence_score,
+        "vendor": device.vendor.value if device else None,
+        "device_name": device.name if device else None,
+        "preview": {
+            "ssh_commands": ssh_commands,
+            "ssh_show_commands": show_commands,
+            "rest_steps": [
+                {
+                    "action": s.get("action"),
+                    "object_type": s.get("object_type"),
+                    "name": s.get("name"),
+                }
+                for s in rest_steps
+            ],
+        },
+        "guardrail": {
+            "blocked": guardrail.blocked,
+            "block_reason": guardrail.block_reason,
+            "warnings": guardrail.warnings,
+        },
+        "requires_approval": operation.required_approvals > 1 or bool(
+            operation.co_approvals is not None and len(operation.co_approvals or []) < (operation.required_approvals - 1)
+        ),
+        "status": operation.status.value,
+    }
+
+
 @router.get("/{operation_id}/tutorial")
 async def get_tutorial(
     operation_id: UUID,

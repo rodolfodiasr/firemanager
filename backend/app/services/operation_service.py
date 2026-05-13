@@ -400,6 +400,23 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
                 pass
             return operation
 
+    # ── Circuit breaker check ─────────────────────────────────────────────────
+    from app.utils.circuit_breaker import CircuitOpenError
+    from app.utils.circuit_breaker import check as cb_check
+    from app.utils.circuit_breaker import record_failure, record_success
+    try:
+        await cb_check(str(device.id))
+    except CircuitOpenError as exc:
+        operation.status = OperationStatus.failed
+        operation.error_message = (
+            f"Device '{device.name}' inacessível (circuit breaker aberto — "
+            f"{exc.ttl}s de cooldown restantes). "
+            "O device registrou falhas de conexão consecutivas recentemente."
+        )
+        await db.flush()
+        await db.refresh(operation)
+        return operation
+
     # ── CLI-only vendors: all execution goes through SSH ──────────────────────
     if device.vendor in CLI_VENDORS:
         ssh_show_cmds = plan.ssh_show_commands or []
@@ -768,6 +785,16 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
     except Exception as exc:
         operation.status = OperationStatus.failed
         operation.error_message = str(exc)
+        try:
+            await record_failure(str(device.id))
+        except Exception:
+            pass
+
+    if operation.status == OperationStatus.completed:
+        try:
+            await record_success(str(device.id))
+        except Exception:
+            pass
 
     await db.flush()
     await db.refresh(operation)

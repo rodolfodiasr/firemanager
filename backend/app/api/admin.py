@@ -117,3 +117,54 @@ async def create_support_token(
         tenant_id=str(tenant.id),
         tenant_name=tenant.name,
     )
+
+
+# ── Circuit Breaker ───────────────────────────────────────────────────────────
+
+@router.get("/circuit-breaker/{device_id}")
+async def get_circuit_breaker_status(
+    device_id: UUID,
+    admin: Annotated[User, Depends(require_super_admin)],
+) -> dict:
+    """Retorna o estado atual do circuit breaker para um device."""
+    from app.utils.circuit_breaker import status as cb_status
+    s = await cb_status(str(device_id))
+    return {
+        "device_id": s.device_id,
+        "state": s.state,
+        "failures": s.failures,
+        "cooldown_remaining_seconds": s.cooldown_remaining,
+    }
+
+
+@router.post("/circuit-breaker/{device_id}/reset", status_code=204, response_model=None)
+async def reset_circuit_breaker(
+    device_id: UUID,
+    admin: Annotated[User, Depends(require_super_admin)],
+) -> None:
+    """Reseta manualmente o circuit breaker de um device (limpa falhas e abre o circuito)."""
+    from app.utils.circuit_breaker import record_success
+    await record_success(str(device_id))
+
+
+# ── Fernet Key Rotation ───────────────────────────────────────────────────────
+
+class FernetRotateRequest(BaseModel):
+    new_key: str   # base64url-encoded Fernet key (32 bytes)
+
+
+@router.post("/fernet/rotate")
+async def rotate_fernet_key(
+    body: FernetRotateRequest,
+    admin: Annotated[User, Depends(require_super_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Re-encripta todos os segredos armazenados com a nova chave Fernet.
+
+    NÃO altera as senhas/tokens em si — apenas re-encripta os valores
+    já armazenados no banco com a nova chave, usando MultiFernet para
+    leitura retrocompatível com a chave antiga.
+    """
+    from app.utils.fernet_rotation import rotate_all_secrets
+    result = await rotate_all_secrets(db, body.new_key)
+    return result

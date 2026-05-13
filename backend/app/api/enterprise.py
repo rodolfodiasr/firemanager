@@ -75,6 +75,7 @@ class ApiKeyRead(BaseModel):
     tenant_id: str
     name: str
     key_prefix: str
+    plan: str
     permissions: list[str]
     is_active: bool
     last_used_at: str | None = None
@@ -88,6 +89,7 @@ class ApiKeyRead(BaseModel):
             tenant_id=str(k.tenant_id),
             name=k.name,
             key_prefix=k.key_prefix,
+            plan=k.plan or "starter",
             permissions=k.permissions or [],
             is_active=k.is_active,
             last_used_at=k.last_used_at.isoformat() if k.last_used_at else None,
@@ -98,6 +100,7 @@ class ApiKeyRead(BaseModel):
 
 class ApiKeyCreate(BaseModel):
     name: str
+    plan: str = "starter"
     permissions: list[str] = []
     expires_at: str | None = None
 
@@ -168,9 +171,13 @@ async def create_api_key(body: ApiKeyCreate, db: DbDep, ctx: CtxDep):
         except ValueError:
             raise HTTPException(status_code=422, detail="expires_at must be ISO 8601 datetime")
 
+    _valid_plans = {"starter", "pro", "enterprise"}
+    plan = body.plan if body.plan in _valid_plans else "starter"
+
     key = ApiKey(
         tenant_id=ctx.tenant.id,
         name=body.name,
+        plan=plan,
         key_prefix=key_prefix,
         key_hash=key_hash,
         permissions=body.permissions,
