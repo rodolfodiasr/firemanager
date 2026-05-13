@@ -18,6 +18,9 @@ celery_app = Celery(
         "app.workers.migration_worker",
         "app.workers.bundle_apply",
         "app.workers.firmware_tasks",
+        "app.workers.identity_sync",
+        "app.workers.expiry_reminders",
+        "app.workers.playbook_evaluator",
     ],
 )
 
@@ -55,6 +58,22 @@ celery_app.conf.update(
         "firmware-correlate": {
             "task": "app.workers.firmware_tasks.correlate_all",
             "schedule": crontab(minute=0, hour=4),          # 04:00 UTC daily
+        },
+        "soar-scheduled-triggers": {
+            "task": "soar.evaluate_scheduled_triggers",
+            "schedule": crontab(minute="*"),                # every minute
+        },
+        "identity-expire-jit": {
+            "task": "identity_sync.expire_jit",
+            "schedule": crontab(minute="*"),                # every minute
+        },
+        "identity-sod-scan": {
+            "task": "identity_sync.check_sod_all",
+            "schedule": crontab(minute=0, hour=1),          # 01:00 UTC daily
+        },
+        "identity-password-expiry": {
+            "task": "expiry_reminders.check_password_expiry",
+            "schedule": crontab(minute=0, hour=8),          # 08:00 UTC daily
         },
     },
 )

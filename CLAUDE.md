@@ -154,6 +154,7 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 43 | Integração GLPI com IA | `glpi_integrations` + `glpi_ticket_analyses`; GlpiClient 11.0.4; Celery worker análise Claude (diagnóstico/ações/causa_raiz); enriquecimento Zabbix/Wazuh/device logs; correlação automática com devices; bridge AI Assistant via `open-session` | ✅ |
 | 44 | Firmware Intelligence e CVEs | `device_firmware_versions` (histórico); `firmware_cves` (NVD: CVSS v2/v3, CPE); `device_firmware_vulnerabilities` (device×CVE, status open/accepted/patched); `firmware_service` + `nvd_service` | ✅ |
 | 45 | Clarification Loop | `clarification_questions` + `clarification_answers` (JSONB) + `confidence_score` (FLOAT) em operations; agente pede esclarecimento quando confiança < threshold antes de executar | ✅ |
+| 46 | Auth Avançada — Refresh Tokens, MFA e Support Mode | Refresh token JWT 7 dias; pre-token 5 min (multi-tenant flow); MFA/TOTP via pyotp (`/mfa/setup`, `/mfa/verify`); `POST /auth/assume-tenant` (super admin entra no tenant); `SupportBanner` + `TenantSwitcher`; testes de fronteiras JWT (`test_auth_boundaries`) com gaps documentados via `pytest.xfail` | ✅ |
 | 40-B | AI Assistant Panel — Chat IA | `assistant_sessions` + `assistant_messages`; RAG com Claude/GPT-4o; hash-chain de mensagens; `AssistantPanel` (widget lateral) + `AssistantPage` (página dedicada); seletor de modelo; indicadores RAG | ✅ |
 | 41 | Organização do Assistant — Pastas, Pin e Compartilhamento | `assistant_folders` (cor, is_team); `folder_id`, `is_shared`, `pinned` em sessões; rename/move/share/pin; `GET /sessions/team`; sidebar colapsável com seções Pinned/Equipe/Pessoal | ✅ |
 | 42 | Visibilidade de Pastas por Role | `min_role` em `assistant_folders`; pastas de equipe visíveis apenas para roles >= min_role | ✅ |
@@ -262,6 +263,37 @@ Endpoint `POST /glpi/analyses/{id}/open-session` — cria ou reutiliza sessão d
 **Colunas adicionadas em `operations`:** `clarification_questions` (JSONB), `clarification_answers` (JSONB), `confidence_score` (FLOAT).
 
 Quando `confidence_score < threshold` (configurável por tenant), o agente retorna `clarification_questions` ao invés de executar diretamente. O analista responde via `clarification_answers` e a operação é reprocessada com o contexto adicional. Operação fica em status `awaiting_clarification` até resposta.
+
+---
+
+### Fase 46 — Auth Avançada: Refresh Tokens, MFA e Support Mode
+*Ciclo de vida completo de tokens JWT, autenticação de segundo fator e modo de suporte para super admin*
+
+#### Refresh Token — 7 dias
+`_create_refresh_token(user_id)` — JWT com claim `type: "refresh"` e expiração `refresh_token_expire_days = 7`. Emitido em todos os fluxos: `POST /login`, `POST /select-tenant`, `POST /assume-tenant`. Frontend armazena em `localStorage("refresh_token")`. **Gap documentado:** endpoint `POST /auth/refresh` (troca refresh → novo access token) ainda não existe — registrado em `test_auth_boundaries.py` via `pytest.xfail`.
+
+#### Pre-token para seleção de tenant (multi-tenant flow)
+Quando usuário pertence a múltiplos tenants, `POST /login` retorna `pre_token` (tipo `pre_tenant`, TTL 5 min) + lista de tenants. Frontend entra em estado `pendingTenants`. `POST /auth/select-tenant` consome `pre_token + tenant_id` → emite access token + refresh token. Testado: pre_token não pode ser usado como access token, não é revogado após primeiro uso (gap documentado com `xfail`).
+
+#### MFA / TOTP (pyotp)
+Campos no `User`: `mfa_secret`, `mfa_enabled`. Fluxo: `POST /mfa/setup` → gera secret + QR URI (compatível Google/Microsoft Authenticator) → `POST /mfa/verify` → valida `totp_code` com `valid_window=1` (±30s) → `mfa_enabled = True`. Login com MFA: `totp_code` opcional no `LoginRequest`; se ativo e ausente/inválido → HTTP 401. Frontend: campo "Código MFA" na página de Login; badge "MFA ativo" em Settings.
+
+#### Support Mode — Super Admin entrando em tenant
+`POST /auth/assume-tenant` (requer `is_super_admin`) — retorna access token escopado ao tenant sem precisar das credenciais do cliente. `TenantSwitcher` no header para trocar de tenant. `SupportBanner` — barra amarela indicando modo ativo com botão de sair. `_savedToken` no authStore restaura o token do super admin ao sair.
+
+#### Testes de fronteiras JWT (16 testes — `test_auth_boundaries.py`)
+Cobertura: token ausente, Bearer vazio, token lixo, expirado, chave errada, payload adulterado, algoritmo `none`, sem `tenant_id`, refresh token como access token, pre_token como access token, usuário inativo, senha errada. Gaps com `xfail`: brute force em `/login`, enumeração de email em `/register`, pre_token não revogado.
+
+| Arquivo | Conteúdo |
+|---|---|
+| `backend/app/api/auth.py` | `_create_refresh_token`, `_create_pre_token`, `/mfa/setup`, `/mfa/verify`, `/assume-tenant`, `/select-tenant` |
+| `backend/app/models/user.py` | `mfa_secret`, `mfa_enabled` |
+| `backend/app/config.py` | `refresh_token_expire_days = 7` |
+| `backend/tests/security/test_auth_boundaries.py` | 16 testes de fronteiras JWT |
+| `frontend/src/store/authStore.ts` | `login`, `selectTenant`, `assumeTenant`, `enterSupportMode`, `exitSupportMode`, `_savedToken` |
+| `frontend/src/pages/Login.tsx` | Campo `totp_code` |
+| `frontend/src/components/layout/SupportBanner.tsx` | Barra de support mode |
+| `frontend/src/components/layout/TenantSwitcher.tsx` | Dropdown de tenant para super admin |
 
 ---
 

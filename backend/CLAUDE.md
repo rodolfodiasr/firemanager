@@ -193,3 +193,70 @@ async def _collect_ssh_resources(device, data):
     from app.api.inspect import _parse_named_blocks           # import lazy
     from app.services.operation_service import _parse_security_status  # import lazy
 ```
+
+---
+
+## Fases implementadas nesta sessão (F29 → F36 → F39 → F35)
+
+### Cadeia de migrations
+`0051` (GLPI bridge) → `0052` (F29 AI observability) → `0053` (F36 identity governance) → `0054` (F39 self-service OTP) → `0055` (F35 SOAR playbooks)
+
+### F29 — Multi-Agent Orchestrator
+| Arquivo | Descrição |
+|---|---|
+| `migrations/0052_f29_ai_observability.py` | `ai_interactions`, `ai_token_usage`, `orchestration_runs`, `confidence_score` em operations |
+| `app/agent/sub_agents/base.py` | `AgentHandoff` dataclass + `BaseSubAgent` ABC |
+| `app/agent/sub_agents/identity_agent.py` | `IdentityAgent` — tool registry, write/read dispatch, LLM intent parsing |
+| `app/agent/sub_agents/firewall_agent.py` | `FirewallAgent` — delega ao agente IA existente |
+| `app/agent/sub_agents/network_agent.py` | `NetworkAgent` — análise de conectividade |
+| `app/agent/orchestrator.py` | `MultiAgentOrchestrator` — confidence threshold 0.70, parallel execution |
+| `app/api/orchestrator.py` | `POST /orchestrate` |
+
+### F36 — Identity Governance
+| Arquivo | Descrição |
+|---|---|
+| `migrations/0053_f36_identity_governance.py` | 9 tabelas: connectors, ad_users, ad_groups, memberships, sod_rules, violations, campaigns, review_tasks, jit_requests |
+| `app/models/identity_governance.py` | ORM models para todas as tabelas F36 |
+| `app/services/ad_governance_service.py` | AD Tool Kit: read + write tools, JIT, SoD, seed_builtin_sod_rules |
+| `app/services/local_ad_service.py` | Adicionado: enable_user, reset_password, remove_user_from_group, get_group_members, list_groups |
+| `app/api/identity_governance.py` | CRUD connectors, AD ops, SoD, JIT, campanhas |
+| `app/workers/identity_sync.py` | `identity_sync.sync_connector`, `identity_sync.expire_jit`, `identity_sync.check_sod_all` |
+
+**5 regras SoD embutidas:** Contas a Pagar + Aprovação Financeira (critical), Domain Admins + sistema financeiro (critical), Help Desk + Domain Admins (high), Auditoria + Admins (high), RH Folha + Global Admin (critical).
+
+### F39 — Self-Service de Identidade
+| Arquivo | Descrição |
+|---|---|
+| `migrations/0054_f39_self_service.py` | Tabela `otp_requests` |
+| `app/services/self_service_identity.py` | OTP SHA-256, TTL 10min, reset_password, unlock_account |
+| `app/api/self_service.py` | `POST /identity/self-service/otp/request`, `/password/reset`, `/account/unlock` |
+| `app/workers/expiry_reminders.py` | `expiry_reminders.check_password_expiry` — lembretes 14/7/1 dias |
+
+### F35 — SOAR Playbooks
+| Arquivo | Descrição |
+|---|---|
+| `migrations/0055_f35_soar.py` | Tabelas `playbook_rules`, `playbook_executions`, `threat_indicators` |
+| `app/models/playbook.py` | ORM: `PlaybookRule`, `PlaybookExecution`, `ThreatIndicator` |
+| `app/services/soar_service.py` | `evaluate_trigger`, `_condition_matches`, `_in_cooldown`, `get_mttr_stats`, `seed_ad_templates` |
+| `app/api/playbooks.py` | CRUD + `/templates/seed` + `/{id}/trigger` + `/{id}/executions` + `/stats/mttr` |
+| `app/workers/playbook_evaluator.py` | `soar.execute_playbook_actions`, `soar.evaluate_scheduled_triggers` |
+
+**5 templates AD:** offboarding_imediato, conta_comprometida, jit_abuso, violacao_sod, device_unreachable_ad.
+
+**7 action types:** notify_slack, notify_email, escalate_to_n2, ad_disable_user, revoke_jit_access, run_snapshot, create_ticket_jira.
+
+### Celery beat tasks registradas (celery_app.py)
+| Task name | Schedule | Descrição |
+|---|---|---|
+| `soar.evaluate_scheduled_triggers` | `* * * * *` | Avalia triggers agendados |
+| `identity_sync.expire_jit` | `* * * * *` | Revoga JIT expirados |
+| `identity_sync.check_sod_all` | `0 1 * * *` | Scan SoD todos os tenants |
+| `expiry_reminders.check_password_expiry` | `0 8 * * *` | Lembretes de senha expirando |
+
+### Rotas registradas (main.py)
+| Prefix | Router | Tags |
+|---|---|---|
+| `/orchestrate` | `orchestrator.router` | orchestrator |
+| `/identity-governance` | `identity_governance.router` | identity-governance |
+| `/identity/self-service` | `self_service.router` | self-service |
+| `/playbooks` | `playbooks.router` | playbooks |

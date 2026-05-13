@@ -204,3 +204,140 @@ def _add_user_to_groups_sync(config: dict, user_dn: str, groups: list[str]) -> N
 
 async def add_user_to_groups(config: dict, user_dn: str, groups: list[str]) -> None:
     await asyncio.to_thread(_add_user_to_groups_sync, config, user_dn, groups)
+
+
+def _enable_user_sync(config: dict, dn: str) -> None:
+    from ldap3 import MODIFY_REPLACE, BASE
+
+    conn = _connect(config)
+    conn.search(dn, "(objectClass=*)", search_scope=BASE, attributes=["userAccountControl"])
+    if not conn.entries:
+        conn.unbind()
+        raise ValueError(f"Objeto não encontrado no AD: {dn}")
+    uac = int(conn.entries[0].userAccountControl.value or 512)
+    new_uac = uac & ~_ACCOUNTDISABLE   # Clear ACCOUNTDISABLE bit
+    conn.modify(dn, {"userAccountControl": [(MODIFY_REPLACE, [new_uac])]})
+    if conn.result["result"] != 0:
+        conn.unbind()
+        raise RuntimeError(f"Falha ao modificar AD: {conn.result['description']}")
+    conn.unbind()
+
+
+def _reset_password_sync(config: dict, dn: str, new_password: str) -> None:
+    from ldap3 import MODIFY_REPLACE, HASHED_SALTED_SHA
+    import ldap3
+
+    conn = _connect(config)
+    # Encode password in UTF-16-LE as required by AD
+    pwd_bytes = f'"{new_password}"'.encode("utf-16-le")
+    conn.modify(dn, {"unicodePwd": [(MODIFY_REPLACE, [pwd_bytes])]})
+    if conn.result["result"] != 0:
+        conn.unbind()
+        raise RuntimeError(f"Falha ao redefinir senha AD: {conn.result['description']}")
+    conn.unbind()
+
+
+def _remove_user_from_group_sync(config: dict, user_dn: str, group_name: str) -> None:
+    from ldap3 import MODIFY_DELETE
+
+    conn = _connect(config)
+    base_dn = config.get("base_dn", "")
+    conn.search(
+        search_base=base_dn,
+        search_filter=f"(&(objectClass=group)(cn={group_name}))",
+        attributes=["dn"],
+    )
+    if not conn.entries:
+        conn.unbind()
+        raise ValueError(f"Grupo '{group_name}' não encontrado no AD")
+    group_dn = conn.entries[0].entry_dn
+    conn.modify(group_dn, {"member": [(MODIFY_DELETE, [user_dn])]})
+    conn.unbind()
+
+
+def _get_group_members_sync(config: dict, group_name: str) -> list[dict]:
+    from ldap3 import SUBTREE
+
+    conn = _connect(config)
+    base_dn = config.get("base_dn", "")
+
+    conn.search(
+        search_base=base_dn,
+        search_filter=f"(&(objectClass=group)(cn={group_name}))",
+        attributes=["member", "cn"],
+    )
+    if not conn.entries:
+        conn.unbind()
+        return []
+
+    member_dns: list[str] = []
+    raw = conn.entries[0].member.values if conn.entries[0].member else []
+    member_dns = [str(m) for m in raw]
+
+    members: list[dict] = []
+    for dn in member_dns:
+        conn.search(
+            search_base=dn,
+            search_filter="(objectClass=user)",
+            attributes=["sAMAccountName", "displayName", "mail", "userAccountControl"],
+        )
+        if conn.entries:
+            e = conn.entries[0]
+            uac = int(e.userAccountControl.value or 512)
+            members.append({
+                "dn": dn,
+                "username": _str(e.sAMAccountName.value),
+                "display_name": _str(e.displayName.value) if e.displayName else None,
+                "email": _str(e.mail.value) if e.mail else None,
+                "is_enabled": not bool(uac & _ACCOUNTDISABLE),
+            })
+
+    conn.unbind()
+    return members
+
+
+def _list_groups_sync(config: dict) -> list[dict]:
+    from ldap3 import SUBTREE
+
+    conn = _connect(config)
+    base_dn = config.get("base_dn", "")
+    groups: list[dict] = []
+    for entry in conn.extend.standard.paged_search(
+        search_base=base_dn,
+        search_filter="(objectClass=group)",
+        search_scope=SUBTREE,
+        attributes=["cn", "distinguishedName", "groupType", "member"],
+        paged_size=500,
+        generator=True,
+    ):
+        if entry.get("type") != "searchResEntry":
+            continue
+        a = entry["attributes"]
+        members = a.get("member") or []
+        groups.append({
+            "dn": entry["dn"],
+            "name": _str(a.get("cn")) or "",
+            "member_count": len(members) if isinstance(members, list) else 0,
+        })
+    conn.unbind()
+    return groups
+
+
+async def enable_user(config: dict, dn: str) -> None:
+    await asyncio.to_thread(_enable_user_sync, config, dn)
+
+
+async def reset_password(config: dict, dn: str, new_password: str) -> None:
+    await asyncio.to_thread(_reset_password_sync, config, dn, new_password)
+
+
+async def remove_user_from_group(config: dict, user_dn: str, group_name: str) -> None:
+    await asyncio.to_thread(_remove_user_from_group_sync, config, user_dn, group_name)
+
+
+async def get_group_members(config: dict, group_name: str) -> list[dict]:
+    return await asyncio.to_thread(_get_group_members_sync, config, group_name)
+
+
+async def list_groups(config: dict) -> list[dict]:
+    return await asyncio.to_thread(_list_groups_sync, config)

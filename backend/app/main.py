@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, alerts, assistant, assistant_docs, audit, auth, bulk_jobs, category_roles, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, enterprise, executive, firewall_migration, firmware, glpi, golden_bundles, golden_template, identity, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, platform_config, recommendations, remediation, server_operations, servers, templates, tenants, variables, vm_migration
+from app.api import admin, alerts, assistant, assistant_docs, audit, auth, bulk_jobs, category_roles, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, enterprise, executive, firewall_migration, firmware, glpi, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, orchestrator, platform_config, playbooks, recommendations, remediation, self_service, server_operations, servers, templates, tenants, variables, vm_migration
 from app.config import settings
 
 log = structlog.get_logger()
@@ -85,6 +85,10 @@ app.include_router(platform_config.router,     prefix="/platform-config",       
 app.include_router(firmware.router,            prefix="",                             tags=["firmware"])
 app.include_router(assistant.router,           prefix="/assistant",                    tags=["assistant"])
 app.include_router(assistant_docs.router,      prefix="/assistant",                    tags=["assistant-docs"])
+app.include_router(orchestrator.router,        prefix="/orchestrate",                  tags=["orchestrator"])
+app.include_router(identity_governance.router, prefix="/identity-governance",          tags=["identity-governance"])
+app.include_router(self_service.router,        prefix="/identity/self-service",        tags=["self-service"])
+app.include_router(playbooks.router,           prefix="/playbooks",                    tags=["playbooks"])
 
 
 class FireManagerError(Exception):
