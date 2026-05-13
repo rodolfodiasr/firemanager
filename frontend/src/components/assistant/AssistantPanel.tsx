@@ -9,7 +9,6 @@ import { useAuthStore } from "../../store/authStore";
 import { useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import { DocDraftModal } from "./DocDraftModal";
-import { DocTypeSelector } from "./DocTypeSelector";
 
 // ── Bolha de mensagem ─────────────────────────────────────────────────────────
 
@@ -54,6 +53,46 @@ function MessageBubble({ msg }: { msg: AssistantMessage }) {
   );
 }
 
+// ── PanelSelect — dropdown compacto para o header escuro ─────────────────────
+
+function PanelSelect({
+  value, onChange, options, icon, active = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  icon?: React.ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`appearance-none text-[10px] py-1 rounded cursor-pointer focus:outline-none transition-colors ${
+          icon ? "pl-5 pr-4" : "pl-2 pr-4"
+        } ${
+          active
+            ? "bg-purple-700 border border-purple-500 text-purple-100"
+            : "bg-gray-800 border border-gray-600 text-gray-300 hover:bg-gray-700"
+        }`}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      {icon && (
+        <span className={`pointer-events-none absolute left-1 top-1/2 -translate-y-1/2 ${active ? "text-purple-200" : "text-gray-400"}`}>
+          {icon}
+        </span>
+      )}
+      <span className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 text-gray-500">
+        <svg width="8" height="8" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>
+      </span>
+    </div>
+  );
+}
+
 // ── Painel principal ──────────────────────────────────────────────────────────
 
 export function AssistantPanel() {
@@ -76,7 +115,7 @@ function AssistantPanelInner() {
   const [input, setInput] = useState("");
   const [showSessions, setShowSessions] = useState(false);
   const [generatingDoc, setGeneratingDoc] = useState(false);
-  const [showDocTypeSelector, setShowDocTypeSelector] = useState(false);
+  const [selectedDocType, setSelectedDocType] = useState<"knowledge" | "action_plan" | "remediation">("knowledge");
   const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -165,9 +204,8 @@ function AssistantPanelInner() {
     }
   };
 
-  const handleGenerateDoc = async (docType: string) => {
+  const handleGenerateDoc = async (docType: string = selectedDocType) => {
     if (!currentSessionId || generatingDoc) return;
-    setShowDocTypeSelector(false);
     setGeneratingDoc(true);
     try {
       const draft = await assistantDocsApi.generateDoc(currentSessionId, docType);
@@ -198,12 +236,6 @@ function AssistantPanelInner() {
 
   return (
     <>
-    {showDocTypeSelector && (
-      <DocTypeSelector
-        onSelect={handleGenerateDoc}
-        onClose={() => setShowDocTypeSelector(false)}
-      />
-    )}
     {docDraft && (
       <DocDraftModal
         draft={docDraft}
@@ -222,52 +254,55 @@ function AssistantPanelInner() {
             <p className="text-[10px] text-gray-400">Somente leitura · não executa operações</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0 ml-2">
-          {/* Mode selector dropdown */}
-          <div className="relative">
-            <select
-              value={chatMode}
-              onChange={(e) => setChatMode(e.target.value as "infrastructure" | "general")}
-              className={`appearance-none text-[10px] pl-5 pr-4 py-1 rounded cursor-pointer focus:outline-none transition-colors ${
-                chatMode === "general"
-                  ? "bg-purple-700 border border-purple-500 text-purple-100"
-                  : "bg-gray-800 border border-gray-600 text-gray-300 hover:bg-gray-700"
-              }`}
-            >
-              <option value="infrastructure">Infraestrutura</option>
-              <option value="general">Tecnologia Geral</option>
-            </select>
-            <span className="pointer-events-none absolute left-1 top-1/2 -translate-y-1/2">
-              {chatMode === "general" ? <Globe size={9} className="text-purple-200" /> : <Shield size={9} className="text-gray-400" />}
-            </span>
-          </div>
-          {/* Seletor de modelo (apenas se OpenAI disponível) */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          {/* Modo */}
+          <PanelSelect
+            value={chatMode}
+            onChange={(v) => setChatMode(v as "infrastructure" | "general")}
+            options={[
+              { value: "infrastructure", label: "Infra" },
+              { value: "general",        label: "Geral" },
+            ]}
+            icon={chatMode === "general" ? <Globe size={9} /> : <Shield size={9} />}
+            active={chatMode === "general"}
+          />
+          {/* LLM */}
           {openaiAvailable && (
-            <button
-              onClick={() => setModel(selectedModel === "claude" ? "openai" : "claude")}
-              title="Alternar modelo"
-              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
-            >
-              <Bot size={10} />
-              {selectedModel === "claude" ? "Claude" : "GPT-4o"}
-            </button>
+            <PanelSelect
+              value={selectedModel}
+              onChange={(v) => setModel(v as "claude" | "openai")}
+              options={[
+                { value: "claude",  label: "Claude" },
+                { value: "openai",  label: "GPT-4o" },
+              ]}
+              icon={<Bot size={9} />}
+            />
           )}
+          {/* Tipo de doc + gerar */}
           {currentSessionId && messages.length > 0 && (
-            <button
-              onClick={() => setShowDocTypeSelector(true)}
-              disabled={generatingDoc}
-              title="Gerar documentação desta sessão"
-              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-gray-800 hover:bg-brand-600 text-gray-300 hover:text-white disabled:opacity-50 transition-colors"
-            >
-              {generatingDoc ? (
-                <Loader2 size={10} className="animate-spin" />
-              ) : (
-                <FileText size={10} />
-              )}
-              {generatingDoc ? "Gerando…" : "Documentar"}
-            </button>
+            <>
+              <PanelSelect
+                value={selectedDocType}
+                onChange={(v) => setSelectedDocType(v as typeof selectedDocType)}
+                options={[
+                  { value: "knowledge",   label: "Artigo" },
+                  { value: "action_plan", label: "Pl. Ação" },
+                  { value: "remediation", label: "Remediação" },
+                ]}
+                icon={<FileText size={9} />}
+              />
+              <button
+                onClick={() => handleGenerateDoc(selectedDocType)}
+                disabled={generatingDoc}
+                title="Gerar documentação"
+                className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-50 transition-colors"
+              >
+                {generatingDoc ? <Loader2 size={9} className="animate-spin" /> : null}
+                {generatingDoc ? "…" : "Gerar"}
+              </button>
+            </>
           )}
-          <button onClick={close} className="text-gray-400 hover:text-white transition-colors">
+          <button onClick={close} className="text-gray-400 hover:text-white transition-colors ml-1">
             <X size={18} />
           </button>
         </div>

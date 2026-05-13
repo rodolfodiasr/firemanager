@@ -14,8 +14,47 @@ import {
 } from "../store/assistantStore";
 import { assistantApi, assistantDocsApi, type DocDraft } from "../api/assistant";
 import { DocDraftModal } from "../components/assistant/DocDraftModal";
-import { DocTypeSelector } from "../components/assistant/DocTypeSelector";
 import toast from "react-hot-toast";
+
+// ── SelectControl reutilizável ────────────────────────────────────────────────
+
+function SelectControl({
+  value, onChange, options, icon, active = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  icon?: React.ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`appearance-none text-xs py-1.5 rounded-lg border cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors ${
+          icon ? "pl-7 pr-6" : "pl-3 pr-6"
+        } ${
+          active
+            ? "bg-purple-50 border-purple-300 text-purple-700"
+            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+        }`}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+      {icon && (
+        <span className={`pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 ${active ? "text-purple-600" : "text-gray-500"}`}>
+          {icon}
+        </span>
+      )}
+      <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400">
+        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>
+      </span>
+    </div>
+  );
+}
 
 // ── Paleta de cores para pastas ───────────────────────────────────────────────
 
@@ -557,7 +596,7 @@ export function AssistantPage() {
   const [createFolderModal, setCreateFolderModal] = useState<{ isTeam: boolean } | null>(null);
   const [renameFolderTarget, setRenameFolderTarget] = useState<AssistantFolder | null>(null);
   const [generatingDoc, setGeneratingDoc] = useState(false);
-  const [showDocTypeSelector, setShowDocTypeSelector] = useState(false);
+  const [selectedDocType, setSelectedDocType] = useState<"knowledge" | "action_plan" | "remediation">("knowledge");
   const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -640,9 +679,8 @@ export function AssistantPage() {
     }
   }, []);
 
-  const handleGenerateDoc = async (docType: string) => {
+  const handleGenerateDoc = async (docType: string = selectedDocType) => {
     if (!currentSessionId || generatingDoc) return;
-    setShowDocTypeSelector(false);
     setGeneratingDoc(true);
     try {
       const draft = await assistantDocsApi.generateDoc(currentSessionId, docType);
@@ -946,46 +984,53 @@ export function AssistantPage() {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {/* Mode selector dropdown */}
-              <div className="relative">
-                <select
-                  value={chatMode}
-                  onChange={(e) => setChatMode(e.target.value as "infrastructure" | "general")}
-                  className={`appearance-none text-xs pl-7 pr-6 py-1.5 rounded-lg border cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors ${
-                    chatMode === "general"
-                      ? "bg-purple-50 border-purple-300 text-purple-700"
-                      : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  <option value="infrastructure">Infraestrutura</option>
-                  <option value="general">Tecnologia Geral</option>
-                </select>
-                <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2">
-                  {chatMode === "general" ? <Globe size={12} className="text-purple-600" /> : <Shield size={12} className="text-gray-500" />}
-                </span>
-                <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400">
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/></svg>
-                </span>
-              </div>
+              {/* Seletor de modo */}
+              <SelectControl
+                value={chatMode}
+                onChange={(v) => setChatMode(v as "infrastructure" | "general")}
+                options={[
+                  { value: "infrastructure", label: "Infraestrutura" },
+                  { value: "general",        label: "Tecnologia Geral" },
+                ]}
+                icon={chatMode === "general" ? <Globe size={12} /> : <Shield size={12} />}
+                active={chatMode === "general"}
+              />
 
+              {/* Seletor de tipo de documento + botão Gerar */}
               {currentSessionId && messages.length > 0 && (
-                <button
-                  onClick={() => setShowDocTypeSelector(true)}
-                  disabled={generatingDoc}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-brand-50 hover:border-brand-300 text-gray-600 hover:text-brand-700 disabled:opacity-50 transition-colors"
-                >
-                  {generatingDoc ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
-                  {generatingDoc ? "Gerando…" : "Documentar"}
-                </button>
+                <div className="flex items-center gap-1">
+                  <SelectControl
+                    value={selectedDocType}
+                    onChange={(v) => setSelectedDocType(v as typeof selectedDocType)}
+                    options={[
+                      { value: "knowledge",   label: "Artigo de Conhecimento" },
+                      { value: "action_plan", label: "Plano de Ação" },
+                      { value: "remediation", label: "Plano de Remediação" },
+                    ]}
+                    icon={<FileText size={12} />}
+                  />
+                  <button
+                    onClick={() => handleGenerateDoc(selectedDocType)}
+                    disabled={generatingDoc}
+                    className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-50 transition-colors"
+                  >
+                    {generatingDoc ? <Loader2 size={11} className="animate-spin" /> : null}
+                    {generatingDoc ? "Gerando…" : "Gerar"}
+                  </button>
+                </div>
               )}
+
+              {/* Seletor de modelo LLM */}
               {openaiAvailable && (
-                <button
-                  onClick={() => setModel(selectedModel === "claude" ? "openai" : "claude")}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors"
-                >
-                  <Bot size={12} />
-                  Modelo: {selectedModel === "claude" ? "Claude" : "GPT-4o"}
-                </button>
+                <SelectControl
+                  value={selectedModel}
+                  onChange={(v) => setModel(v as "claude" | "openai")}
+                  options={[
+                    { value: "claude",  label: "Claude" },
+                    { value: "openai",  label: "GPT-4o" },
+                  ]}
+                  icon={<Bot size={12} />}
+                />
               )}
             </div>
           </div>
@@ -1066,12 +1111,6 @@ export function AssistantPage() {
           folder={renameFolderTarget}
           onClose={() => setRenameFolderTarget(null)}
           onRename={(name) => handleRenameFolder(renameFolderTarget.id, name)}
-        />
-      )}
-      {showDocTypeSelector && (
-        <DocTypeSelector
-          onSelect={handleGenerateDoc}
-          onClose={() => setShowDocTypeSelector(false)}
         />
       )}
       {docDraft && (
