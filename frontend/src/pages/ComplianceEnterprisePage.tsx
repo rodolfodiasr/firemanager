@@ -90,8 +90,8 @@ function AssessmentsTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["ce-assessments"] }); setSelected(null); },
   });
 
-  const findingMut = useMutation({
-    mutationFn: ({ id, ...rest }: { id: string; control_id: string; status: string; evidence: string; notes: string }) =>
+  const findingMut = useMutation<Assessment, Error, { id: string; control_id: string; status: string; evidence: string; notes: string }>({
+    mutationFn: ({ id, ...rest }) =>
       complianceEnterpriseApi.updateFinding(id, rest),
     onSuccess: (data) => setSelected(data),
   });
@@ -183,7 +183,7 @@ function AssessmentsTab() {
 function BcdrTab() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", rto_hours: 4, rpo_hours: 1, scope: "", status: "draft" });
+  const [form, setForm] = useState<{ name: string; description: string; rto_hours: number; rpo_hours: number; scope: string; status: "draft" | "active" | "archived" }>({ name: "", description: "", rto_hours: 4, rpo_hours: 1, scope: "", status: "draft" });
 
   const { data: plans = [] } = useQuery({ queryKey: ["ce-bcdr"], queryFn: complianceEnterpriseApi.listBcdr });
   const createMut = useMutation({

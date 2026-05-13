@@ -1,4 +1,4 @@
-import api from "./axios";
+import apiClient from "./client";
 
 export interface MaintenanceWindow {
   id: string;
@@ -57,33 +57,33 @@ const BASE = "/ai-safety";
 export const aiSafetyApi = {
   // Maintenance windows
   listWindows: (activeOnly = false) =>
-    api.get<MaintenanceWindow[]>(`${BASE}/maintenance-windows`, { params: { active_only: activeOnly } }).then(r => r.data),
+    apiClient.get<MaintenanceWindow[]>(`${BASE}/maintenance-windows`, { params: { active_only: activeOnly } }).then(r => r.data),
   createWindow: (data: Partial<MaintenanceWindow>) =>
-    api.post<MaintenanceWindow>(`${BASE}/maintenance-windows`, data).then(r => r.data),
+    apiClient.post<MaintenanceWindow>(`${BASE}/maintenance-windows`, data).then(r => r.data),
   updateWindow: (id: string, data: Partial<MaintenanceWindow>) =>
-    api.patch<MaintenanceWindow>(`${BASE}/maintenance-windows/${id}`, data).then(r => r.data),
-  deleteWindow: (id: string) => api.delete(`${BASE}/maintenance-windows/${id}`),
+    apiClient.patch<MaintenanceWindow>(`${BASE}/maintenance-windows/${id}`, data).then(r => r.data),
+  deleteWindow: (id: string) => apiClient.delete(`${BASE}/maintenance-windows/${id}`),
   getActiveWindow: () =>
-    api.get<MaintenanceWindow | null>(`${BASE}/maintenance-windows/active`).then(r => r.data),
+    apiClient.get<MaintenanceWindow | null>(`${BASE}/maintenance-windows/active`).then(r => r.data),
 
   // Approvals
   listApprovals: (status?: string) =>
-    api.get<ApprovalRequest[]>(`${BASE}/approvals`, { params: status ? { status } : {} }).then(r => r.data),
+    apiClient.get<ApprovalRequest[]>(`${BASE}/approvals`, { params: status ? { status } : {} }).then(r => r.data),
   createApproval: (data: {
     title: string; description?: string; risk_level: string;
     operation_context?: Record<string, unknown>; requester_note?: string; requires_two_approvals?: boolean;
-  }) => api.post<ApprovalRequest>(`${BASE}/approvals`, data).then(r => r.data),
-  approve: (id: string) => api.post<ApprovalRequest>(`${BASE}/approvals/${id}/approve`).then(r => r.data),
+  }) => apiClient.post<ApprovalRequest>(`${BASE}/approvals`, data).then(r => r.data),
+  approve: (id: string) => apiClient.post<ApprovalRequest>(`${BASE}/approvals/${id}/approve`).then(r => r.data),
   reject: (id: string, reason: string) =>
-    api.post<ApprovalRequest>(`${BASE}/approvals/${id}/reject`, { reason }).then(r => r.data),
+    apiClient.post<ApprovalRequest>(`${BASE}/approvals/${id}/reject`, { reason }).then(r => r.data),
 
   // Erasure (LGPD)
   listErasure: (status?: string) =>
-    api.get<ErasureRequest[]>(`${BASE}/erasure`, { params: status ? { status } : {} }).then(r => r.data),
+    apiClient.get<ErasureRequest[]>(`${BASE}/erasure`, { params: status ? { status } : {} }).then(r => r.data),
   createErasure: (data: { target_user_email: string; reason?: string; legal_basis?: string }) =>
-    api.post<ErasureRequest>(`${BASE}/erasure`, data).then(r => r.data),
-  approveErasure: (id: string) => api.post<ErasureRequest>(`${BASE}/erasure/${id}/approve`).then(r => r.data),
-  executeErasure: (id: string) => api.post<ErasureRequest>(`${BASE}/erasure/${id}/execute`).then(r => r.data),
+    apiClient.post<ErasureRequest>(`${BASE}/erasure`, data).then(r => r.data),
+  approveErasure: (id: string) => apiClient.post<ErasureRequest>(`${BASE}/erasure/${id}/approve`).then(r => r.data),
+  executeErasure: (id: string) => apiClient.post<ErasureRequest>(`${BASE}/erasure/${id}/execute`).then(r => r.data),
   rejectErasure: (id: string, reason: string) =>
-    api.post<ErasureRequest>(`${BASE}/erasure/${id}/reject`, { reason }).then(r => r.data),
+    apiClient.post<ErasureRequest>(`${BASE}/erasure/${id}/reject`, { reason }).then(r => r.data),
 };

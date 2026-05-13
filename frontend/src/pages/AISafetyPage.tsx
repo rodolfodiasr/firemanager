@@ -42,7 +42,12 @@ const fmtDt = (dt: string | null | undefined) =>
 function MaintenanceTab() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string; description: string;
+    starts_at: string; ends_at: string;
+    recurrence: "once" | "weekly" | "monthly";
+    block_ai_operations: boolean; block_bulk_jobs: boolean; is_active: boolean;
+  }>({
     name: "", description: "",
     starts_at: "", ends_at: "",
     recurrence: "once",

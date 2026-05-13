@@ -1,4 +1,4 @@
-import api from "./axios";
+import apiClient from "./client";
 
 export interface CompliancePack {
   id: string;
@@ -83,32 +83,32 @@ const BASE = "/compliance-enterprise";
 
 export const complianceEnterpriseApi = {
   // Packs
-  listPacks: () => api.get<CompliancePack[]>(`${BASE}/packs`).then(r => r.data),
-  getPack: (id: string) => api.get<PackDetail>(`${BASE}/packs/${id}`).then(r => r.data),
-  seedPacks: () => api.post(`${BASE}/packs/seed`).then(r => r.data),
+  listPacks: () => apiClient.get<CompliancePack[]>(`${BASE}/packs`).then(r => r.data),
+  getPack: (id: string) => apiClient.get<PackDetail>(`${BASE}/packs/${id}`).then(r => r.data),
+  seedPacks: () => apiClient.post(`${BASE}/packs/seed`).then(r => r.data),
 
   // Assessments
-  listAssessments: () => api.get<Assessment[]>(`${BASE}/assessments`).then(r => r.data),
-  getAssessment: (id: string) => api.get<Assessment>(`${BASE}/assessments/${id}`).then(r => r.data),
+  listAssessments: () => apiClient.get<Assessment[]>(`${BASE}/assessments`).then(r => r.data),
+  getAssessment: (id: string) => apiClient.get<Assessment>(`${BASE}/assessments/${id}`).then(r => r.data),
   createAssessment: (pack_id: string, name: string) =>
-    api.post<Assessment>(`${BASE}/assessments`, { pack_id, name }).then(r => r.data),
+    apiClient.post<Assessment>(`${BASE}/assessments`, { pack_id, name }).then(r => r.data),
   updateFinding: (assessmentId: string, finding: { control_id: string; status: string; evidence: string; notes: string }) =>
-    api.patch<Assessment>(`${BASE}/assessments/${assessmentId}/finding`, finding).then(r => r.data),
+    apiClient.patch<Assessment>(`${BASE}/assessments/${assessmentId}/finding`, finding).then(r => r.data),
   completeAssessment: (id: string) =>
-    api.post<Assessment>(`${BASE}/assessments/${id}/complete`).then(r => r.data),
+    apiClient.post<Assessment>(`${BASE}/assessments/${id}/complete`).then(r => r.data),
 
   // BC/DR
-  listBcdr: () => api.get<BcdrPlan[]>(`${BASE}/bcdr`).then(r => r.data),
-  createBcdr: (data: Partial<BcdrPlan>) => api.post<BcdrPlan>(`${BASE}/bcdr`, data).then(r => r.data),
+  listBcdr: () => apiClient.get<BcdrPlan[]>(`${BASE}/bcdr`).then(r => r.data),
+  createBcdr: (data: Partial<BcdrPlan>) => apiClient.post<BcdrPlan>(`${BASE}/bcdr`, data).then(r => r.data),
   updateBcdr: (id: string, data: Partial<BcdrPlan>) =>
-    api.patch<BcdrPlan>(`${BASE}/bcdr/${id}`, data).then(r => r.data),
-  deleteBcdr: (id: string) => api.delete(`${BASE}/bcdr/${id}`),
+    apiClient.patch<BcdrPlan>(`${BASE}/bcdr/${id}`, data).then(r => r.data),
+  deleteBcdr: (id: string) => apiClient.delete(`${BASE}/bcdr/${id}`),
   recordTest: (id: string, result: string, notes: string) =>
-    api.post<BcdrPlan>(`${BASE}/bcdr/${id}/test`, { result, notes }).then(r => r.data),
+    apiClient.post<BcdrPlan>(`${BASE}/bcdr/${id}/test`, { result, notes }).then(r => r.data),
 
   // SLA
-  getSla: () => api.get<SlaConfig[]>(`${BASE}/sla`).then(r => r.data),
-  seedSla: () => api.post(`${BASE}/sla/seed`).then(r => r.data),
+  getSla: () => apiClient.get<SlaConfig[]>(`${BASE}/sla`).then(r => r.data),
+  seedSla: () => apiClient.post(`${BASE}/sla/seed`).then(r => r.data),
   upsertSla: (tier: string, data: Partial<SlaConfig>) =>
-    api.put<SlaConfig>(`${BASE}/sla/${tier}`, data).then(r => r.data),
+    apiClient.put<SlaConfig>(`${BASE}/sla/${tier}`, data).then(r => r.data),
 };
