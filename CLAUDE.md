@@ -183,6 +183,7 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 33 | IA Safety & Governança | Aprovação dupla, janelas de manutenção, SIRP, red team trimestral, four-eyes AD, direito ao esquecimento, RFC 3161 |
 | 34.cont | Infra Segurança — mTLS + Microsegmentação | mTLS interno entre serviços (step-ca), redes Docker isoladas (frontend_net/backend_net/worker_net), AppArmor/Seccomp profiles, Vault HA real |
 | 39.cont | Identidade Self-Service — Portal e Relatórios | Portal web separado (URL dedicada via white-label), catálogo de acesso visual com AccessReviewTask, relatórios AD pré-prontos (senha expirada, contas inativas, membros de grupo, admins sem MFA) |
+| 48 | Web Audit & Browser Forensics | Auditoria de navegação de estações AD via GPO + BrowsingHistoryView; `web_audit_configs` + `web_audit_entries` + `web_audit_findings`; análise IA por categoria (produtividade/suspeito/malicioso/shadow IT); integração SOAR + TI feeds; dashboard de produtividade e risco por usuário/departamento; relatório PDF para RH/compliance |
 
 ---
 
@@ -1164,6 +1165,111 @@ BundleSection
 - Análise de dependências: mapa de comunicação entre VMs, ordem de migração sugerida
 - IA gera runbook: sequência, janelas de manutenção, estratégia de rollback
 - Export automático para BookStack
+
+---
+
+### Fase 48 — Web Audit & Browser Forensics
+*Auditoria de navegação web das estações do Active Directory com análise IA — segurança, produtividade e compliance*
+
+**Princípio:** O analista de segurança precisa saber o que os usuários acessam na rede corporativa — para detectar comprometimentos (C2, phishing, exfiltração), shadow IT (VPNs não autorizadas, ferramentas de acesso remoto), violações de política (apostas, conteúdo inadequado) e produtividade (redes sociais, streaming em horário de trabalho). Esta fase usa BrowsingHistoryView (NirSoft) como coletor — testado forensicamente, suporta todos os browsers — e o Eternity SecOps como motor de análise, armazenamento e alertas.
+
+#### Arquitetura — Abordagem Híbrida GPO + Eternity SecOps
+
+```
+GPO executa BrowsingHistoryView.exe na logoff do usuário
+        ↓
+Exporta CSV para \\servidor-coleta\audit\{usuario}\{data}.csv
+        ↓
+Celery worker lê o share (mount SMB ou WinRM)
+        ↓
+Python processa CSV → web_audit_entries (banco)
+        ↓
+Claude analisa batch → web_audit_findings (categorias + severidade)
+        ↓
+Se finding CRITICAL → trigger PlaybookRule (F35) → alert Slack/email/Jira
+```
+
+#### Modelo de dados
+
+| Tabela | Campos | Descrição |
+|---|---|---|
+| `web_audit_configs` | tenant_id, enabled, share_path, collection_frequency, retention_days, alert_categories[], excluded_users[] | Config por tenant: onde ler os CSVs, frequência, retenção |
+| `web_audit_entries` | tenant_id, user_id (FK ad_users), workstation, url, title, visited_at, duration_seconds, visit_count, browser, profile | Cada URL visitada — importada do CSV do BrowsingHistoryView |
+| `web_audit_findings` | tenant_id, user_id, finding_type, category, severity, url, title, visited_at, ai_summary, status (open/dismissed/escalated) | Achados da análise IA sobre entradas suspeitas |
+| `web_audit_reports` | tenant_id, period_start, period_end, generated_by, pdf_url, stats_json | Relatórios periódicos gerados (PDF/JSON) |
+
+#### Coleta via GPO — Script BrowsingHistoryView
+
+Script GPO deployado via Computer Configuration → Windows Settings → Scripts → Logoff:
+
+```powershell
+# logoff_web_audit.ps1 — roda na logoff do usuário
+$tool    = "\\servidor\tools\BrowsingHistoryView.exe"
+$output  = "\\servidor\audit\$env:USERNAME\$(Get-Date -f 'yyyyMMdd_HHmmss').csv"
+$since   = (Get-Date).AddHours(-10).ToString("dd/MM/yyyy HH:mm:ss")
+
+& $tool /HistorySource 1 `
+        /scomma $output `
+        /LoadIE 1 /LoadChrome 1 /LoadFirefox 1 /LoadEdge 1 `
+        /sort "Visit Time" /FilterDateTimeAfter $since
+```
+
+**Nenhum agente permanente nas estações** — BrowsingHistoryView.exe fica no share, GPO chama na logoff.
+
+#### Categorias de análise IA
+
+| Categoria | Exemplos | Severidade | Ação padrão |
+|---|---|---|---|
+| **Malicioso** | IoC match (AbuseIPDB/URLhaus), phishing, domínios C2, typosquatting | Critical | Bloquear IP no firewall + alerta CISO + ticket Jira |
+| **Exfiltração** | WeTransfer, Mega, SendSpace, Pastebin em volume anômalo | High | Alerta segurança + snapshot da estação |
+| **Shadow IT** | ngrok, AnyDesk não autorizado, VPN pública, Tor | High | Alerta TI + notificar manager |
+| **Compliance** | Gambling, conteúdo adulto, sites de apostas | High | Alerta RH + bloquear na camada de firewall |
+| **Produtividade** | YouTube, Instagram, TikTok, Netflix em horário comercial | Medium | Relatório gerencial semanal |
+| **Redes Sociais** | Facebook, Twitter/X, WhatsApp Web | Low | Relatório mensal de produtividade |
+| **Normal** | Sites de trabalho, Microsoft 365, ferramentas aprovadas | Info | Sem ação |
+
+#### Integração com módulos existentes
+
+| Módulo | Como integra |
+|---|---|
+| **F36 — ad_users** | `user_id` FK para o usuário AD — correlaciona histórico com departamento/cargo/manager |
+| **F35 — Threat Intelligence** | Cruza cada URL/domínio com `threat_indicators` (AbuseIPDB, URLhaus, CISA KEV) |
+| **F35 — SOAR Playbooks** | Novo `trigger_type: web_audit_finding` — quando finding Critical, dispara playbook automaticamente |
+| **F23 — Alertas** | Notifica via Slack/Teams/Email quando finding High/Critical |
+| **F19/F28.1 — DLP** | Correlaciona: se usuário acessou site suspeito E teve DLP_block no mesmo dia → severity escalada |
+| **F24 — Dashboard Executivo** | Score de risco de navegação por tenant; top 10 usuários de risco; evolução semanal |
+| **F14 — Servidores (WinRM)** | Alternativa ao GPO: coleta sob demanda via WinRM para investigações forenses pontuais |
+
+#### Frontend — WebAuditPage.tsx
+
+**Tabs:**
+
+1. **Visão Geral** — cards: total URLs auditadas, findings por severidade, usuários com mais achados; gráfico de atividade por hora do dia; top 10 sites mais acessados
+
+2. **Findings** — tabela filtrada por severidade/categoria/usuário/data; botões: Investigar (abre chat do AI Assistant com contexto), Escalar (cria ticket Jira), Dismiss (fecha com justificativa)
+
+3. **Usuários** — ranking de usuários por score de risco; drill-down por usuário: timeline de URLs, categorias predominantes, comparativo com média do departamento
+
+4. **Configuração** — share path, frequência de importação, retenção, categorias habilitadas, usuários excluídos da auditoria (ex: TI, diretores), lista de domínios aprovados (whitelist)
+
+5. **Relatórios** — gerar PDF para período selecionado; histórico de relatórios gerados; envio automático agendado para RH/compliance por email
+
+#### Via Chat do AI Assistant (investigação forense pontual)
+
+O analista pode também pedir sob demanda:
+> "Audita o histórico de navegação do João nas últimas 48 horas"
+
+O agente coleta via WinRM, processa o SQLite do Chrome/Firefox, retorna análise formatada diretamente no chat — sem gravar no banco (modo investigativo, não contínuo).
+
+#### GPO — Pré-requisitos no ambiente AD
+
+| Requisito | Detalhe |
+|---|---|
+| BrowsingHistoryView.exe | Disponível em `\\servidor\tools\` — share somente leitura para workstations |
+| Share de coleta | `\\servidor\audit\` — write para `Domain Users`, read para conta do Eternity SecOps |
+| GPO Logoff Script | Computer Config → Scripts → Logoff → `logoff_web_audit.ps1` |
+| Conta de serviço | Conta AD com permissão de leitura no share de auditoria |
+| Espaço em disco | ~5 KB/usuário/dia × 200 usuários × 90 dias ≈ 90 MB (mínimo) |
 
 ---
 
