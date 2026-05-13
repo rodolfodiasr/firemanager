@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   ShieldAlert, Eye, EyeOff, Building2, ArrowRight,
-  MessageSquare, BookOpen, Bot, Server, ShieldCheck, FileCheck, Users, Zap,
+  MessageSquare, BookOpen, Server, GitBranch, HardDrive,
+  FileCheck, Users, Zap,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 
@@ -16,8 +17,8 @@ const FEATURES = [
   {
     icon: MessageSquare,
     color: "bg-sky-500/20 text-sky-400",
-    title: "Chat IA Contextual",
-    desc: "RAG + memória de sessão, Claude ou GPT-4o",
+    title: "Assistente IA — do N1 ao N3",
+    desc: "Integração GLPI, RAG e memória — do atendimento ao diagnóstico avançado",
   },
   {
     icon: BookOpen,
@@ -26,40 +27,40 @@ const FEATURES = [
     desc: "Conversa → doc sanitizado → BookStack → RAG",
   },
   {
-    icon: Bot,
-    color: "bg-indigo-500/20 text-indigo-400",
-    title: "IA Agentic Multi-agente",
-    desc: "Orquestrador + 5 sub-agentes especializados",
-  },
-  {
     icon: Server,
     color: "bg-violet-500/20 text-violet-400",
-    title: "Multi-vendor · Multi-cloud",
-    desc: "50+ vendors + AWS / Azure / GCP",
+    title: "Firewall & Cloud Multi-vendor",
+    desc: "Fortinet, SonicWall, Cisco, Palo Alto + AWS / Azure / GCP",
   },
   {
-    icon: ShieldCheck,
-    color: "bg-amber-500/20 text-amber-400",
-    title: "Governança & Audit",
-    desc: "Hash-chain, aprovação dupla, maintenance windows",
+    icon: GitBranch,
+    color: "bg-blue-500/20 text-blue-400",
+    title: "Network & Switches",
+    desc: "HP Comware, Dell N, Juniper, Aruba — conectividade e BGP",
+  },
+  {
+    icon: HardDrive,
+    color: "bg-indigo-500/20 text-indigo-400",
+    title: "Servidores & Banco de Dados",
+    desc: "SSH Linux, WinRM, Zabbix, Wazuh, PostgreSQL, MySQL, SQL Server",
   },
   {
     icon: FileCheck,
-    color: "bg-yellow-500/20 text-yellow-400",
-    title: "Compliance CIS/PCI/BACEN",
-    desc: "Score 0–100, checks automáticos, PDF executivo",
+    color: "bg-amber-500/20 text-amber-400",
+    title: "Compliance & Governança",
+    desc: "CIS/PCI-DSS/BACEN/LGPD, score 0–100, audit hash-chained, PDF",
   },
   {
     icon: Users,
     color: "bg-orange-500/20 text-orange-400",
     title: "Identidade AD + M365",
-    desc: "JIT, SoD, revisão de acesso, licenças",
+    desc: "JIT, SoD, campanhas de revisão, licenças e self-service",
   },
   {
     icon: Zap,
     color: "bg-brand-600/20 text-brand-300",
-    title: "SOAR & Playbooks",
-    desc: "Resposta automática, feeds IoC, MTTR tracking",
+    title: "SOAR & Correlação SIEM",
+    desc: "Playbooks automáticos, feeds IoC, Wazuh / Splunk / Sentinel, MTTR",
   },
 ] as const;
 
@@ -96,7 +97,7 @@ export function Login() {
     <div className="min-h-screen flex">
 
       {/* ── Painel esquerdo — formulário ─────────────────────────────── */}
-      <div className="w-full lg:w-[440px] xl:w-[480px] shrink-0 bg-gray-950 flex flex-col justify-between px-10 py-12">
+      <div className="w-full lg:w-[400px] xl:w-[440px] shrink-0 bg-gray-950 flex flex-col justify-between px-10 py-12">
 
         {/* Logo + branding */}
         <div>
@@ -210,33 +211,34 @@ export function Login() {
       </div>
 
       {/* ── Painel direito — features ─────────────────────────────────── */}
-      <div className="hidden lg:flex flex-1 border-l border-gray-800 bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 flex-col justify-center px-12 py-12">
-        <div className="max-w-xl mx-auto w-full">
+      <div className="hidden lg:flex flex-1 border-l border-gray-800 bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 flex-col justify-center px-14 py-12">
+        <div className="max-w-2xl mx-auto w-full">
 
           <p className="text-[11px] font-semibold text-brand-500 uppercase tracking-widest mb-2">
-            Plataforma Completa
+            Plataforma Unificada de TI
           </p>
-          <h3 className="text-xl font-bold text-white mb-1">
-            Tudo que sua equipe de segurança precisa
+          <h3 className="text-xl font-bold text-white mb-2">
+            Uma plataforma para toda a equipe de TI
           </h3>
-          <p className="text-sm text-gray-400 mb-7">
-            Da operação de firewalls à governança de identidade — em linguagem
-            natural, com rastreabilidade completa.
+          <p className="text-sm text-gray-400 mb-8">
+            Firewalls, switches, servidores, bancos de dados, identidade e SIEM —
+            todos os perfis da equipe operam em linguagem natural, com IA agentic
+            e auditoria completa.
           </p>
 
           {/* Grid 2×4 de features */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             {FEATURES.map((f) => (
               <div
                 key={f.title}
-                className="flex flex-col items-center text-center p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/[0.10] transition-colors"
+                className="flex flex-col items-center text-center p-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/[0.10] transition-colors"
               >
                 <div
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${f.color}`}
+                  className={`w-11 h-11 rounded-xl flex items-center justify-center mb-3 ${f.color}`}
                 >
-                  <f.icon size={20} />
+                  <f.icon size={21} />
                 </div>
-                <p className="text-white text-[13px] font-semibold leading-tight mb-1">
+                <p className="text-white text-[13px] font-semibold leading-tight mb-1.5">
                   {f.title}
                 </p>
                 <p className="text-gray-500 text-[11px] leading-relaxed">
@@ -246,14 +248,6 @@ export function Login() {
             ))}
           </div>
 
-          {/* Rodapé */}
-          <div className="mt-7 flex items-center gap-3">
-            <div className="h-px flex-1 bg-gray-800" />
-            <span className="text-[10px] text-gray-600 font-medium tracking-widest whitespace-nowrap">
-              POWERED BY CLAUDE AI · ANTHROPIC
-            </span>
-            <div className="h-px flex-1 bg-gray-800" />
-          </div>
         </div>
       </div>
 
