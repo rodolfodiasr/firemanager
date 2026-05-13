@@ -24,8 +24,12 @@ async def generate_draft(
     session_id: UUID,
     tenant_id: UUID,
     user_id: UUID,
+    doc_type: str = "knowledge",
 ) -> AssistantDocDraft:
     """Lê a sessão, extrai conhecimento, sanitiza e persiste como draft."""
+    if doc_type not in ("knowledge", "action_plan", "remediation"):
+        doc_type = "knowledge"
+
     # Carrega sessão
     result = await db.execute(
         select(AssistantSession).where(
@@ -45,9 +49,9 @@ async def generate_draft(
     )
     messages = list(result.scalars().all())
 
-    # Extrai conhecimento via Claude
-    data = await doc_extractor.extract_knowledge(session, messages)
-    raw_content = doc_extractor.render_markdown(data, session)
+    # Extrai conhecimento via Claude (tipo determina prompt e estrutura)
+    data = await doc_extractor.extract_knowledge(session, messages, doc_type=doc_type)
+    raw_content = doc_extractor.render_markdown(data, session, doc_type=doc_type)
 
     # Sanitiza
     sanitized_content, warnings = doc_sanitizer.sanitize(raw_content)
@@ -55,14 +59,21 @@ async def generate_draft(
     # Busca documentos similares no BookStack (não bloqueia em caso de falha)
     similar = await _find_similar_docs(db, tenant_id, sanitized_content)
 
+    _default_title = {
+        "knowledge": "Documentação Técnica",
+        "action_plan": "Plano de Ação",
+        "remediation": "Plano de Remediação",
+    }
+
     # Persiste draft
     draft = AssistantDocDraft(
         session_id=session_id,
         tenant_id=tenant_id,
         created_by=user_id,
-        title=data.get("title") or session.title or "Documentação Técnica",
+        title=data.get("title") or session.title or _default_title[doc_type],
         content=sanitized_content,
         status="draft",
+        doc_type=doc_type,
         review_deadline=datetime.now(timezone.utc) + timedelta(hours=48),
         sanitizer_warnings=warnings,
         similar_docs=similar,

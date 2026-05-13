@@ -24,6 +24,7 @@ class AssistantChatRequest(BaseModel):
     session_id: UUID | None = None
     model: str | None = None
     folder_id: UUID | None = None
+    mode: str = "infrastructure"
 
 
 class AssistantMessageRead(BaseModel):
@@ -168,6 +169,7 @@ async def chat(
             content=data.content.strip(),
             model_preference=data.model,
             folder_id=data.folder_id,
+            mode=data.mode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

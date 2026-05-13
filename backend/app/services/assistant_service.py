@@ -62,6 +62,28 @@ CONTEXTO DO TENANT (dados atuais):
 Responda em português. Seja preciso, objetivo e seguro.\
 """
 
+_GENERAL_SYSTEM_TEMPLATE = """\
+Você é um assistente especialista em Tecnologia da Informação com amplo conhecimento em: \
+redes, sistemas operacionais, infraestrutura de servidores, telefonia IP (VoIP, PABX, ramais SIP, \
+softphones como Mesa Virtual Intelbras), segurança da informação, cloud, virtualização, \
+suporte técnico e boas práticas de TI.
+
+SUAS CAPACIDADES:
+- Responder perguntas técnicas gerais de TI, independentemente do escopo da plataforma
+- Auxiliar em troubleshooting, configuração e planejamento de infraestrutura
+- Explicar conceitos técnicos, comparar tecnologias e recomendar soluções
+- Ajudar a criar roteiros, checklists e procedimentos técnicos
+- Suporte a telefonia: configuração de PABX IP, ramais virtuais, softphones, SIP trunk, \
+QoS para VoIP, Mesa Virtual Intelbras e similares
+
+RESTRIÇÕES ABSOLUTAS — não negocie:
+- Não executa operações na infraestrutura gerenciada pela plataforma
+- Não revela credenciais, senhas, chaves API ou tokens
+- Não realiza ações destrutivas ou ilegais
+
+Responda em português. Seja preciso, didático e objetivo.\
+"""
+
 
 def _compute_hash(prev_hash: str, role: str, content: str) -> str:
     data = f"{prev_hash}|{role}|{content}|{datetime.utcnow().isoformat()}"
@@ -124,6 +146,7 @@ async def send_message(
     content: str,
     model_preference: str | None,
     folder_id: UUID | None = None,
+    mode: str = "infrastructure",
 ) -> tuple[AssistantSession, AssistantMessage]:
     from app.agent.guardrails import check_action_plan
     _safe_plan: dict = {
@@ -152,8 +175,13 @@ async def send_message(
     await db.flush()
     await db.refresh(user_msg)
 
-    context = await build_context_for_query(db, tenant_id, user_role, content)
-    system = _ASSISTANT_SYSTEM_TEMPLATE.replace("{context}", context or "(nenhum contexto disponível)")
+    is_general = mode == "general"
+    if is_general:
+        system = _GENERAL_SYSTEM_TEMPLATE
+        context = None
+    else:
+        context = await build_context_for_query(db, tenant_id, user_role, content)
+        system = _ASSISTANT_SYSTEM_TEMPLATE.replace("{context}", context or "(nenhum contexto disponível)")
 
     history = await _load_history(db, session.id, limit=18)
     if not history or history[-1]["content"] != content:
@@ -169,7 +197,7 @@ async def send_message(
         model=provider.name,
         input_tokens=input_tok,
         output_tokens=output_tok,
-        rag_context_used=bool(context),
+        rag_context_used=bool(context) if not is_general else False,
         message_hash=_compute_hash(user_msg.message_hash, "assistant", response_text),
         created_at=datetime.now(timezone.utc),
     )

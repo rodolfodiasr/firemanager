@@ -45,11 +45,13 @@ interface AssistantState {
   loading: boolean;
   selectedModel: "claude" | "openai";
   openaiAvailable: boolean;
+  chatMode: "infrastructure" | "general";
 
   toggle: () => void;
   open: () => void;
   close: () => void;
   setModel: (m: "claude" | "openai") => void;
+  setChatMode: (m: "infrastructure" | "general") => void;
   setLoading: (v: boolean) => void;
   setOpenaiAvailable: (v: boolean) => void;
   addMessage: (msg: AssistantMessage) => void;
@@ -78,11 +80,13 @@ export const useAssistantStore = create<AssistantState>((set) => ({
   loading: false,
   selectedModel: "claude",
   openaiAvailable: false,
+  chatMode: "infrastructure",
 
   toggle: () => set((s) => ({ isOpen: !s.isOpen })),
   open: () => set({ isOpen: true }),
   close: () => set({ isOpen: false }),
   setModel: (m) => set({ selectedModel: m }),
+  setChatMode: (m) => set({ chatMode: m }),
   setLoading: (v) => set({ loading: v }),
   setOpenaiAvailable: (v) => set({ openaiAvailable: v }),
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   X, AlertTriangle, CheckCircle, BookOpen, Loader2, Edit2, XCircle, Copy,
+  ClipboardList, Wrench,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { assistantDocsApi, type DocDraft } from "../../api/assistant";
@@ -57,6 +58,7 @@ export function DocDraftModal({ draft: initialDraft, onClose, onUpdated }: Props
             <h2 className="text-base font-semibold text-gray-900 truncate">
               {editing ? "Editando rascunho" : draft.title}
             </h2>
+            <DocTypeBadge docType={draft.doc_type} />
             <StatusBadge status={draft.status} />
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 shrink-0 ml-2">
@@ -244,6 +246,20 @@ export function DocDraftModal({ draft: initialDraft, onClose, onUpdated }: Props
         )}
       </div>
     </div>
+  );
+}
+
+function DocTypeBadge({ docType }: { docType: DocDraft["doc_type"] }) {
+  const map: Record<DocDraft["doc_type"], { label: string; cls: string; icon: React.ReactNode }> = {
+    knowledge:    { label: "Artigo",   cls: "bg-green-100 text-green-700",  icon: <BookOpen size={9} /> },
+    action_plan:  { label: "Pl. Ação", cls: "bg-blue-100 text-blue-700",   icon: <ClipboardList size={9} /> },
+    remediation:  { label: "Remediação", cls: "bg-orange-100 text-orange-700", icon: <Wrench size={9} /> },
+  };
+  const { label, cls, icon } = map[docType] ?? map.knowledge;
+  return (
+    <span className={`shrink-0 flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${cls}`}>
+      {icon}{label}
+    </span>
   );
 }
 

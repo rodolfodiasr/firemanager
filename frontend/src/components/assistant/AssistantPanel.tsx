@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Bot, X, Send, Loader2, Plus, Trash2, ChevronDown, Sparkles, Database, FileText,
+  Globe, Shield,
 } from "lucide-react";
 import { useAssistantStore, type AssistantMessage } from "../../store/assistantStore";
 import { assistantApi, assistantDocsApi, type DocDraft } from "../../api/assistant";
@@ -8,6 +9,7 @@ import { useAuthStore } from "../../store/authStore";
 import { useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import { DocDraftModal } from "./DocDraftModal";
+import { DocTypeSelector } from "./DocTypeSelector";
 
 // ── Bolha de mensagem ─────────────────────────────────────────────────────────
 
@@ -67,13 +69,14 @@ export function AssistantPanel() {
 function AssistantPanelInner() {
   const {
     isOpen, currentSessionId, messages, sessions, loading, selectedModel, openaiAvailable,
-    close, setModel, setLoading, setOpenaiAvailable, addMessage, setMessages,
+    chatMode, close, setModel, setChatMode, setLoading, setOpenaiAvailable, addMessage, setMessages,
     setSessions, setCurrentSessionId, newSession,
   } = useAssistantStore();
 
   const [input, setInput] = useState("");
   const [showSessions, setShowSessions] = useState(false);
   const [generatingDoc, setGeneratingDoc] = useState(false);
+  const [showDocTypeSelector, setShowDocTypeSelector] = useState(false);
   const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -114,6 +117,7 @@ function AssistantPanelInner() {
         content: text,
         session_id: currentSessionId,
         model: selectedModel === "openai" ? "openai" : null,
+        mode: chatMode,
       });
 
       // Atualizar session_id se era nova sessão
@@ -161,11 +165,12 @@ function AssistantPanelInner() {
     }
   };
 
-  const handleGenerateDoc = async () => {
+  const handleGenerateDoc = async (docType: string) => {
     if (!currentSessionId || generatingDoc) return;
+    setShowDocTypeSelector(false);
     setGeneratingDoc(true);
     try {
-      const draft = await assistantDocsApi.generateDoc(currentSessionId);
+      const draft = await assistantDocsApi.generateDoc(currentSessionId, docType);
       setDocDraft(draft);
     } catch (err: unknown) {
       const msg =
@@ -193,6 +198,12 @@ function AssistantPanelInner() {
 
   return (
     <>
+    {showDocTypeSelector && (
+      <DocTypeSelector
+        onSelect={handleGenerateDoc}
+        onClose={() => setShowDocTypeSelector(false)}
+      />
+    )}
     {docDraft && (
       <DocDraftModal
         draft={docDraft}
@@ -211,7 +222,20 @@ function AssistantPanelInner() {
             <p className="text-[10px] text-gray-400">Somente leitura · não executa operações</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 shrink-0 ml-2">
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          {/* Modo toggle */}
+          <button
+            onClick={() => setChatMode(chatMode === "infrastructure" ? "general" : "infrastructure")}
+            title={chatMode === "general" ? "Tecnologia Geral (clique para mudar)" : "Infraestrutura (clique para mudar)"}
+            className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors ${
+              chatMode === "general"
+                ? "bg-purple-700 text-purple-100 hover:bg-purple-600"
+                : "bg-gray-800 hover:bg-gray-700 text-gray-300"
+            }`}
+          >
+            {chatMode === "general" ? <Globe size={10} /> : <Shield size={10} />}
+            {chatMode === "general" ? "Geral" : "Infra"}
+          </button>
           {/* Seletor de modelo (apenas se OpenAI disponível) */}
           {openaiAvailable && (
             <button
@@ -225,7 +249,7 @@ function AssistantPanelInner() {
           )}
           {currentSessionId && messages.length > 0 && (
             <button
-              onClick={handleGenerateDoc}
+              onClick={() => setShowDocTypeSelector(true)}
               disabled={generatingDoc}
               title="Gerar documentação desta sessão"
               className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-gray-800 hover:bg-brand-600 text-gray-300 hover:text-white disabled:opacity-50 transition-colors"

@@ -30,6 +30,8 @@ class AssistantDocDraft(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     # draft | approved | published | rejected
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    # knowledge | action_plan | remediation
+    doc_type: Mapped[str] = mapped_column(String(20), nullable=False, default="knowledge")
     review_deadline: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )

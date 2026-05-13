@@ -33,6 +33,7 @@ class DocDraftRead(BaseModel):
     title: str
     content: str
     status: str
+    doc_type: str
     review_deadline: str | None
     sanitizer_warnings: list[dict]
     similar_docs: list[SimilarDocRead]
@@ -51,6 +52,7 @@ class DocDraftRead(BaseModel):
             title=d.title,
             content=d.content,
             status=d.status,
+            doc_type=getattr(d, "doc_type", "knowledge") or "knowledge",
             review_deadline=d.review_deadline.isoformat() if d.review_deadline else None,
             sanitizer_warnings=d.sanitizer_warnings or [],
             similar_docs=[SimilarDocRead(**s) for s in (d.similar_docs or [])],
@@ -59,6 +61,10 @@ class DocDraftRead(BaseModel):
             created_at=d.created_at.isoformat(),
             updated_at=d.updated_at.isoformat(),
         )
+
+
+class GenerateDocRequest(BaseModel):
+    doc_type: str = "knowledge"
 
 
 class UpdateDraftRequest(BaseModel):
@@ -73,6 +79,7 @@ async def generate_doc(
     session_id: UUID,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    body: GenerateDocRequest = GenerateDocRequest(),
 ) -> DocDraftRead:
     """Gera um rascunho de documentação a partir de uma sessão do AI Assistant."""
     try:
@@ -81,6 +88,7 @@ async def generate_doc(
             session_id=session_id,
             tenant_id=ctx.tenant.id,
             user_id=ctx.user.id,
+            doc_type=body.doc_type,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

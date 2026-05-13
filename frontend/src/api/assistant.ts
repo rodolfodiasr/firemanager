@@ -22,6 +22,7 @@ export interface DocDraft {
   title: string;
   content: string;
   status: "draft" | "approved" | "published" | "rejected";
+  doc_type: "knowledge" | "action_plan" | "remediation";
   review_deadline: string | null;
   sanitizer_warnings: { pattern: string; excerpt: string }[];
   similar_docs: SimilarDoc[];
@@ -129,6 +130,7 @@ export const assistantApi = {
     session_id?: string | null;
     model?: string | null;
     folder_id?: string | null;
+    mode?: string;
   }) =>
     apiClient
       .post<AssistantMessageResponse>("/assistant/chat", {
@@ -136,6 +138,7 @@ export const assistantApi = {
         session_id: data.session_id ?? null,
         model: data.model ?? null,
         folder_id: data.folder_id ?? null,
+        mode: data.mode ?? "infrastructure",
       })
       .then((r) => mapMessage(r.data)),
 
@@ -208,9 +211,9 @@ export const assistantApi = {
 // ── Doc drafts API ────────────────────────────────────────────────────────────
 
 export const assistantDocsApi = {
-  generateDoc: (sessionId: string) =>
+  generateDoc: (sessionId: string, docType = "knowledge") =>
     apiClient
-      .post<DocDraft>(`/assistant/sessions/${sessionId}/generate-doc`)
+      .post<DocDraft>(`/assistant/sessions/${sessionId}/generate-doc`, { doc_type: docType })
       .then((r) => r.data),
 
   listDocs: (status?: string) =>

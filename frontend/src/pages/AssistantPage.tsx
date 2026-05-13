@@ -3,6 +3,7 @@ import {
   Bot, Send, Loader2, Plus, Trash2, Sparkles, Database,
   Pin, PinOff, FolderOpen, Folder, Users, MoreHorizontal,
   Pencil, Share2, FolderInput, Check, X, ChevronRight, ChevronDown, FileText,
+  Globe, Shield,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import {
@@ -13,6 +14,7 @@ import {
 } from "../store/assistantStore";
 import { assistantApi, assistantDocsApi, type DocDraft } from "../api/assistant";
 import { DocDraftModal } from "../components/assistant/DocDraftModal";
+import { DocTypeSelector } from "../components/assistant/DocTypeSelector";
 import toast from "react-hot-toast";
 
 // ── Paleta de cores para pastas ───────────────────────────────────────────────
@@ -544,8 +546,8 @@ function RenameFolderModal({
 export function AssistantPage() {
   const {
     currentSessionId, messages, sessions, teamSessions, folders,
-    loading, selectedModel, openaiAvailable,
-    setModel, setLoading, setOpenaiAvailable,
+    loading, selectedModel, openaiAvailable, chatMode,
+    setModel, setChatMode, setLoading, setOpenaiAvailable,
     addMessage, setMessages, setSessions, setTeamSessions,
     setFolders, setCurrentSessionId, newSession,
     updateSession, removeSession, addFolder, updateFolder, removeFolder,
@@ -555,6 +557,7 @@ export function AssistantPage() {
   const [createFolderModal, setCreateFolderModal] = useState<{ isTeam: boolean } | null>(null);
   const [renameFolderTarget, setRenameFolderTarget] = useState<AssistantFolder | null>(null);
   const [generatingDoc, setGeneratingDoc] = useState(false);
+  const [showDocTypeSelector, setShowDocTypeSelector] = useState(false);
   const [docDraft, setDocDraft] = useState<DocDraft | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -637,11 +640,12 @@ export function AssistantPage() {
     }
   }, []);
 
-  const handleGenerateDoc = async () => {
+  const handleGenerateDoc = async (docType: string) => {
     if (!currentSessionId || generatingDoc) return;
+    setShowDocTypeSelector(false);
     setGeneratingDoc(true);
     try {
-      const draft = await assistantDocsApi.generateDoc(currentSessionId);
+      const draft = await assistantDocsApi.generateDoc(currentSessionId, docType);
       setDocDraft(draft);
     } catch (err: unknown) {
       const msg =
@@ -708,6 +712,7 @@ export function AssistantPage() {
         content: text,
         session_id: currentSessionId,
         model: selectedModel === "openai" ? "openai" : null,
+        mode: chatMode,
       });
       if (!currentSessionId) {
         setCurrentSessionId(aiMsg.sessionId);
@@ -941,9 +946,23 @@ export function AssistantPage() {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {/* Mode toggle */}
+              <button
+                onClick={() => setChatMode(chatMode === "infrastructure" ? "general" : "infrastructure")}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                  chatMode === "general"
+                    ? "bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100"
+                    : "border-gray-200 hover:bg-gray-50 text-gray-600"
+                }`}
+                title={chatMode === "general" ? "Modo: Tecnologia Geral (clique para mudar para Infraestrutura)" : "Modo: Infraestrutura (clique para mudar para Tecnologia Geral)"}
+              >
+                {chatMode === "general" ? <Globe size={12} /> : <Shield size={12} />}
+                {chatMode === "general" ? "Tecnologia Geral" : "Infraestrutura"}
+              </button>
+
               {currentSessionId && messages.length > 0 && (
                 <button
-                  onClick={handleGenerateDoc}
+                  onClick={() => setShowDocTypeSelector(true)}
                   disabled={generatingDoc}
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-brand-50 hover:border-brand-300 text-gray-600 hover:text-brand-700 disabled:opacity-50 transition-colors"
                 >
@@ -967,10 +986,14 @@ export function AssistantPage() {
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 min-h-0">
             {messages.length === 0 && (
               <div className="text-center text-gray-400 mt-20 select-none">
-                <Sparkles size={40} className="mx-auto mb-3 opacity-20" />
+                {chatMode === "general"
+                  ? <Globe size={40} className="mx-auto mb-3 opacity-20 text-purple-400" />
+                  : <Sparkles size={40} className="mx-auto mb-3 opacity-20" />}
                 <p className="font-medium text-base">Como posso ajudar?</p>
                 <p className="text-sm mt-1 text-gray-300 max-w-sm mx-auto">
-                  Pergunte sobre dispositivos, compliance, operações recentes ou boas práticas de segurança.
+                  {chatMode === "general"
+                    ? "Pergunte sobre redes, servidores, telefonia IP, softphones, PABX, VoIP ou qualquer assunto de TI."
+                    : "Pergunte sobre dispositivos, compliance, operações recentes ou boas práticas de segurança."}
                 </p>
               </div>
             )}
@@ -999,7 +1022,7 @@ export function AssistantPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
                 }}
-                placeholder="Pergunte sobre sua infraestrutura… (Enter para enviar)"
+                placeholder={chatMode === "general" ? "Pergunte sobre qualquer assunto de TI… (Enter para enviar)" : "Pergunte sobre sua infraestrutura… (Enter para enviar)"}
                 disabled={loading}
                 rows={2}
                 className="flex-1 text-sm border border-gray-200 rounded-xl px-4 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-gray-50"
@@ -1035,6 +1058,12 @@ export function AssistantPage() {
           folder={renameFolderTarget}
           onClose={() => setRenameFolderTarget(null)}
           onRename={(name) => handleRenameFolder(renameFolderTarget.id, name)}
+        />
+      )}
+      {showDocTypeSelector && (
+        <DocTypeSelector
+          onSelect={handleGenerateDoc}
+          onClose={() => setShowDocTypeSelector(false)}
         />
       )}
       {docDraft && (
