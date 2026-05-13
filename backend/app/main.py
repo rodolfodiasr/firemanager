@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, alerts, assistant, assistant_docs, audit, auth, bulk_jobs, category_roles, cloud_accounts, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, enterprise, executive, firewall_migration, firmware, glpi, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, orchestrator, platform_config, playbooks, recommendations, remediation, self_service, server_operations, servers, siem, templates, tenants, variables, vm_migration
+from app.api import admin, ai_safety, alerts, assistant, assistant_docs, audit, auth, bulk_jobs, category_roles, cloud_accounts, compliance, compliance_packs, config_migration, connectivity, database_connectors, device_groups, devices, documents, enterprise, executive, firewall_migration, firmware, glpi, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, orchestrator, platform_config, playbooks, recommendations, remediation, self_service, selfservice_portal, server_operations, servers, siem, templates, tenants, variables, vm_migration
 from app.config import settings
 
 log = structlog.get_logger()
@@ -95,6 +95,9 @@ app.include_router(playbooks.router,           prefix="/playbooks",             
 app.include_router(siem.router,               prefix="/siem",                         tags=["siem"])
 app.include_router(siem.webhook_router,        prefix="/webhooks",                     tags=["webhooks"])
 app.include_router(cloud_accounts.router,      prefix="/cloud-accounts",               tags=["cloud-accounts"])
+app.include_router(compliance_packs.router,    prefix="/compliance-enterprise",        tags=["compliance-enterprise"])
+app.include_router(ai_safety.router,           prefix="/ai-safety",                    tags=["ai-safety"])
+app.include_router(selfservice_portal.router,  prefix="/selfservice-portal",           tags=["selfservice-portal"])
 
 
 class FireManagerError(Exception):

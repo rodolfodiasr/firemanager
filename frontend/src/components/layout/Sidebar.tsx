@@ -111,8 +111,9 @@ const navSections: NavSection[] = [
   {
     title: "Identidade & Acesso",
     items: [
-      { to: "/identity",   icon: Users,    label: "Identidade" },
-      { to: "/onboarding", icon: UserPlus, label: "Onboarding" },
+      { to: "/identity",           icon: Users,    label: "Identidade"          },
+      { to: "/onboarding",         icon: UserPlus, label: "Onboarding"          },
+      { to: "/selfservice-portal", icon: Store,    label: "Self-Service Portal" },
       { to: "#", icon: KeyRound, label: "SSO / OIDC", upcoming: "F31" },
     ],
   },
@@ -134,9 +135,9 @@ const navSections: NavSection[] = [
   {
     title: "Conformidade & Governança",
     items: [
-      { to: "/compliance", icon: ClipboardCheck, label: "Conformidade" },
-      { to: "/governance", icon: BarChart3,      label: "Governança"   },
-      { to: "#", icon: FileCheck2, label: "Packs CIS / PCI / LGPD", upcoming: "F30" },
+      { to: "/compliance",            icon: ClipboardCheck, label: "Conformidade"              },
+      { to: "/governance",            icon: BarChart3,      label: "Governança"                },
+      { to: "/compliance-enterprise", icon: FileCheck2,     label: "Packs CIS / PCI / LGPD"   },
     ],
   },
 
@@ -165,6 +166,7 @@ const navSections: NavSection[] = [
     items: [
       { to: "/audit",           icon: Shield,      label: "Auditoria",        badge: true },
       { to: "/enterprise",      icon: KeyRound,    label: "Enterprise"                    },
+      { to: "/ai-safety",       icon: ShieldHalf,  label: "IA Safety"                     },
       { to: "/platform-config", icon: ShieldCheck, label: "Config. Plataforma"            },
       { to: "/settings",        icon: Settings,    label: "Configurações"                 },
       { to: "#", icon: Cpu,   label: "Edge Agents", upcoming: "F31" },

@@ -37,6 +37,9 @@ import { AssistantPage } from "./pages/AssistantPage";
 import { SiemPage } from "./pages/SiemPage";
 import { CloudPosture } from "./pages/CloudPosture";
 import { PlaybooksPage } from "./pages/PlaybooksPage";
+import { ComplianceEnterprisePage } from "./pages/ComplianceEnterprisePage";
+import { AISafetyPage } from "./pages/AISafetyPage";
+import { SelfServicePortalPage } from "./pages/SelfServicePortalPage";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -103,7 +106,10 @@ export function AppRouter() {
       <Route path="/assistant" element={<ProtectedLayout><AssistantPage /></ProtectedLayout>} />
       <Route path="/siem"          element={<ProtectedLayout><SiemPage /></ProtectedLayout>} />
       <Route path="/cloud-posture" element={<ProtectedLayout><CloudPosture /></ProtectedLayout>} />
-      <Route path="/playbooks"    element={<ProtectedLayout><PlaybooksPage /></ProtectedLayout>} />
+      <Route path="/playbooks"             element={<ProtectedLayout><PlaybooksPage /></ProtectedLayout>} />
+      <Route path="/compliance-enterprise" element={<ProtectedLayout><ComplianceEnterprisePage /></ProtectedLayout>} />
+      <Route path="/ai-safety"             element={<ProtectedLayout><AISafetyPage /></ProtectedLayout>} />
+      <Route path="/selfservice-portal"    element={<ProtectedLayout><SelfServicePortalPage /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
