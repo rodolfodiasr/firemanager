@@ -115,7 +115,7 @@ async def update_playbook(
     return _rule_to_read(rule)
 
 
-@router.delete("/{rule_id}", status_code=204)
+@router.delete("/{rule_id}", status_code=204, response_model=None)
 async def delete_playbook(
     rule_id: UUID,
     ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
