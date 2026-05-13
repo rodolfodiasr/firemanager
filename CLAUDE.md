@@ -159,22 +159,26 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 41 | Organização do Assistant — Pastas, Pin e Compartilhamento | `assistant_folders` (cor, is_team); `folder_id`, `is_shared`, `pinned` em sessões; rename/move/share/pin; `GET /sessions/team`; sidebar colapsável com seções Pinned/Equipe/Pessoal | ✅ |
 | 42 | Visibilidade de Pastas por Role | `min_role` em `assistant_folders`; pastas de equipe visíveis apenas para roles >= min_role | ✅ |
 | 40-A | Motor de Conhecimento IA | `assistant_doc_drafts` (action_plan/remediation/knowledge); DocSanitizer; pgvector similarity vs BookStack; workflow draft→approved→published; chat mode Infra/Geral (VoIP/PABX/softphones); dropdowns inline | ✅ |
+| 29 | IA Operacional: Observabilidade e Multi-agente | `ai_interactions` (tokens, injection_score, duration_ms, Fernet-cifrado); `ai_token_usage` (custo mensal por tenant); `orchestration_runs`; orquestrador Claude + 5 sub-agentes (FirewallAgent/IdentityAgent/NetworkAgent/ComplianceAgent/InfraAgent); confidence_score em operations; `llm_provider.py` (AnthropicProvider/OpenAIProvider/OllamaProvider/FallbackLLMProvider) | ✅ (parcial — pendente: dry-run, circuit breaker, SAST CI/CD, rotação Fernet automática) |
+| 35 | SOAR & Threat Intelligence | `playbook_rules` + `playbook_executions` + `threat_indicators`; 5 templates AD pré-prontos (offboarding_imediato, conta_comprometida, jit_abuso, violacao_sod, device_unreachable); actions: notify_slack/email, escalate_to_n2, create_ticket_jira, ad_disable_user, revoke_jit_access, run_snapshot; Celery beat a cada minuto; MTTR por playbook; `/playbooks/stats/mttr` | ✅ (parcial — pendente: builder visual drag-and-drop, biblioteca ampliada de templates, NDR, isolamento automático) |
+| 36 | Governança de Identidade AD/M365 | `identity_connectors` (ad_ldap/azure_ad/google_workspace, config Fernet); `ad_users` + `ad_groups` + `ad_group_memberships`; `sod_rules` (5 built-in) + `sod_violations`; `access_campaigns` + `access_review_tasks`; `jit_requests` (aprovação obrigatória, Celery expiry a cada minuto); AD Tool Kit ldap3 + Microsoft Graph; 15+ endpoints REST | ✅ (parcial — pendente: dashboard postura 0–100, role mining IA, saúde de grupos, otimização licenças M365, Conditional Access audit) |
+| 39 | Identidade Self-Service | `otp_requests` (SHA-256, TTL 10 min); `POST /self-service/otp/request`, `/password/reset`, `/account/unlock`; reset/unlock via ldap3 (AD) e Graph (Azure AD); Celery beat `expiry_reminders` (lembretes 14d/7d/1d antes da expiração) | ✅ (parcial — pendente: portal web separado, catálogo de acesso visual, relatórios AD pré-prontos) |
 
 ### Próximas Fases (resumo)
 
-| Fase | Descrição | Entregáveis principais |
+| Fase | Descrição | Entregáveis pendentes |
 |---|---|---|
-| 29 | IA Operacional: Observabilidade, Resiliência e **Multi-agente** | AI observability, dry-run, confidence threshold, token tracking, fallback LLM, rotação Fernet, circuit breaker, SAST CI/CD, **orquestrador + sub-agentes especializados (Firewall/Identity/Network/Compliance/Infra)** |
+| 29.cont | IA Operacional — Resiliência e DevSecOps | Dry-run/modo simulação, circuit breaker (tenacity), rotação automática de chave Fernet, SAST CI/CD (Bandit/Trivy/truffleHog), supply chain (hashes em requirements), rate limiting por API key |
 | 30 | Compliance Enterprise e BC/DR | Compliance packs (CIS/PCI/BACEN/LGPD + vertical Identidade), DPA/LGPD, RTO/RPO, SLA formal, relatório executivo |
 | 31 | Edge Agent e White-label Completo | Edge agent on-premise, CGNAT, white-label, SSO/OIDC, RBAC granular, open core OSS, marketplace |
 | 32 | Produto, UX e Documentação | Docs por persona (Admin MSSP / Analista N2-N3 / Admin Cliente / Analista Identidade), billing Stripe, i18n, acessibilidade WCAG AA, onboarding wizard |
 | 33 | IA Safety & Governança | Aprovação dupla, janelas de manutenção, SIRP, red team trimestral, four-eyes AD, direito ao esquecimento, RFC 3161 |
 | 34 | Infraestrutura de Segurança Avançada | mTLS interno, HashiCorp Vault, microsegmentação Docker, OPA, container hardening, pentest anual |
-| 35 | SOAR & Threat Intelligence + **Builder Visual** | SOAR leve, feeds IoC (OTX/AbuseIPDB/CISA), NDR, isolamento automático de device, **builder drag-and-drop de playbooks, biblioteca de templates, métrica MTTR** |
-| 36 | Governança de Identidade AD/M365 | Inventário contínuo, campanhas de revisão de acesso, SoD, role mining IA, JIT, licenças M365, Conditional Access audit |
-| 37 | **Integrador de SIEM e Orquestração de Alertas** | Conectores para Wazuh/Splunk/Sentinel/Log360/QRadar, receptor webhook, normalização de alertas, trigger SIEM→PlaybookRule, resposta de volta ao SIEM, loop fechado detecção→resposta |
+| 35.cont | SOAR — Builder Visual e Templates Avançados | **Builder drag-and-drop de playbooks** (canvas React), biblioteca 20+ templates, NDR baseline comportamental, isolamento automático de device, correlação cross-tenant |
+| 36.cont | Governança de Identidade — Análises Avançadas | Dashboard postura 0–100, role mining com IA (privilege creep), saúde de grupos (fantasmas/duplicados/sem owner), otimização licenças M365, Conditional Access audit, integração PIM Azure AD P2 |
+| 37 | **Integrador de SIEM e Orquestração de Alertas** | Conectores para Wazuh/Splunk/Sentinel/Log360/QRadar, receptor webhook HMAC, normalização de alertas, trigger SIEM→PlaybookRule, resposta de volta ao SIEM, loop fechado detecção→resposta |
 | 38 | **Cloud Security Posture (CSPM)** | AWS Security Groups / Azure NSG / GCP Firewall Rules como devices gerenciáveis, view unificada on-premise+cloud, misconfiguration detection, Golden Config para cloud |
-| 39 | **Identidade Self-Service e Automação Proativa** | Reset de senha self-service, desbloqueio self-service, lembretes proativos de expiração, catálogo de acesso simplificado, relatórios AD pré-prontos |
+| 39.cont | Identidade Self-Service — Portal e Relatórios | Portal web separado (URL dedicada via white-label), catálogo de acesso visual com AccessReviewTask, relatórios AD pré-prontos (senha expirada, contas inativas, membros de grupo, admins sem MFA) |
 
 ---
 
@@ -294,6 +298,108 @@ Cobertura: token ausente, Bearer vazio, token lixo, expirado, chave errada, payl
 | `frontend/src/pages/Login.tsx` | Campo `totp_code` |
 | `frontend/src/components/layout/SupportBanner.tsx` | Barra de support mode |
 | `frontend/src/components/layout/TenantSwitcher.tsx` | Dropdown de tenant para super admin |
+
+---
+
+### Fase 29 — IA Operacional: Observabilidade e Multi-agente ✅ (parcial)
+*Rastreabilidade de IA, controle de custos, orquestrador multi-agente e resiliência de modelo*
+
+**Implementado (migrations 0052):**
+
+| Componente | Detalhe |
+|---|---|
+| `ai_interactions` | Rastreio de cada chamada LLM: tenant_id, user_id, operation_id, model, prompt_tokens, completion_tokens, injection_score, duration_ms, created_at |
+| `ai_token_usage` | Agregação mensal por tenant: month (YYYY-MM), input_tokens, output_tokens, cost_usd; unique (tenant_id, month) |
+| `orchestration_runs` | Execuções do orquestrador: tenant_id, user_id, user_query, agents_invoked[], result, status (running/completed/failed) |
+| `confidence_score` | Float 0–1 em `operations`; threshold configurável por tenant (default 0.70); abaixo do threshold → `awaiting_approval` automático |
+| **Orquestrador multi-agente** | `MultiAgentOrchestrator` em `agent/orchestrator.py`; despacha sub-agentes em paralelo quando independentes; consolida resposta final |
+| **5 sub-agentes** | `FirewallAgent`, `IdentityAgent`, `NetworkAgent`, `ComplianceAgent`, `InfraAgent` — cada um com registry de tools próprio |
+| `LLMProvider` | Abstração `AnthropicProvider` / `OpenAIProvider` / `OllamaProvider` / `FallbackLLMProvider` em `services/llm_provider.py` |
+| `POST /orchestrate` | Endpoint do orquestrador: recebe query em linguagem natural, identifica sub-agentes, executa, consolida |
+
+**Pendente (próximas iterações):**
+- Dry-run / modo simulação (`POST /operations/{id}/dry-run`)
+- Circuit breaker por device (tenacity + Redis TTL)
+- Rotação automática de chave Fernet (script + `MultiFernet`)
+- SAST CI/CD (`.github/workflows/security.yml`: Bandit, Trivy, semgrep, truffleHog)
+- Supply chain security (hashes SHA-256 em `requirements.txt`)
+- Rate limiting por API key (middleware FastAPI + Redis)
+
+---
+
+### Fase 35 — SOAR & Threat Intelligence ✅ (parcial)
+*Resposta automatizada a incidentes, playbooks com templates AD e métricas de MTTR*
+
+**Implementado (migration 0055):**
+
+| Componente | Detalhe |
+|---|---|
+| `playbook_rules` | tenant_id, name, trigger_type, trigger_condition (JSONB), actions (JSONB array), cooldown_minutes, enabled, is_template |
+| `playbook_executions` | rule_id, triggered_at, trigger_context (JSONB), actions_taken (JSONB), status (running/success/partial/failed), resolved_at |
+| `threat_indicators` | ioc_type, value, source, severity, confidence, last_seen, expires_at; unique (ioc_type, value, source) |
+| **5 templates AD pré-prontos** | offboarding_imediato, conta_comprometida, jit_abuso, violacao_sod, device_unreachable |
+| **Actions implementadas** | notify_slack, notify_email, escalate_to_n2, create_ticket_jira, ad_disable_user, revoke_jit_access, run_snapshot |
+| **Celery beat** | `soar.evaluate_scheduled_triggers` — avalia todas as rules ativas a cada minuto |
+| **MTTR** | `GET /playbooks/stats/mttr` — AVG(resolved_at − triggered_at) por rule e por tenant |
+| **API** | GET/POST /playbooks, GET /{id}/executions, POST /{id}/trigger, POST /templates/seed |
+
+**Pendente:**
+- Builder visual drag-and-drop (canvas React, similar ao n8n)
+- Biblioteca ampliada de templates (20+ templates além dos 5 AD)
+- NDR baseline comportamental por device
+- Isolamento automático de device via playbook
+- Correlação cross-tenant de IoCs
+
+---
+
+### Fase 36 — Governança de Identidade AD/M365 ✅ (parcial)
+*Inventário contínuo, SoD, campanhas de revisão de acesso e JIT — via ldap3 e Microsoft Graph*
+
+**Implementado (migration 0053):**
+
+| Componente | Detalhe |
+|---|---|
+| `identity_connectors` | source (ad_ldap/azure_ad/google_workspace), config_encrypted (Fernet), is_active, last_sync_at, last_sync_status |
+| `ad_users` | upn, display_name, department, job_title, manager_upn, is_enabled, mfa_registered, last_sign_in, password_last_set, license_skus[] |
+| `ad_groups` | display_name, member_count, owner_upns[], health_score, health_issues[] |
+| `ad_group_memberships` | user_id × group_id snapshot; unique (user_id, group_id) |
+| `sod_rules` | 5 built-in (Contas a Pagar + Aprovação; Domain Admins + sistema financeiro; Help Desk + Domain Admins; Auditoria + Admins; RH Folha + Global Admin); enabled flag |
+| `sod_violations` | user_id, rule_id, detected_at, status (open/accepted_risk/remediated); Celery beat `check_sod_all` diariamente |
+| `access_campaigns` | campaign_type (by_manager/by_group/by_system), deadline, recurrence (once/monthly/quarterly/annually), status |
+| `access_review_tasks` | reviewer_id, subject_user_id, access_item_type, decision (pending/confirm/revoke/escalate), decided_at; auto-revoke no prazo |
+| `jit_requests` | target_group_id, reason (min 50 chars), duration_hours, status, approver_id, expires_at; Celery beat `expire_jit` a cada minuto |
+| **AD Tool Kit** | `ad_governance_service.py`: tools read (list_users, list_inactive, check_sod) + write (disable_user, reset_password, unlock_account, add/remove_group) via ldap3 + Graph |
+| **Endpoints** | 15+ endpoints: /connectors, /ad-users, /sod-rules, /sod-violations/{id}/accept-risk, /campaigns, /campaigns/{id}/review-tasks, /jit-requests, /jit-requests/{id}/approve |
+
+**Pendente:**
+- Dashboard de postura de identidade score 0–100
+- Role mining com IA (privilege creep, `ExcessiveAccessAlert`)
+- Gestão de saúde de grupos (fantasmas, duplicados, sem owner)
+- Otimização de licenças M365 (`LicenseWaste`, economia mensal)
+- Auditoria de Conditional Access Policies (Azure)
+- Integração com PIM Azure AD P2 (`PimActivity`)
+
+---
+
+### Fase 39 — Identidade Self-Service ✅ (parcial)
+*Reset de senha e desbloqueio de conta self-service via OTP, com lembretes proativos de expiração*
+
+**Implementado (migration 0054):**
+
+| Componente | Detalhe |
+|---|---|
+| `otp_requests` | tenant_id, email, otp_hash (SHA-256), action (reset_password/unlock_account), used (bool), expires_at (TTL 10 min) |
+| `POST /self-service/otp/request` | Gera OTP 6 dígitos, hash SHA-256, envia por email; retorna `{sent: true, expires_in_minutes: 10}` |
+| `POST /self-service/password/reset` | Valida OTP + política de senha (min 8 chars) → `reset_password()` via ldap3 (AD) ou Graph (Azure AD) → audit hash-chain |
+| `POST /self-service/account/unlock` | Valida OTP → `unlock_account()` (clear lockout AD) → audit hash-chain |
+| `expiry_reminders.py` | Celery beat diário (08h): detecta `pwdLastSet + maxPwdAge < now + 14d` → envia lembretes em 14/7/1 dias |
+| `self_service_identity.py` | `request_otp()`, `self_service_reset_password()`, `self_service_unlock_account()` |
+
+**Pendente:**
+- Portal web público separado (URL dedicada via white-label F31)
+- Catálogo de acesso visual (solicitar grupo → cria `AccessReviewTask` de F36)
+- Relatórios AD pré-prontos (senha expirada, contas inativas, membros de grupo, admins sem MFA)
+- Notificação proativa ao manager por email tokenizado
 
 ---
 
