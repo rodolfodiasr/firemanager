@@ -201,6 +201,56 @@ async def _get_rule(rule_id: UUID, tenant_id: UUID, db: AsyncSession) -> Playboo
     return rule
 
 
+# ── Builder Visual (F35.cont) ─────────────────────────────────────────────────
+
+class BuilderState(BaseModel):
+    nodes: list[dict] = []
+    edges: list[dict] = []
+
+
+@router.get("/{playbook_id}/builder")
+async def get_builder(
+    playbook_id: UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    rule = await _get_rule(playbook_id, ctx.tenant.id, db)
+    return rule.builder_state or {"nodes": [], "edges": []}
+
+
+@router.put("/{playbook_id}/builder")
+async def save_builder(
+    playbook_id: UUID,
+    body: BuilderState,
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """
+    Persists the visual canvas state (React Flow nodes + edges).
+    Also derives trigger_condition and actions from the canvas nodes so the
+    playbook remains runnable without the UI.
+    """
+    rule = await _get_rule(playbook_id, ctx.tenant.id, db)
+
+    state = body.model_dump()
+    rule.builder_state = state
+
+    # Derive actions from action nodes
+    action_nodes = [n for n in state.get("nodes", []) if n.get("type") == "action"]
+    if action_nodes:
+        rule.actions = [n.get("data", {}) for n in action_nodes]
+
+    # Derive trigger_condition from trigger node
+    trigger_nodes = [n for n in state.get("nodes", []) if n.get("type") == "trigger"]
+    if trigger_nodes:
+        rule.trigger_condition = trigger_nodes[0].get("data", {}).get("condition", rule.trigger_condition)
+
+    await db.flush()
+    await db.refresh(rule)
+    await db.commit()
+    return {"saved": True, "nodes": len(state.get("nodes", [])), "edges": len(state.get("edges", []))}
+
+
 def _rule_to_read(r: PlaybookRule) -> PlaybookRead:
     return PlaybookRead(
         id=str(r.id), name=r.name, description=r.description,

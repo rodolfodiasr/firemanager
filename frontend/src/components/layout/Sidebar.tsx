@@ -121,10 +121,12 @@ const navSections: NavSection[] = [
   {
     title: "Segurança & Resposta",
     items: [
-      { to: "/alerts",      icon: Bell,        label: "Alertas"           },
-      { to: "/remediation", icon: ShieldCheck, label: "Remediações"       },
-      { to: "#", icon: ShieldHalf, label: "SOAR",               upcoming: "F33" },
-      { to: "#", icon: Globe,      label: "Threat Intelligence", upcoming: "F33" },
+      { to: "/alerts",        icon: Bell,        label: "Alertas"           },
+      { to: "/remediation",  icon: ShieldCheck, label: "Remediações"       },
+      { to: "/playbooks",    icon: ShieldHalf,  label: "SOAR Playbooks"    },
+      { to: "/siem",         icon: Radar,       label: "Integrações SIEM"  },
+      { to: "/cloud-posture", icon: Globe,       label: "Cloud Posture"    },
+      { to: "#", icon: Brain,  label: "Threat Intelligence", upcoming: "F35" },
     ],
   },
 

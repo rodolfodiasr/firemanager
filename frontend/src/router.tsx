@@ -34,6 +34,9 @@ import { GoldenBundles } from "./pages/GoldenBundles";
 import { VMMigration } from "./pages/VMMigration";
 import { PlatformConfig } from "./pages/PlatformConfig";
 import { AssistantPage } from "./pages/AssistantPage";
+import { SiemPage } from "./pages/SiemPage";
+import { CloudPosture } from "./pages/CloudPosture";
+import { PlaybooksPage } from "./pages/PlaybooksPage";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -98,6 +101,9 @@ export function AppRouter() {
       <Route path="/vm-migration" element={<ProtectedLayout><VMMigration /></ProtectedLayout>} />
       <Route path="/platform-config" element={<ProtectedLayout><PlatformConfig /></ProtectedLayout>} />
       <Route path="/assistant" element={<ProtectedLayout><AssistantPage /></ProtectedLayout>} />
+      <Route path="/siem"          element={<ProtectedLayout><SiemPage /></ProtectedLayout>} />
+      <Route path="/cloud-posture" element={<ProtectedLayout><CloudPosture /></ProtectedLayout>} />
+      <Route path="/playbooks"    element={<ProtectedLayout><PlaybooksPage /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

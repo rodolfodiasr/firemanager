@@ -424,6 +424,126 @@ async def list_campaigns(
     ]
 
 
+# ── Identity Posture (F36.cont) ───────────────────────────────────────────────
+
+@router.post("/posture/compute", status_code=202)
+async def compute_posture(
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    from app.services.identity_analytics_service import compute_posture_score
+    snapshot = await compute_posture_score(db, ctx.tenant.id)
+    return {
+        "id": str(snapshot.id),
+        "score": snapshot.score,
+        "mfa_pct": snapshot.mfa_pct,
+        "sod_critical_open": snapshot.sod_critical_open,
+        "inactive_accounts": snapshot.inactive_accounts,
+        "campaigns_on_time_pct": snapshot.campaigns_on_time_pct,
+        "computed_at": snapshot.computed_at.isoformat(),
+    }
+
+
+@router.get("/posture/history")
+async def posture_history(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = 30,
+) -> list[dict]:
+    from app.models.identity_advanced import IdentityPostureSnapshot
+    rows = (await db.execute(
+        select(IdentityPostureSnapshot)
+        .where(IdentityPostureSnapshot.tenant_id == ctx.tenant.id)
+        .order_by(IdentityPostureSnapshot.computed_at.desc())
+        .limit(min(limit, 90))
+    )).scalars().all()
+    return [
+        {"id": str(r.id), "score": r.score, "computed_at": r.computed_at.isoformat()}
+        for r in rows
+    ]
+
+
+@router.post("/posture/role-mining", status_code=202)
+async def run_role_mining(
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    from app.services.identity_analytics_service import compute_role_profiles
+    profiles = await compute_role_profiles(db, ctx.tenant.id)
+    return {"profiles_computed": len(profiles)}
+
+
+@router.post("/posture/excessive-access-scan", status_code=202)
+async def scan_excessive_access(
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    from app.services.identity_analytics_service import detect_excessive_access
+    alerts = await detect_excessive_access(db, ctx.tenant.id)
+    return {"alerts_created": len(alerts)}
+
+
+@router.get("/posture/excessive-access")
+async def list_excessive_access(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    status: str | None = None,
+) -> list[dict]:
+    from app.models.identity_advanced import ExcessiveAccessAlert
+    from app.models.identity_governance import AdUser
+    stmt = select(ExcessiveAccessAlert).where(ExcessiveAccessAlert.tenant_id == ctx.tenant.id)
+    if status:
+        stmt = stmt.where(ExcessiveAccessAlert.status == status)
+    stmt = stmt.order_by(ExcessiveAccessAlert.created_at.desc()).limit(200)
+    rows = (await db.execute(stmt)).scalars().all()
+    return [
+        {
+            "id": str(r.id), "user_id": str(r.user_id),
+            "rule_type": r.rule_type, "severity": r.severity,
+            "status": r.status, "details": r.details,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/posture/group-health-scan", status_code=202)
+async def scan_group_health(
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    from app.services.identity_analytics_service import analyze_group_health
+    reports = await analyze_group_health(db, ctx.tenant.id)
+    return {"groups_analyzed": len(reports)}
+
+
+@router.get("/posture/group-health")
+async def list_group_health(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    min_issues: int = 0,
+) -> list[dict]:
+    from app.models.identity_advanced import GroupHealthReport
+    from app.models.identity_governance import AdGroup
+    rows = (await db.execute(
+        select(GroupHealthReport)
+        .where(GroupHealthReport.tenant_id == ctx.tenant.id)
+        .order_by(GroupHealthReport.health_score)
+        .limit(200)
+    )).scalars().all()
+    result = []
+    for r in rows:
+        issues = r.issues or []
+        if len(issues) >= min_issues:
+            result.append({
+                "id": str(r.id), "group_id": str(r.group_id),
+                "health_score": r.health_score,
+                "issues": issues,
+                "analyzed_at": r.analyzed_at.isoformat(),
+            })
+    return result
+
+
 # ── Helper ────────────────────────────────────────────────────────────────────
 
 async def _get_config(connector_id: UUID, tenant_id: UUID, db: AsyncSession) -> dict:

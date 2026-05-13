@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, alerts, assistant, assistant_docs, audit, auth, bulk_jobs, category_roles, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, enterprise, executive, firewall_migration, firmware, glpi, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, orchestrator, platform_config, playbooks, recommendations, remediation, self_service, server_operations, servers, templates, tenants, variables, vm_migration
+from app.api import admin, alerts, assistant, assistant_docs, audit, auth, bulk_jobs, category_roles, cloud_accounts, compliance, config_migration, connectivity, database_connectors, device_groups, devices, documents, enterprise, executive, firewall_migration, firmware, glpi, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, orchestrator, platform_config, playbooks, recommendations, remediation, self_service, server_operations, servers, siem, templates, tenants, variables, vm_migration
 from app.config import settings
 
 log = structlog.get_logger()
@@ -92,6 +92,9 @@ app.include_router(orchestrator.router,        prefix="/orchestrate",           
 app.include_router(identity_governance.router, prefix="/identity-governance",          tags=["identity-governance"])
 app.include_router(self_service.router,        prefix="/identity/self-service",        tags=["self-service"])
 app.include_router(playbooks.router,           prefix="/playbooks",                    tags=["playbooks"])
+app.include_router(siem.router,               prefix="/siem",                         tags=["siem"])
+app.include_router(siem.webhook_router,        prefix="/webhooks",                     tags=["webhooks"])
+app.include_router(cloud_accounts.router,      prefix="/cloud-accounts",               tags=["cloud-accounts"])
 
 
 class FireManagerError(Exception):
