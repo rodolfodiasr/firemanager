@@ -171,6 +171,7 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 31 | Edge Agents, SSO/OIDC, Marketplace, RBAC Granular | `edge_agents` (token SHA-256) + `sso_configs` + `marketplace_plugins` + `tenant_plugins` + `rbac_custom_roles` + `rbac_role_assignments` (migration 0065); `edge_agent_service.py` (5 plugins builtin, `generate_agent_token`); API `/platform/*`; `EdgeAgentsPage.tsx` (tabs: Edge Agents, SSO/OIDC, Marketplace, RBAC Granular) | ✅ (parcial — CRUD + registro de agentes; WebSocket on-premise, fluxo OIDC real e CGNAT pendentes) |
 | 32 | Produto: Billing, Onboarding, Help Center, Preferências | `billing_plans` + `billing_subscriptions` + `billing_invoices` + `onboarding_checklists` + `help_articles` + `user_preferences` (migration 0066); `product_service.py` (3 planos seed, 4 artigos, checklist 4 etapas); API `/product/*`; `ProductPage.tsx` (tabs: Billing & Planos, Onboarding, Central de Ajuda, Preferências) | ✅ (parcial — CRUD completo; integração Stripe, i18n real e WCAG AA pendentes) |
 | 28.1 | DLP — Prevenção de Perda de Dados no Chat | `dlp_configs` + `dlp_rules` + `dlp_incidents` (migration 0067); `dlp_service.py` (20 regras builtin: 6 pii_br CPF/CNPJ/PIS/TítuloEleitor/DadosBancários/PIX, 8 credentials SSH/JWT/AWS/conn-string/HTTP-Basic/API-token, 6 infra_mssp SNMP/VPN-PSK/TACACS+/LDAP/Enable/BGP); hook em `operations.py` + `assistant.py`; UI em `Organisation.tsx` (aba DLP: config por tenant, gestão de regras por categoria, regex custom, tabela de incidentes); `validate-docbr` para CPF/CNPJ com dígito verificador | ✅ |
+| 47 | Chat IA — Guia da Plataforma (super admin) | Novo modo `"platform"` no AI Assistant; `_PLATFORM_GUIDE_TEMPLATE` com mapa completo de todos os 20+ módulos (caminho de navegação, funcionalidades, fluxos); guard 403 no `POST /assistant/chat` para não super admin; opção "Guia" visível no seletor de modo apenas para `is_super_admin`; ícone `BookOpen`; empty state e placeholder específicos | ✅ |
 
 ### Próximas Fases (resumo)
 
@@ -1163,6 +1164,37 @@ BundleSection
 - Análise de dependências: mapa de comunicação entre VMs, ordem de migração sugerida
 - IA gera runbook: sequência, janelas de manutenção, estratégia de rollback
 - Export automático para BookStack
+
+---
+
+### Fase 47 — Chat IA: Guia da Plataforma ✅
+*Modo de chat dedicado para o super admin descobrir como usar qualquer módulo da plataforma*
+
+**Princípio:** O Eternity SecOps tem 20+ módulos. Um super admin que quer entender como resolver um problema específico usando a plataforma precisa de um guia que conheça todos os caminhos — menu, aba, botão, formulário — sem precisar consultar documentação externa.
+
+#### Implementado
+
+| Componente | Detalhe |
+|---|---|
+| `_PLATFORM_GUIDE_TEMPLATE` | System prompt com mapa completo de todos os módulos: caminho de navegação exato, funcionalidades disponíveis, fluxos de trabalho. Cobre: Dispositivos, Operações, Snapshots, Migração de Regras, Golden Config, Base de Conhecimento IA, AI Assistant, DLP, GLPI, Firmware/CVEs, Governança de Identidade, Self-Service de Identidade, SOAR/Playbooks, Threat Intelligence, SIEM, Cloud Security (CSPM), Infraestrutura de Segurança, Edge Agents/SSO, Produto/Billing, Organização/Alertas, Dashboard Executivo, Painel MSSP |
+| Guard 403 em `POST /assistant/chat` | `if data.mode == "platform" and not ctx.user.is_super_admin → HTTP 403` — não super admin recebe Forbidden |
+| `send_message(mode="platform")` | Usa `_PLATFORM_GUIDE_TEMPLATE`, sem RAG (`rag_context_used = False`) |
+| `chatMode: "platform"` | Adicionado ao tipo no `assistantStore.ts` |
+| Seletor de modo — `AssistantPanel.tsx` | Opção "Guia" com ícone `BookOpen` visível apenas quando `user.is_super_admin = true` |
+| Seletor de modo — `AssistantPage.tsx` | Opção "Guia da Plataforma" com ícone `BookOpen`, restrita a super admin |
+| Empty state e placeholder | Textos específicos para o modo Guia: "Como faço para… na plataforma?" |
+
+**Restrição de acesso:** Exclusivo para super admins. Para liberar para outros perfis, remover o `isSuperAdmin &&` no frontend e o guard 403 no backend.
+
+**Sem migration:** Nenhuma tabela nova — reutiliza completamente a infraestrutura existente do AI Assistant (sessions + messages).
+
+| Arquivo | Alteração |
+|---|---|
+| `backend/app/services/assistant_service.py` | `_PLATFORM_GUIDE_TEMPLATE` + `is_platform` branch em `send_message()` |
+| `backend/app/api/assistant.py` | Guard 403 para `mode="platform"` sem `is_super_admin` |
+| `frontend/src/store/assistantStore.ts` | `chatMode` type inclui `"platform"` |
+| `frontend/src/components/assistant/AssistantPanel.tsx` | Opção "Guia" condicional a `isSuperAdmin`, ícone `BookOpen` |
+| `frontend/src/pages/AssistantPage.tsx` | Opção "Guia da Plataforma" condicional, empty state e placeholder específicos |
 
 ---
 
