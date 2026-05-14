@@ -99,7 +99,7 @@ async def get_or_create_device(db: AsyncSession, tenant: Tenant, name: str, host
             port=443,
             use_ssl=True,
             verify_ssl=False,
-            credentials={"auth_type": "token", "token": "seed-token-placeholder"},
+            encrypted_credentials='{"auth_type": "token", "token": "seed-token-placeholder"}',
             read_only_agent=True,  # safe default for test devices
         )
         db.add(device)
