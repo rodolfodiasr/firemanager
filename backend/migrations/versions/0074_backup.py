@@ -4,69 +4,63 @@ Revision ID: 0074
 Revises: 0073
 Create Date: 2026-05-14
 """
-from typing import Sequence, Union
-
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
-revision: str = "0074"
-down_revision: Union[str, None] = "0073"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision = "0074"
+down_revision = "0073"
+branch_labels = None
+depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "backup_configs",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True),
-        sa.Column("name", sa.String(100), nullable=False),
-        sa.Column("backup_type", sa.String(20), nullable=False, server_default="platform"),
-        sa.Column("destination", sa.String(20), nullable=False, server_default="local"),
-        sa.Column("schedule_cron", sa.String(50), nullable=True),
-        sa.Column("retention_count", sa.Integer(), nullable=False, server_default="7"),
-        sa.Column("local_path", sa.String(500), nullable=True),
-        sa.Column("s3_bucket", sa.String(255), nullable=True),
-        sa.Column("s3_prefix", sa.String(255), nullable=True),
-        sa.Column("s3_region", sa.String(50), nullable=True),
-        sa.Column("s3_credentials_encrypted", sa.Text(), nullable=True),
-        sa.Column("sftp_host", sa.String(255), nullable=True),
-        sa.Column("sftp_port", sa.Integer(), nullable=True, server_default="22"),
-        sa.Column("sftp_user", sa.String(100), nullable=True),
-        sa.Column("sftp_credentials_encrypted", sa.Text(), nullable=True),
-        sa.Column("sftp_path", sa.String(500), nullable=True),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
-    )
-    op.create_index("ix_backup_configs_tenant_id", "backup_configs", ["tenant_id"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS backup_configs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            backup_type VARCHAR(20) NOT NULL DEFAULT 'platform',
+            destination VARCHAR(20) NOT NULL DEFAULT 'local',
+            schedule_cron VARCHAR(50),
+            retention_count INTEGER NOT NULL DEFAULT 7,
+            local_path VARCHAR(500),
+            s3_bucket VARCHAR(255),
+            s3_prefix VARCHAR(255),
+            s3_region VARCHAR(50),
+            s3_credentials_encrypted TEXT,
+            sftp_host VARCHAR(255),
+            sftp_port INTEGER DEFAULT 22,
+            sftp_user VARCHAR(100),
+            sftp_credentials_encrypted TEXT,
+            sftp_path VARCHAR(500),
+            is_active BOOLEAN NOT NULL DEFAULT true,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_backup_configs_tenant_id ON backup_configs(tenant_id)")
 
-    op.create_table(
-        "backup_jobs",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("config_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("backup_configs.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True),
-        sa.Column("triggered_by", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("status", sa.String(20), nullable=False, server_default="pending"),
-        sa.Column("backup_type", sa.String(20), nullable=False, server_default="platform"),
-        sa.Column("destination", sa.String(20), nullable=False, server_default="local"),
-        sa.Column("file_path", sa.String(500), nullable=True),
-        sa.Column("file_size_bytes", sa.BigInteger(), nullable=True),
-        sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("started_at", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("completed_at", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
-    )
-    op.create_index("ix_backup_jobs_config_id", "backup_jobs", ["config_id"])
-    op.create_index("ix_backup_jobs_tenant_id", "backup_jobs", ["tenant_id"])
-    op.create_index("ix_backup_jobs_created_at", "backup_jobs", ["created_at"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS backup_jobs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            config_id UUID NOT NULL REFERENCES backup_configs(id) ON DELETE CASCADE,
+            tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+            triggered_by UUID REFERENCES users(id) ON DELETE SET NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            backup_type VARCHAR(20) NOT NULL DEFAULT 'platform',
+            destination VARCHAR(20) NOT NULL DEFAULT 'local',
+            file_path VARCHAR(500),
+            file_size_bytes BIGINT,
+            error_message TEXT,
+            started_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_backup_jobs_config_id ON backup_jobs(config_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_backup_jobs_tenant_id ON backup_jobs(tenant_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_backup_jobs_created_at ON backup_jobs(created_at)")
 
 
 def downgrade() -> None:
-    op.drop_index("ix_backup_jobs_created_at", "backup_jobs")
-    op.drop_index("ix_backup_jobs_tenant_id", "backup_jobs")
-    op.drop_index("ix_backup_jobs_config_id", "backup_jobs")
-    op.drop_table("backup_jobs")
-    op.drop_index("ix_backup_configs_tenant_id", "backup_configs")
-    op.drop_table("backup_configs")
+    op.execute("DROP TABLE IF EXISTS backup_jobs")
+    op.execute("DROP TABLE IF EXISTS backup_configs")
