@@ -44,6 +44,7 @@ import { SecurityInfraPage } from "./pages/SecurityInfraPage";
 import { EdgeAgentsPage } from "./pages/EdgeAgentsPage";
 import { ProductPage } from "./pages/ProductPage";
 import RmmPage from "./pages/RmmPage";
+import { AdminBackupPage } from "./pages/AdminBackupPage";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -118,6 +119,7 @@ export function AppRouter() {
       <Route path="/edge-agents"           element={<ProtectedLayout><EdgeAgentsPage /></ProtectedLayout>} />
       <Route path="/product"               element={<ProtectedLayout><ProductPage /></ProtectedLayout>} />
       <Route path="/rmm"                   element={<ProtectedLayout><RmmPage /></ProtectedLayout>} />
+      <Route path="/admin-backup"          element={<ProtectedLayout><AdminBackupPage /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

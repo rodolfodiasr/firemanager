@@ -5,7 +5,7 @@ import {
   Building2, Plus, UserPlus, Trash2, Edit2, Check, X,
   KeyRound, ToggleLeft, ToggleRight, Users, ShieldCheck,
   Globe, ChevronDown, ChevronUp, Loader2, CheckCircle2, XCircle,
-  ShieldAlert, AlertTriangle, Lock,
+  ShieldAlert, AlertTriangle, Lock, HardDrive, Cloud, Server, Play, RefreshCw, Clock,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
@@ -14,6 +14,7 @@ import { useAuth } from "../hooks/useAuth";
 import { tenantsApi } from "../api/tenants";
 import { inviteApi } from "../api/invite";
 import { dlpApi, type DLPRule, type DLPIncident } from "../api/dlp";
+import { tenantBackupApi, type BackupConfig, type BackupConfigCreate } from "../api/backup";
 import { permissionsApi, type DeviceCategory, type FunctionalModule } from "../api/permissions";
 import { integrationsApi } from "../api/integrations";
 import { glpiApi } from "../api/glpi";
@@ -1868,9 +1869,272 @@ function DLPTab() {
   );
 }
 
+// ── Backup Tab ────────────────────────────────────────────────────────────────
+
+const DEST_ICONS_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  local: HardDrive, s3: Cloud, sftp: Server,
+};
+const JOB_STATUS_COLORS: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-700",
+  running: "bg-blue-100 text-blue-700",
+  success: "bg-green-100 text-green-700",
+  failed:  "bg-red-100 text-red-700",
+};
+
+function BackupTab() {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [dest, setDest] = useState<"local" | "s3" | "sftp">("local");
+  const [form, setForm] = useState<BackupConfigCreate>({
+    name: "", destination: "local", retention_count: 7, schedule_cron: null,
+  });
+
+  const { data: configs = [], isLoading: lcfg } = useQuery({
+    queryKey: ["tenant-backup-configs"],
+    queryFn: tenantBackupApi.listConfigs,
+  });
+  const { data: jobs = [], isLoading: ljobs, refetch: refetchJobs } = useQuery({
+    queryKey: ["tenant-backup-jobs"],
+    queryFn: tenantBackupApi.listJobs,
+    refetchInterval: 5000,
+  });
+
+  const createMut = useMutation({
+    mutationFn: () => tenantBackupApi.createConfig({ ...form, destination: dest }),
+    onSuccess: () => {
+      toast.success("Configuração criada");
+      qc.invalidateQueries({ queryKey: ["tenant-backup-configs"] });
+      setShowForm(false);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Erro ao criar"),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => tenantBackupApi.deleteConfig(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tenant-backup-configs"] }),
+    onError: () => toast.error("Erro ao remover"),
+  });
+
+  const runMut = useMutation({
+    mutationFn: (id: string) => tenantBackupApi.triggerBackup(id),
+    onSuccess: (d) => {
+      toast.success(`Backup iniciado (${d.job_id.slice(0, 8)}…)`);
+      qc.invalidateQueries({ queryKey: ["tenant-backup-jobs"] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Erro ao iniciar"),
+  });
+
+  const restoreMut = useMutation({
+    mutationFn: (id: string) => tenantBackupApi.triggerRestore(id),
+    onSuccess: () => toast.success("Restore iniciado"),
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Erro ao restaurar"),
+  });
+
+  const set = (k: keyof BackupConfigCreate, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  return (
+    <div className="space-y-6">
+      {/* Configurations */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <HardDrive size={15} className="text-brand-600" />
+            Configurações de Backup
+          </p>
+          <button
+            onClick={() => setShowForm((v) => !v)}
+            className="flex items-center gap-1 text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700"
+          >
+            <Plus size={12} /> Nova
+          </button>
+        </div>
+
+        {showForm && (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3 mb-4">
+            <p className="text-xs font-semibold text-gray-600">Nova configuração de backup do tenant</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
+                <input value={form.name} onChange={(e) => set("name", e.target.value)}
+                  placeholder="Ex: Backup Diário"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Destino</label>
+                <select value={dest} onChange={(e) => { setDest(e.target.value as any); set("destination", e.target.value); }}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                  <option value="local">Local</option>
+                  <option value="s3">Amazon S3</option>
+                  <option value="sftp">SFTP</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Agendamento (cron)</label>
+                <input value={form.schedule_cron ?? ""} onChange={(e) => set("schedule_cron", e.target.value || null)}
+                  placeholder="0 2 * * *"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Retenção (cópias)</label>
+                <input type="number" min={1} max={90} value={form.retention_count}
+                  onChange={(e) => set("retention_count", parseInt(e.target.value) || 7)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+            </div>
+            {dest === "local" && (
+              <input value={form.local_path ?? ""} onChange={(e) => set("local_path", e.target.value || null)}
+                placeholder="Caminho local: /tmp/firemanager_backups"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            )}
+            {dest === "s3" && (
+              <div className="grid grid-cols-2 gap-3">
+                <input value={form.s3_bucket ?? ""} onChange={(e) => set("s3_bucket", e.target.value)}
+                  placeholder="Bucket S3" className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <input value={form.s3_prefix ?? ""} onChange={(e) => set("s3_prefix", e.target.value)}
+                  placeholder="Prefixo/pasta" className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <input value={form.s3_region ?? ""} onChange={(e) => set("s3_region", e.target.value)}
+                  placeholder="Região (us-east-1)" className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <input value={form.s3_access_key ?? ""} onChange={(e) => set("s3_access_key", e.target.value)}
+                  placeholder="Access Key ID" className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <input type="password" value={form.s3_secret_key ?? ""} onChange={(e) => set("s3_secret_key", e.target.value)}
+                  placeholder="Secret Key" className="col-span-2 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+            )}
+            {dest === "sftp" && (
+              <div className="grid grid-cols-2 gap-3">
+                <input value={form.sftp_host ?? ""} onChange={(e) => set("sftp_host", e.target.value)}
+                  placeholder="Host SFTP" className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <input type="number" value={form.sftp_port ?? 22} onChange={(e) => set("sftp_port", parseInt(e.target.value))}
+                  placeholder="Porta" className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <input value={form.sftp_user ?? ""} onChange={(e) => set("sftp_user", e.target.value)}
+                  placeholder="Usuário" className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <input type="password" value={form.sftp_password ?? ""} onChange={(e) => set("sftp_password", e.target.value)}
+                  placeholder="Senha" className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <input value={form.sftp_path ?? ""} onChange={(e) => set("sftp_path", e.target.value)}
+                  placeholder="Caminho remoto: /backups"
+                  className="col-span-2 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+            )}
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => createMut.mutate()} disabled={!form.name || createMut.isPending}
+                className="bg-brand-600 text-white text-sm font-medium px-4 py-1.5 rounded-lg hover:bg-brand-700 disabled:opacity-50">
+                {createMut.isPending ? "Criando..." : "Criar"}
+              </button>
+              <button onClick={() => setShowForm(false)}
+                className="border border-gray-300 text-gray-600 text-sm font-medium px-4 py-1.5 rounded-lg hover:bg-gray-50">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {lcfg ? (
+          <p className="text-sm text-gray-400">Carregando...</p>
+        ) : configs.length === 0 ? (
+          <p className="text-sm text-gray-400">Nenhuma configuração. Crie uma para habilitar backups do tenant.</p>
+        ) : (
+          <div className="space-y-2">
+            {configs.map((cfg: BackupConfig) => {
+              const DestIcon = DEST_ICONS_MAP[cfg.destination] ?? HardDrive;
+              return (
+                <div key={cfg.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <DestIcon size={15} className="text-gray-500 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{cfg.name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {cfg.destination}
+                        {cfg.schedule_cron ? ` · cron: ${cfg.schedule_cron}` : " · manual"}
+                        {` · retenção: ${cfg.retention_count}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => runMut.mutate(cfg.id)} disabled={runMut.isPending}
+                      className="flex items-center gap-1 text-xs text-brand-600 border border-brand-200 bg-brand-50 hover:bg-brand-100 px-2.5 py-1 rounded font-medium">
+                      <Play size={10} /> Executar
+                    </button>
+                    <button onClick={() => deleteMut.mutate(cfg.id)} disabled={deleteMut.isPending}
+                      className="text-gray-400 hover:text-red-500">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Job History */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-gray-700">Histórico de Jobs</p>
+          <button onClick={() => refetchJobs()} className="text-gray-400 hover:text-brand-600">
+            <RefreshCw size={13} />
+          </button>
+        </div>
+        {ljobs ? (
+          <p className="text-sm text-gray-400">Carregando...</p>
+        ) : jobs.length === 0 ? (
+          <p className="text-sm text-gray-400">Nenhum job executado ainda.</p>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-500 uppercase border-b border-gray-100">
+                <tr>
+                  <th className="text-left px-4 py-2.5">Status</th>
+                  <th className="text-left px-4 py-2.5">Destino</th>
+                  <th className="text-left px-4 py-2.5">Arquivo</th>
+                  <th className="text-left px-4 py-2.5">Criado em</th>
+                  <th className="px-4 py-2.5 w-20" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {jobs.map((job: import("../api/backup").BackupJob) => (
+                  <tr key={job.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5">
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${JOB_STATUS_COLORS[job.status]}`}>
+                        {job.status === "running" ? <Loader2 size={10} className="animate-spin" /> : <Clock size={10} />}
+                        {job.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-600 text-xs">{job.destination}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-gray-500 max-w-[180px] truncate">
+                      {job.file_path ? job.file_path.split("/").pop() : "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-gray-500">
+                      {new Date(job.created_at).toLocaleString("pt-BR")}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {job.status === "success" && (
+                        <button
+                          onClick={() => {
+                            if (confirm("Restaurar dados deste backup? Os dados existentes serão atualizados.")) {
+                              restoreMut.mutate(job.id);
+                            }
+                          }}
+                          disabled={restoreMut.isPending}
+                          className="text-xs text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded font-medium"
+                        >
+                          Restaurar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-type Tab = "tenants" | "equipe" | "politica" | "integracoes" | "dlp";
+type Tab = "tenants" | "equipe" | "politica" | "integracoes" | "dlp" | "backup";
 
 export function Organisation() {
   const { user, tenantRole } = useAuth();
@@ -1895,6 +2159,7 @@ export function Organisation() {
     { id: "politica",     label: "Política" },
     { id: "integracoes",  label: "Integrações" },
     { id: "dlp",          label: "DLP" },
+    { id: "backup",       label: "Backup & Restore" },
   ];
 
   return (
@@ -1921,6 +2186,7 @@ export function Organisation() {
           {tab === "politica"     && <PoliticaTab />}
           {tab === "integracoes"  && <IntegracoesTab />}
           {tab === "dlp"          && <DLPTab />}
+          {tab === "backup"       && <BackupTab />}
         </div>
       </div>
     </PageWrapper>

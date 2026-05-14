@@ -21,6 +21,7 @@ celery_app = Celery(
         "app.workers.identity_sync",
         "app.workers.expiry_reminders",
         "app.workers.playbook_evaluator",
+        "app.workers.backup_worker",
     ],
 )
 
@@ -74,6 +75,10 @@ celery_app.conf.update(
         "identity-password-expiry": {
             "task": "expiry_reminders.check_password_expiry",
             "schedule": crontab(minute=0, hour=8),          # 08:00 UTC daily
+        },
+        "backup-scheduled": {
+            "task": "backup.run_scheduled_backups",
+            "schedule": crontab(minute="*/5"),               # every 5 min — cron evaluation
         },
     },
 )
