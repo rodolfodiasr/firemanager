@@ -153,9 +153,10 @@ export function InvestigationPanel({
     queryKey: ["investigation", sessionId],
     queryFn: () => investigationsApi.get(sessionId!),
     enabled: !!sessionId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
+      const data = (query as { state?: { data?: InvestigationSession } }).state?.data;
       if (!data) return false;
-      const hasExecuting = data.phases?.some((p) => p.status === "executing");
+      const hasExecuting = data.phases?.some((p: InvestigationPhase) => p.status === "executing");
       return hasExecuting ? 1500 : false;
     },
   });
@@ -205,10 +206,6 @@ export function InvestigationPanel({
     mutationFn: () => investigationsApi.exportRunbook(sessionId!),
     onSuccess: (r) => navigate(`/assistant?session=${r.assistant_session_id}`),
   });
-
-  const allPhasesDone = session?.phases.length > 0 &&
-    session.phases.every((p) => p.status === "done");
-  const nextPendingPhase = session?.phases.find((p) => p.status === "pending");
 
   // ── No session yet — start form ───────────────────────────────────────────
   if (!sessionId) {
@@ -264,6 +261,9 @@ export function InvestigationPanel({
     );
   }
 
+  const allPhasesDone = session.phases.length > 0 &&
+    session.phases.every((p) => p.status === "done");
+  const nextPendingPhase = session.phases.find((p) => p.status === "pending");
   const donePhasesCount = session.phases.filter((p) => p.status === "done").length;
 
   return (
