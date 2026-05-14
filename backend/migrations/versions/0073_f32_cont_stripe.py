@@ -15,13 +15,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("billing_subscriptions", sa.Column("stripe_customer_id", sa.String(100), nullable=True))
-    op.add_column("billing_subscriptions", sa.Column("stripe_subscription_id", sa.String(100), nullable=True))
-    op.add_column("billing_subscriptions", sa.Column("stripe_price_id", sa.String(100), nullable=True))
+    # ADD COLUMN IF NOT EXISTS — idempotente caso as colunas já existam de migração anterior
+    op.execute("ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)")
+    op.execute("ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(100)")
+    op.execute("ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS stripe_price_id VARCHAR(100)")
 
-    op.add_column("billing_invoices", sa.Column("stripe_invoice_id", sa.String(100), nullable=True))
-    op.add_column("billing_invoices", sa.Column("stripe_payment_intent", sa.String(100), nullable=True))
-    op.add_column("billing_invoices", sa.Column("payment_url", sa.Text, nullable=True))
+    op.execute("ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS stripe_invoice_id VARCHAR(100)")
+    op.execute("ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS stripe_payment_intent VARCHAR(100)")
+    op.execute("ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS payment_url TEXT")
 
     op.create_table(
         "stripe_webhook_events",
