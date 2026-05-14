@@ -176,18 +176,19 @@ async def admin_update(
     return LLMConfigRead.from_orm(cfg)
 
 
-@admin_router.delete("/{config_id}", status_code=204)
+@admin_router.delete("/{config_id}")
 async def admin_delete(
     config_id: UUID,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> None:
+) -> dict:
     _require_super_admin(user)
     cfg = await svc.get_config(db, config_id, tenant_id=None)
     if not cfg:
         raise HTTPException(status_code=404, detail="Config não encontrada.")
     await svc.delete_config(db, cfg)
     await db.commit()
+    return {"ok": True}
 
 
 @admin_router.post("/{config_id}/test", response_model=TestResult)
@@ -252,18 +253,19 @@ async def tenant_update(
     return LLMConfigRead.from_orm(cfg)
 
 
-@router.delete("/{config_id}", status_code=204)
+@router.delete("/{config_id}")
 async def tenant_delete(
     config_id: UUID,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> None:
+) -> dict:
     _require_admin(ctx)
     cfg = await svc.get_config(db, config_id, tenant_id=ctx.tenant.id)
     if not cfg:
         raise HTTPException(status_code=404, detail="Config não encontrada.")
     await svc.delete_config(db, cfg)
     await db.commit()
+    return {"ok": True}
 
 
 @router.post("/{config_id}/test", response_model=TestResult)
