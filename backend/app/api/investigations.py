@@ -5,6 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -277,11 +278,12 @@ async def export_runbook(
     return {"assistant_session_id": str(assistant_session_id)}
 
 
-@router.delete("/{session_id}", status_code=204)
+@router.delete("/{session_id}", status_code=204, response_class=Response)
 async def delete_investigation(
     session_id: UUID,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     db:  Annotated[AsyncSession, Depends(get_db)],
-) -> None:
+) -> Response:
     session = await _get_session(db, session_id, ctx.tenant.id)
     await db.delete(session)
+    return Response(status_code=204)
