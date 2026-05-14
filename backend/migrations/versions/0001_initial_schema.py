@@ -58,6 +58,7 @@ def upgrade() -> None:
     op.create_table(
         "devices",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=True),
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("vendor", sa.String(30), nullable=False),
         sa.Column("firmware_version", sa.String(50), nullable=True),
@@ -68,10 +69,13 @@ def upgrade() -> None:
         sa.Column("verify_ssl", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("status", sa.String(20), nullable=False, server_default="unknown"),
         sa.Column("last_seen", sa.TIMESTAMP(timezone=True), nullable=True),
+        sa.Column("category", sa.String(30), nullable=False, server_default="firewall"),
+        sa.Column("read_only_agent", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
     )
+    op.create_index("ix_devices_tenant_id", "devices", ["tenant_id"])
 
     op.create_table(
         "operations",
@@ -153,6 +157,7 @@ def downgrade() -> None:
     op.drop_table("audit_logs")
     op.drop_table("operation_steps")
     op.drop_table("operations")
+    op.drop_index("ix_devices_tenant_id", "devices")
     op.drop_table("devices")
     op.drop_index("ix_user_tenant_roles_tenant_id", "user_tenant_roles")
     op.drop_table("user_tenant_roles")
