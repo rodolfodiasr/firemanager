@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # Anthropic
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-sonnet-4-20250514"
+    anthropic_model: str = "claude-sonnet-4-6"
     anthropic_max_tokens: int = 4000
 
     # OpenAI (used only for pgvector embeddings)
@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     debug: bool = True
     allowed_origins: str = "http://localhost:3000,http://localhost:5173"
     api_port: int = 8000
+    public_url: str = ""  # e.g. https://app.eternity.io — used by GLPI widget token URLs
 
     # Email
     smtp_host: str = "smtp.gmail.com"
