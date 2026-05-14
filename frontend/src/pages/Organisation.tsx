@@ -15,7 +15,7 @@ import { tenantsApi } from "../api/tenants";
 import { inviteApi } from "../api/invite";
 import { dlpApi, type DLPRule, type DLPIncident } from "../api/dlp";
 import { tenantBackupApi, type BackupConfig, type BackupConfigCreate } from "../api/backup";
-import { tenantLlmConfigsApi, llmProvidersApi, type LLMConfig, type LLMConfigCreate, type LLMProviderMeta } from "../api/llm_configs";
+import { adminLlmConfigsApi, tenantLlmConfigsApi, llmProvidersApi, type LLMConfig, type LLMConfigCreate, type LLMProviderMeta } from "../api/llm_configs";
 import { permissionsApi, type DeviceCategory, type FunctionalModule } from "../api/permissions";
 import { integrationsApi } from "../api/integrations";
 import { glpiApi } from "../api/glpi";
@@ -1492,9 +1492,13 @@ function LLMProvidersSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string; latency_ms: number }>>({});
   const [testing, setTesting] = useState<string | null>(null);
 
+  // Super admin sem tenant_id no JWT deve usar adminLlmConfigsApi (rota /admin/llm-configs)
+  const configsApi = isSuperAdmin ? adminLlmConfigsApi : tenantLlmConfigsApi;
+  const queryKey = isSuperAdmin ? "llm-configs-global" : "llm-configs-tenant";
+
   const { data: configs = [], isLoading } = useQuery({
-    queryKey: ["llm-configs-tenant"],
-    queryFn: tenantLlmConfigsApi.list,
+    queryKey: [queryKey],
+    queryFn: configsApi.list,
   });
 
   const { data: providersMeta = [] } = useQuery({
@@ -1503,31 +1507,31 @@ function LLMProvidersSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   });
 
   const createMut = useMutation({
-    mutationFn: (data: LLMConfigCreate) => tenantLlmConfigsApi.create(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["llm-configs-tenant"] }); setShowForm(false); toast.success("Provider configurado."); },
+    mutationFn: (data: LLMConfigCreate) => configsApi.create(data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKey] }); setShowForm(false); toast.success("Provider configurado."); },
     onError: () => toast.error("Erro ao salvar configuração."),
   });
 
   const deleteMut = useMutation({
-    mutationFn: (id: string) => tenantLlmConfigsApi.delete(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["llm-configs-tenant"] }); toast.success("Provider removido."); },
+    mutationFn: (id: string) => configsApi.delete(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKey] }); toast.success("Provider removido."); },
   });
 
   const toggleMut = useMutation({
     mutationFn: ({ id, is_enabled }: { id: string; is_enabled: boolean }) =>
-      tenantLlmConfigsApi.update(id, { is_enabled }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["llm-configs-tenant"] }),
+      configsApi.update(id, { is_enabled }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [queryKey] }),
   });
 
   const setDefaultMut = useMutation({
-    mutationFn: (id: string) => tenantLlmConfigsApi.update(id, { is_default: true }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["llm-configs-tenant"] }); toast.success("Provider padrão definido."); },
+    mutationFn: (id: string) => configsApi.update(id, { is_default: true }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: [queryKey] }); toast.success("Provider padrão definido."); },
   });
 
   const handleTest = async (id: string) => {
     setTesting(id);
     try {
-      const result = await tenantLlmConfigsApi.test(id);
+      const result = await configsApi.test(id);
       setTestResults((prev) => ({ ...prev, [id]: result }));
     } catch {
       setTestResults((prev) => ({ ...prev, [id]: { ok: false, message: "Erro ao testar", latency_ms: 0 } }));
