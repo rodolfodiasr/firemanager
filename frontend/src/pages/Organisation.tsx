@@ -1871,7 +1871,7 @@ function DLPTab() {
 
 // ── Backup Tab ────────────────────────────────────────────────────────────────
 
-const DEST_ICONS_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+const DEST_ICONS_MAP: Record<string, React.ElementType> = {
   local: HardDrive, s3: Cloud, sftp: Server,
 };
 const JOB_STATUS_COLORS: Record<string, string> = {
