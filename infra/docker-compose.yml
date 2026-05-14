@@ -11,14 +11,14 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: 172.20.1.0/24
+        - subnet: 172.25.1.0/24
   # data-net: postgres + redis only (most restricted — no external access)
   data-net:
     driver: bridge
     internal: true
     ipam:
       config:
-        - subnet: 172.20.2.0/24
+        - subnet: 172.25.2.0/24
   # internal-net: kept for legacy compatibility (bridge to api-net services)
   internal-net:
     driver: bridge
