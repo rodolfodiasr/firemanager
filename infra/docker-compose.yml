@@ -6,7 +6,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/24
+        - subnet: 172.26.0.0/24
   # api-net: api + celery + workers (no direct DB access from public)
   api-net:
     driver: bridge
