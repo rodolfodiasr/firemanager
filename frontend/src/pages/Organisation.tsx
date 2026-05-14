@@ -15,6 +15,7 @@ import { tenantsApi } from "../api/tenants";
 import { inviteApi } from "../api/invite";
 import { dlpApi, type DLPRule, type DLPIncident } from "../api/dlp";
 import { tenantBackupApi, type BackupConfig, type BackupConfigCreate } from "../api/backup";
+import { tenantLlmConfigsApi, llmProvidersApi, type LLMConfig, type LLMConfigCreate, type LLMProviderMeta } from "../api/llm_configs";
 import { permissionsApi, type DeviceCategory, type FunctionalModule } from "../api/permissions";
 import { integrationsApi } from "../api/integrations";
 import { glpiApi } from "../api/glpi";
@@ -1462,6 +1463,339 @@ function GlpiIntegrationCard() {
   );
 }
 
+// ── LLM Providers Section ─────────────────────────────────────────────────────
+
+const PROVIDER_COLORS: Record<string, string> = {
+  anthropic:  "bg-[#cc785c] text-white",
+  openai:     "bg-[#10a37f] text-white",
+  google:     "bg-[#4285f4] text-white",
+  deepseek:   "bg-[#1a6efd] text-white",
+  moonshot:   "bg-[#7c3aed] text-white",
+  xai:        "bg-gray-900 text-white",
+  perplexity: "bg-[#20b2aa] text-white",
+  nvidia:     "bg-[#76b900] text-white",
+  zhipu:      "bg-[#2563eb] text-white",
+  minimax:    "bg-[#e11d48] text-white",
+  ollama:     "bg-[#374151] text-white",
+};
+
+const PROVIDER_INITIALS: Record<string, string> = {
+  anthropic: "Cl", openai: "GP", google: "Gm", deepseek: "DS",
+  moonshot: "Ki", xai: "Gr", perplexity: "Px", nvidia: "Nv",
+  zhipu: "GL", minimax: "Mx", ollama: "Ol",
+};
+
+function LLMProvidersSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string; latency_ms: number }>>({});
+  const [testing, setTesting] = useState<string | null>(null);
+
+  const { data: configs = [], isLoading } = useQuery({
+    queryKey: ["llm-configs-tenant"],
+    queryFn: tenantLlmConfigsApi.list,
+  });
+
+  const { data: providersMeta = [] } = useQuery({
+    queryKey: ["llm-providers-meta"],
+    queryFn: llmProvidersApi.listMeta,
+  });
+
+  const createMut = useMutation({
+    mutationFn: (data: LLMConfigCreate) => tenantLlmConfigsApi.create(data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["llm-configs-tenant"] }); setShowForm(false); toast.success("Provider configurado."); },
+    onError: () => toast.error("Erro ao salvar configuração."),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => tenantLlmConfigsApi.delete(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["llm-configs-tenant"] }); toast.success("Provider removido."); },
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: ({ id, is_enabled }: { id: string; is_enabled: boolean }) =>
+      tenantLlmConfigsApi.update(id, { is_enabled }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["llm-configs-tenant"] }),
+  });
+
+  const setDefaultMut = useMutation({
+    mutationFn: (id: string) => tenantLlmConfigsApi.update(id, { is_default: true }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["llm-configs-tenant"] }); toast.success("Provider padrão definido."); },
+  });
+
+  const handleTest = async (id: string) => {
+    setTesting(id);
+    try {
+      const result = await tenantLlmConfigsApi.test(id);
+      setTestResults((prev) => ({ ...prev, [id]: result }));
+    } catch {
+      setTestResults((prev) => ({ ...prev, [id]: { ok: false, message: "Erro ao testar", latency_ms: 0 } }));
+    } finally {
+      setTesting(null);
+    }
+  };
+
+  const tenantOwned = configs.filter((c) => c.scope === "tenant");
+  const globalInherited = configs.filter((c) => c.scope === "global");
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-700">Provedores de LLM</h3>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="flex items-center gap-1.5 text-xs bg-brand-600 hover:bg-brand-700 text-white px-3 py-1.5 rounded-lg transition-colors"
+        >
+          <Plus size={13} /> Adicionar provider
+        </button>
+      </div>
+
+      {showForm && (
+        <LLMProviderForm
+          providersMeta={providersMeta}
+          onSubmit={(data) => createMut.mutate(data)}
+          onCancel={() => setShowForm(false)}
+          loading={createMut.isPending}
+        />
+      )}
+
+      {isLoading && <p className="text-xs text-gray-400">Carregando...</p>}
+
+      {tenantOwned.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          {tenantOwned.map((cfg) => (
+            <LLMProviderCard
+              key={cfg.id}
+              cfg={cfg}
+              testResult={testResults[cfg.id]}
+              testing={testing === cfg.id}
+              onTest={() => handleTest(cfg.id)}
+              onToggle={() => toggleMut.mutate({ id: cfg.id, is_enabled: !cfg.is_enabled })}
+              onSetDefault={() => setDefaultMut.mutate(cfg.id)}
+              onDelete={() => { if (window.confirm("Remover este provider?")) deleteMut.mutate(cfg.id); }}
+            />
+          ))}
+        </div>
+      )}
+
+      {globalInherited.length > 0 && (
+        <div>
+          <p className="text-xs text-gray-400 mb-2 flex items-center gap-1">
+            <Globe size={11} /> Configurações globais herdadas (somente leitura neste tenant)
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {globalInherited.map((cfg) => (
+              <LLMProviderCard
+                key={cfg.id}
+                cfg={cfg}
+                testResult={testResults[cfg.id]}
+                testing={testing === cfg.id}
+                onTest={() => handleTest(cfg.id)}
+                readonly
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!isLoading && tenantOwned.length === 0 && globalInherited.length === 0 && (
+        <p className="text-xs text-gray-400 py-4 text-center">
+          Nenhum provider configurado. Adicione um ou configure globalmente no PlatformConfig.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function LLMProviderCard({
+  cfg, testResult, testing, onTest, onToggle, onSetDefault, onDelete, readonly = false,
+}: {
+  cfg: LLMConfig;
+  testResult?: { ok: boolean; message: string; latency_ms: number };
+  testing: boolean;
+  onTest: () => void;
+  onToggle?: () => void;
+  onSetDefault?: () => void;
+  onDelete?: () => void;
+  readonly?: boolean;
+}) {
+  const colorClass = PROVIDER_COLORS[cfg.provider] ?? "bg-gray-500 text-white";
+  const initials = PROVIDER_INITIALS[cfg.provider] ?? cfg.provider.slice(0, 2).toUpperCase();
+
+  return (
+    <div className={`border rounded-lg p-4 space-y-2 ${!cfg.is_enabled ? "opacity-60" : ""} ${cfg.is_default ? "border-brand-400" : "border-gray-200"}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${colorClass}`}>
+            {initials}
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-800 truncate">{cfg.display_name}</p>
+            <p className="text-xs text-gray-400 font-mono truncate">{cfg.model_name}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {cfg.is_default && (
+            <span className="text-xs bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded font-medium">padrão</span>
+          )}
+          {cfg.no_train_flag && (
+            <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded" title="Dados não usados para treinamento">🔒</span>
+          )}
+          {!cfg.has_key && cfg.provider !== "ollama" && (
+            <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">sem key</span>
+          )}
+        </div>
+      </div>
+
+      {cfg.api_base_url && (
+        <p className="text-xs text-gray-400 truncate font-mono">{cfg.api_base_url}</p>
+      )}
+
+      {testResult && (
+        <div className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${testResult.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+          {testResult.ok ? <Check size={11} /> : <X size={11} />}
+          {testResult.message}
+          {testResult.ok && <span className="ml-auto text-gray-400">{testResult.latency_ms}ms</span>}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          onClick={onTest}
+          disabled={testing}
+          className="text-xs text-gray-500 hover:text-brand-600 flex items-center gap-1 disabled:opacity-40"
+        >
+          {testing ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+          Testar
+        </button>
+        {!readonly && (
+          <>
+            <button onClick={onToggle} className="text-xs text-gray-500 hover:text-gray-700">
+              {cfg.is_enabled ? <ToggleRight size={14} className="text-green-500" /> : <ToggleLeft size={14} />}
+            </button>
+            {!cfg.is_default && (
+              <button onClick={onSetDefault} className="text-xs text-gray-500 hover:text-brand-600 ml-auto">
+                Definir padrão
+              </button>
+            )}
+            <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-600 ml-auto">
+              <Trash2 size={12} />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LLMProviderForm({
+  providersMeta, onSubmit, onCancel, loading,
+}: {
+  providersMeta: LLMProviderMeta[];
+  onSubmit: (data: LLMConfigCreate) => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  const [provider, setProvider] = useState("anthropic");
+  const [model, setModel] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [isDefault, setIsDefault] = useState(false);
+  const [noTrain, setNoTrain] = useState(true);
+
+  const meta = providersMeta.find((m) => m.provider === provider);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({
+      provider,
+      model_name: model || meta?.default_model || "gpt-4o",
+      api_key: apiKey || null,
+      api_base_url: baseUrl || null,
+      is_default: isDefault,
+      no_train_flag: noTrain,
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="border border-gray-200 rounded-lg p-4 mb-4 space-y-3 bg-gray-50">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">Provider</label>
+          <select
+            value={provider}
+            onChange={(e) => { setProvider(e.target.value); setModel(""); setBaseUrl(""); }}
+            className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 bg-white"
+          >
+            {providersMeta.map((m) => (
+              <option key={m.provider} value={m.provider}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">Modelo</label>
+          <input
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder={meta?.default_model ?? "modelo"}
+            className="w-full text-sm border border-gray-200 rounded px-2 py-1.5"
+          />
+        </div>
+      </div>
+
+      {meta?.needs_key && (
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">API Key</label>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-..."
+            className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 font-mono"
+          />
+        </div>
+      )}
+
+      {(provider === "ollama" || !meta?.base_url) && (
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">URL Base {provider === "ollama" ? "(ex: http://192.168.1.10:11434/v1)" : "(opcional)"}</label>
+          <input
+            value={baseUrl}
+            onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder={meta?.base_url ?? "https://..."}
+            className="w-full text-sm border border-gray-200 rounded px-2 py-1.5 font-mono"
+          />
+        </div>
+      )}
+
+      <div className="flex items-center gap-4 text-sm">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
+          <span className="text-xs text-gray-600">Definir como padrão</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={noTrain} onChange={(e) => setNoTrain(e.target.checked)} />
+          <span className="text-xs text-gray-600">🔒 Não usar para treinamento</span>
+        </label>
+      </div>
+
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={onCancel} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5">
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          disabled={loading}
+          className="text-sm bg-brand-600 hover:bg-brand-700 text-white px-4 py-1.5 rounded-lg disabled:opacity-50"
+        >
+          {loading ? "Salvando..." : "Salvar"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function IntegracoesTab() {
   const { user, tenant } = useAuth();
   const isSuperAdmin = user?.is_super_admin ?? false;
@@ -1499,6 +1833,7 @@ function IntegracoesTab() {
           <GlpiIntegrationCard />
         </div>
       )}
+      <LLMProvidersSection isSuperAdmin={isSuperAdmin} />
     </div>
   );
 }

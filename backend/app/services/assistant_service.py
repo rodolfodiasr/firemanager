@@ -12,6 +12,7 @@ from app.models.assistant import AssistantFolder, AssistantMessage, AssistantSes
 from app.models.user_tenant_role import TenantRole
 from app.services.assistant_data_scope import build_context_for_query
 from app.services.llm_provider import get_provider
+from app.services import llm_config_service as _llm_svc
 
 # ── Hierarquia de roles para controle de visibilidade de pastas ───────────────
 
@@ -276,7 +277,7 @@ async def _get_or_create_session(
         if session:
             return session
 
-    provider = get_provider(model_preference)
+    provider = await _llm_svc.resolve_provider(tenant_id, db, preference=model_preference)
     session = AssistantSession(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -360,7 +361,7 @@ async def send_message(
     if not history or history[-1]["content"] != content:
         history.append({"role": "user", "content": content})
 
-    provider = get_provider(model_preference or session.model_used)
+    provider = await _llm_svc.resolve_provider(tenant_id, db, preference=model_preference or session.model_used)
     response_text, input_tok, output_tok = await provider.chat(history, system)
 
     ai_msg = AssistantMessage(

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, ai_safety, alerts, assistant, assistant_docs, audit, auth, backup, bulk_jobs, category_roles, cloud_accounts, compliance, compliance_packs, config_migration, connectivity, database_connectors, device_groups, devices, dlp, documents, edge_agents, enterprise, executive, file_shares, firewall_migration, firmware, glpi, glpi_widget, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, orchestrator, platform_config, playbooks, product, recommendations, remediation, rmm, security_infra, self_service, selfservice_portal, server_operations, servers, siem, siem_syslog, sso_mappings, stripe_webhook, templates, tenants, variables, vm_migration
+from app.api import admin, ai_safety, alerts, assistant, assistant_docs, audit, auth, backup, bulk_jobs, category_roles, cloud_accounts, compliance, compliance_packs, config_migration, connectivity, database_connectors, device_groups, devices, dlp, documents, edge_agents, enterprise, executive, file_shares, firewall_migration, firmware, glpi, glpi_widget, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, invite, knowledge, llm_configs, module_roles, onboarding, operations, orchestrator, platform_config, playbooks, product, recommendations, remediation, rmm, security_infra, self_service, selfservice_portal, server_operations, servers, siem, siem_syslog, sso_mappings, stripe_webhook, templates, tenants, variables, vm_migration
 from app.config import settings
 
 log = structlog.get_logger()
@@ -109,6 +109,8 @@ app.include_router(siem_syslog.router,         prefix="/siem-syslog",           
 app.include_router(glpi_widget.router,         prefix="/glpi-widget",                   tags=["glpi-widget"])
 app.include_router(stripe_webhook.router,      prefix="/webhooks",                      tags=["stripe-webhook"])
 app.include_router(backup.router,              prefix="",                               tags=["backup"])
+app.include_router(llm_configs.admin_router,   prefix="/admin/llm-configs",             tags=["llm-configs"])
+app.include_router(llm_configs.router,         prefix="/llm-configs",                   tags=["llm-configs"])
 
 
 class FireManagerError(Exception):
