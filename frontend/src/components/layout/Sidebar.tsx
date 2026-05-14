@@ -48,6 +48,7 @@ interface NavItem {
   label: string;
   badge?: boolean;
   upcoming?: string; // ex: "F28" — renderiza como item bloqueado
+  beta?: boolean;    // módulo validado parcialmente — navegável mas em maturação
 }
 
 interface NavSection {
@@ -113,8 +114,8 @@ const navSections: NavSection[] = [
     items: [
       { to: "/identity",           icon: Users,    label: "Identidade"          },
       { to: "/onboarding",         icon: UserPlus, label: "Onboarding"          },
-      { to: "/selfservice-portal", icon: Store,    label: "Self-Service Portal" },
-      { to: "/edge-agents", icon: Cpu, label: "Edge Agents & SSO" },
+      { to: "/selfservice-portal", icon: Store,    label: "Self-Service Portal", beta: true },
+      { to: "/edge-agents", icon: Cpu, label: "Edge Agents & SSO", beta: true },
     ],
   },
 
@@ -126,7 +127,7 @@ const navSections: NavSection[] = [
       { to: "/remediation",  icon: ShieldCheck, label: "Remediações"       },
       { to: "/playbooks",    icon: ShieldHalf,  label: "SOAR Playbooks"    },
       { to: "/siem",         icon: Radar,       label: "Integrações SIEM"  },
-      { to: "/rmm",          icon: Server,      label: "RMM"               },
+      { to: "/rmm",          icon: Server,      label: "RMM",               beta: true },
       { to: "/cloud-posture", icon: Globe,       label: "Cloud Posture"    },
       { to: "#", icon: Brain,  label: "Threat Intelligence", upcoming: "F35" },
     ],
@@ -138,7 +139,7 @@ const navSections: NavSection[] = [
     items: [
       { to: "/compliance",            icon: ClipboardCheck, label: "Conformidade"              },
       { to: "/governance",            icon: BarChart3,      label: "Governança"                },
-      { to: "/compliance-enterprise", icon: FileCheck2,     label: "Packs CIS / PCI / LGPD"   },
+      { to: "/compliance-enterprise", icon: FileCheck2,     label: "Packs CIS / PCI / LGPD", beta: true },
     ],
   },
 
@@ -167,11 +168,11 @@ const navSections: NavSection[] = [
     items: [
       { to: "/audit",           icon: Shield,      label: "Auditoria",        badge: true },
       { to: "/enterprise",      icon: KeyRound,    label: "Enterprise"                    },
-      { to: "/ai-safety",       icon: ShieldHalf,  label: "IA Safety"                     },
+      { to: "/ai-safety",       icon: ShieldHalf,  label: "IA Safety",       beta: true },
       { to: "/platform-config", icon: ShieldCheck, label: "Config. Plataforma"            },
       { to: "/settings",        icon: Settings,    label: "Configurações"                 },
-      { to: "/security-infra", icon: ShieldCheck, label: "Infra de Segurança" },
-      { to: "/product",        icon: Coins,       label: "Produto & Billing" },
+      { to: "/security-infra", icon: ShieldCheck, label: "Infra de Segurança", beta: true },
+      { to: "/product",        icon: Coins,       label: "Produto & Billing", beta: true },
     ],
   },
 
@@ -231,7 +232,7 @@ export function Sidebar() {
           <div key={section.title || "__root__"}>
             <SectionLabel title={section.title} />
             <div className="space-y-0.5">
-              {section.items.map(({ to, icon: Icon, label, badge, upcoming }) =>
+              {section.items.map(({ to, icon: Icon, label, badge, upcoming, beta }) =>
                 upcoming ? (
                   // Item bloqueado — fase futura
                   <div
@@ -250,6 +251,11 @@ export function Sidebar() {
                   <NavLink key={to} to={to} end={to === "/"} className={navLinkClass}>
                     <Icon size={18} />
                     <span className="flex-1">{label}</span>
+                    {beta && (
+                      <span className="text-[9px] font-bold bg-indigo-600/70 text-indigo-100 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                        Beta
+                      </span>
+                    )}
                     {badge && isAdmin && pendingCount > 0 && (
                       <span className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center leading-none">
                         {pendingCount > 99 ? "99+" : pendingCount}
