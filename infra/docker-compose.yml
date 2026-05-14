@@ -1,3 +1,5 @@
+name: firemanager
+
 networks:
   # public-net: only nginx + frontend (no backend services)
   public-net:
