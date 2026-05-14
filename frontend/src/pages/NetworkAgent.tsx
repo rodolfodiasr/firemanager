@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Layers, Square, CheckSquare, AlertCircle, Loader2 } from "lucide-react";
+import { Layers, Square, CheckSquare, AlertCircle, Loader2, Search, MessageSquare } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { ChatWindow } from "../components/agent/ChatWindow";
 import { useDevices } from "../hooks/useDevices";
 import { useAgent } from "../hooks/useAgent";
 import { bulkJobsApi } from "../api/bulk_jobs";
 import type { Device } from "../types/device";
+import { InvestigationPanel } from "../components/investigation/InvestigationPanel";
 
 const NETWORK_CATEGORIES = ["switch", "routing"] as const;
 
@@ -157,6 +158,7 @@ export function NetworkAgent() {
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(deviceParam ?? null);
   const [bulkMode, setBulkMode] = useState(false);
+  const [mode, setMode] = useState<"operate" | "investigate">("operate");
 
   const { messages, readyToExecute, requiresApproval, loading, send, execute, submitForReview, reset } =
     useAgent(selectedDeviceId, null, false);
@@ -167,33 +169,46 @@ export function NetworkAgent() {
   return (
     <PageWrapper title="Agente de Redes">
       <div className="h-[calc(100vh-7rem)] flex flex-col gap-3">
-        {canBulk && (
-          <div className="flex items-center gap-2">
+        {/* Mode switcher */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setMode("operate"); setBulkMode(false); }}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+              mode === "operate" && !bulkMode
+                ? "bg-brand-50 border-brand-300 text-brand-700 font-medium"
+                : "border-gray-200 text-gray-500 hover:border-gray-300"
+            }`}
+          >
+            <MessageSquare size={12} />
+            Operar
+          </button>
+          {canBulk && (
             <button
-              onClick={() => setBulkMode(false)}
+              onClick={() => { setMode("operate"); setBulkMode(true); }}
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                !bulkMode
-                  ? "bg-brand-50 border-brand-300 text-brand-700 font-medium"
-                  : "border-gray-200 text-gray-500 hover:border-gray-300"
-              }`}
-            >
-              Dispositivo único
-            </button>
-            <button
-              onClick={() => setBulkMode(true)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                bulkMode
+                mode === "operate" && bulkMode
                   ? "bg-amber-50 border-amber-300 text-amber-700 font-medium"
                   : "border-gray-200 text-gray-500 hover:border-gray-300"
               }`}
             >
               <Layers size={12} />
-              Operação em lote
+              Lote
             </button>
-          </div>
-        )}
+          )}
+          <button
+            onClick={() => { setMode("investigate"); setBulkMode(false); }}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+              mode === "investigate"
+                ? "bg-violet-50 border-violet-300 text-violet-700 font-medium"
+                : "border-gray-200 text-gray-500 hover:border-gray-300"
+            }`}
+          >
+            <Search size={12} />
+            Investigar
+          </button>
+        </div>
 
-        {bulkMode ? (
+        {mode === "operate" && bulkMode ? (
           <BulkPanel devices={devices} />
         ) : (
           <div className="flex-1 flex gap-4 min-h-0">
@@ -232,32 +247,48 @@ export function NetworkAgent() {
               )}
             </div>
 
-            {/* Chat area */}
-            <div className="flex-1 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden">
-              {selectedDevice ? (
-                <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-gray-500">Operando em:</span>
-                  <span className="text-sm font-medium">{selectedDevice.name}</span>
-                  <span className="text-xs text-gray-400">
-                    ({selectedDevice.vendor} · {selectedDevice.category})
-                  </span>
-                </div>
-              ) : (
-                <div className="px-4 py-3 border-b border-gray-100 bg-yellow-50">
-                  <p className="text-xs text-yellow-700">Selecione um switch ou roteador para iniciar</p>
-                </div>
-              )}
-              <ChatWindow
-                messages={messages}
-                readyToExecute={readyToExecute}
-                requiresApproval={requiresApproval}
-                loading={loading}
-                onSend={send}
-                onExecute={execute}
-                onSubmitForReview={submitForReview}
-                onCancel={reset}
-              />
-            </div>
+            {/* Main area — Operate or Investigate */}
+            {mode === "operate" ? (
+              <div className="flex-1 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden">
+                {selectedDevice ? (
+                  <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-gray-500">Operando em:</span>
+                    <span className="text-sm font-medium">{selectedDevice.name}</span>
+                    <span className="text-xs text-gray-400">
+                      ({selectedDevice.vendor} · {selectedDevice.category})
+                    </span>
+                  </div>
+                ) : (
+                  <div className="px-4 py-3 border-b border-gray-100 bg-yellow-50">
+                    <p className="text-xs text-yellow-700">Selecione um switch ou roteador para iniciar</p>
+                  </div>
+                )}
+                <ChatWindow
+                  messages={messages}
+                  readyToExecute={readyToExecute}
+                  requiresApproval={requiresApproval}
+                  loading={loading}
+                  onSend={send}
+                  onExecute={execute}
+                  onSubmitForReview={submitForReview}
+                  onCancel={reset}
+                />
+              </div>
+            ) : (
+              <div className="flex-1 bg-white rounded-xl border border-gray-200 p-5 overflow-y-auto">
+                {!selectedDeviceId ? (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-sm text-gray-400">Selecione um dispositivo para investigar</p>
+                  </div>
+                ) : (
+                  <InvestigationPanel
+                    agentType="network"
+                    target={{ device_id: selectedDeviceId }}
+                    targetLabel={selectedDevice?.name}
+                  />
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

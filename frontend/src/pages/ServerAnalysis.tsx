@@ -3,12 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Brain, Send, Loader2, Database, Shield, History,
-  FileDown, Trash2, ChevronRight, Server as ServerIcon, ShieldCheck,
+  FileDown, Trash2, ChevronRight, Server as ServerIcon, ShieldCheck, Search,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { serversApi } from "../api/servers";
 import { integrationsApi } from "../api/integrations";
 import type { AnalysisSession } from "../types/server";
+import { InvestigationPanel } from "../components/investigation/InvestigationPanel";
 
 // ── Source selector ───────────────────────────────────────────────────────────
 
@@ -299,6 +300,7 @@ export function ServerAnalysis() {
     }
   };
 
+  const [mode, setMode] = useState<"analyze" | "investigate">("analyze");
   const noSources = selectedServers.length === 0 && selectedIntegrations.length === 0;
 
   return (
@@ -308,19 +310,33 @@ export function ServerAnalysis() {
         <div className="w-64 shrink-0 flex flex-col gap-0 bg-white border border-gray-200 rounded-xl overflow-hidden">
           {/* Tabs */}
           <div className="flex border-b border-gray-200">
-            {(["sources", "history"] as const).map((t) => (
-              <button key={t} onClick={() => setLeftTab(t)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors ${
-                  leftTab === t
-                    ? "border-b-2 border-brand-600 text-brand-600"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {t === "sources"
-                  ? <><Database size={12} /> Fontes</>
-                  : <><History size={12} /> Histórico</>}
-              </button>
-            ))}
+            <button onClick={() => { setLeftTab("sources"); setMode("analyze"); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors ${
+                leftTab === "sources" && mode === "analyze"
+                  ? "border-b-2 border-brand-600 text-brand-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Database size={12} /> Fontes
+            </button>
+            <button onClick={() => { setLeftTab("history"); setMode("analyze"); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors ${
+                leftTab === "history" && mode === "analyze"
+                  ? "border-b-2 border-brand-600 text-brand-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <History size={12} /> Histórico
+            </button>
+            <button onClick={() => setMode("investigate")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors ${
+                mode === "investigate"
+                  ? "border-b-2 border-violet-500 text-violet-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Search size={12} /> Investigar
+            </button>
           </div>
 
           {/* Tab content */}
@@ -351,8 +367,24 @@ export function ServerAnalysis() {
           </div>
         </div>
 
-        {/* Chat area */}
-        <div className="flex-1 flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden">
+        {/* Right panel — Analyze or Investigate */}
+        {mode === "investigate" ? (
+          <div className="flex-1 bg-white border border-gray-200 rounded-xl p-5 overflow-y-auto">
+            <InvestigationPanel
+              agentType="n3"
+              target={{
+                server_id: selectedServers[0],
+                integration_ids: selectedIntegrations.length > 0 ? selectedIntegrations : undefined,
+              }}
+              targetLabel={
+                selectedServers.length > 0
+                  ? `${selectedServers.length} servidor(es) selecionado(s)`
+                  : "Selecione um servidor no painel Fontes"
+              }
+            />
+          </div>
+        ) : null}
+        {mode !== "investigate" && <div className="flex-1 flex flex-col bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center py-8">
@@ -431,7 +463,7 @@ export function ServerAnalysis() {
               </button>
             </div>
           </div>
-        </div>
+        </div>}
       </div>
     </PageWrapper>
   );

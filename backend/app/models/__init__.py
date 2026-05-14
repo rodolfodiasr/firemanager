@@ -30,6 +30,7 @@ from app.models.user_device_category_role import UserDeviceCategoryRole
 from app.models.user_tenant_role import UserTenantRole
 from app.models.variable import TenantVariable, DeviceVariable
 from app.models.firmware import DeviceFirmwareVersion, FirmwareCVE, DeviceFirmwareVulnerability
+from app.models.investigation import InvestigationSession, InvestigationPhase, InvestigationMessage
 
 __all__ = [
     "AnalysisSession",
