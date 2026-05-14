@@ -1,7 +1,5 @@
 """F38 — Cloud Security Posture Management (CSPM)."""
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 
 revision = "0058"
 down_revision = "0057"
@@ -10,73 +8,65 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "cloud_accounts",
-        sa.Column("id", PG_UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", PG_UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("name", sa.String(100), nullable=False),
-        sa.Column("provider", sa.String(20), nullable=False),   # aws | azure | gcp
-        sa.Column("credentials_encrypted", sa.Text, nullable=True),
-        sa.Column("region", sa.String(50), nullable=True),
-        sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
-        sa.Column("last_sync_at", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("last_sync_status", sa.String(20), nullable=True),  # ok | error | syncing
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False),
-    )
-    op.create_index("ix_cloud_accounts_tenant_id", "cloud_accounts", ["tenant_id"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS cloud_accounts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            provider VARCHAR(20) NOT NULL,
+            credentials_encrypted TEXT,
+            region VARCHAR(50),
+            is_active BOOLEAN NOT NULL DEFAULT true,
+            last_sync_at TIMESTAMPTZ,
+            last_sync_status VARCHAR(20),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_cloud_accounts_tenant_id ON cloud_accounts(tenant_id)")
 
-    op.create_table(
-        "cloud_security_findings",
-        sa.Column("id", PG_UUID(as_uuid=True), primary_key=True),
-        sa.Column("account_id", PG_UUID(as_uuid=True), sa.ForeignKey("cloud_accounts.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("tenant_id", PG_UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("resource_type", sa.String(50), nullable=False),   # security_group | nsg | gcp_fw_rule
-        sa.Column("resource_id", sa.Text, nullable=False),
-        sa.Column("resource_name", sa.Text, nullable=True),
-        sa.Column("check_id", sa.String(80), nullable=False),        # e.g. "sg-ssh-open-world"
-        sa.Column("check_title", sa.Text, nullable=False),
-        sa.Column("severity", sa.String(20), nullable=False, server_default="medium"),
-        sa.Column("status", sa.String(20), nullable=False, server_default="open"),   # open | accepted | resolved
-        sa.Column("details", JSONB, nullable=True),
-        sa.Column("detected_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("resolved_at", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("accepted_by", PG_UUID(as_uuid=True), nullable=True),
-        sa.Column("accepted_reason", sa.Text, nullable=True),
-    )
-    op.create_index("ix_cloud_findings_tenant_id", "cloud_security_findings", ["tenant_id"])
-    op.create_index("ix_cloud_findings_account_id", "cloud_security_findings", ["account_id"])
-    op.create_index(
-        "uq_cloud_findings_resource_check",
-        "cloud_security_findings",
-        ["account_id", "resource_id", "check_id"],
-        unique=True,
-    )
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS cloud_security_findings (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            account_id UUID NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            resource_type VARCHAR(50) NOT NULL,
+            resource_id TEXT NOT NULL,
+            resource_name TEXT,
+            check_id VARCHAR(80) NOT NULL,
+            check_title TEXT NOT NULL,
+            severity VARCHAR(20) NOT NULL DEFAULT 'medium',
+            status VARCHAR(20) NOT NULL DEFAULT 'open',
+            details JSONB,
+            detected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            resolved_at TIMESTAMPTZ,
+            accepted_by UUID,
+            accepted_reason TEXT,
+            UNIQUE (account_id, resource_id, check_id)
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_cloud_findings_tenant_id ON cloud_security_findings(tenant_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_cloud_findings_account_id ON cloud_security_findings(account_id)")
 
-    op.create_table(
-        "cloud_resources",
-        sa.Column("id", PG_UUID(as_uuid=True), primary_key=True),
-        sa.Column("account_id", PG_UUID(as_uuid=True), sa.ForeignKey("cloud_accounts.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("tenant_id", PG_UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("resource_type", sa.String(50), nullable=False),
-        sa.Column("resource_id", sa.Text, nullable=False),
-        sa.Column("resource_name", sa.Text, nullable=True),
-        sa.Column("region", sa.String(50), nullable=True),
-        sa.Column("rules", JSONB, nullable=True),     # inbound/outbound rules normalized
-        sa.Column("tags", JSONB, nullable=True),
-        sa.Column("risk_score", sa.Integer, nullable=True),
-        sa.Column("synced_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False),
-    )
-    op.create_index("ix_cloud_resources_tenant_id", "cloud_resources", ["tenant_id"])
-    op.create_index("ix_cloud_resources_account_id", "cloud_resources", ["account_id"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS cloud_resources (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            account_id UUID NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            resource_type VARCHAR(50) NOT NULL,
+            resource_id TEXT NOT NULL,
+            resource_name TEXT,
+            region VARCHAR(50),
+            rules JSONB,
+            tags JSONB,
+            risk_score INTEGER,
+            synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_cloud_resources_tenant_id ON cloud_resources(tenant_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_cloud_resources_account_id ON cloud_resources(account_id)")
 
 
 def downgrade() -> None:
-    op.drop_index("ix_cloud_resources_account_id", table_name="cloud_resources")
-    op.drop_index("ix_cloud_resources_tenant_id", table_name="cloud_resources")
-    op.drop_table("cloud_resources")
-    op.drop_index("uq_cloud_findings_resource_check", table_name="cloud_security_findings")
-    op.drop_index("ix_cloud_findings_account_id", table_name="cloud_security_findings")
-    op.drop_index("ix_cloud_findings_tenant_id", table_name="cloud_security_findings")
-    op.drop_table("cloud_security_findings")
-    op.drop_index("ix_cloud_accounts_tenant_id", table_name="cloud_accounts")
-    op.drop_table("cloud_accounts")
+    op.execute("DROP TABLE IF EXISTS cloud_resources")
+    op.execute("DROP TABLE IF EXISTS cloud_security_findings")
+    op.execute("DROP TABLE IF EXISTS cloud_accounts")

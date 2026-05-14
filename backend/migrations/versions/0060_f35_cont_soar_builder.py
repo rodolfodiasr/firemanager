@@ -1,7 +1,5 @@
 """F35.cont — SOAR Builder Visual: builder_state em playbook_rules."""
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0060"
 down_revision = "0059"
@@ -10,11 +8,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "playbook_rules",
-        sa.Column("builder_state", JSONB, nullable=True),
-    )
+    op.execute("ALTER TABLE playbook_rules ADD COLUMN IF NOT EXISTS builder_state JSONB")
 
 
 def downgrade() -> None:
-    op.drop_column("playbook_rules", "builder_state")
+    op.execute("ALTER TABLE playbook_rules DROP COLUMN IF EXISTS builder_state")
