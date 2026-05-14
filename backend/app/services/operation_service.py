@@ -220,6 +220,16 @@ async def start_or_continue_operation(
 
     response = await session.process(user_message)
 
+    # Diagnostic redirect: agent detected a diagnostic question and returned a guidance message.
+    # Mark the operation as cancelled/failed so it doesn't stay as a zombie "pending" record.
+    if session.intent == "diagnose":
+        operation.status = OperationStatus.failed
+        operation.intent = "diagnose"
+        operation.error_message = "Solicitação de diagnóstico redirecionada para a aba Investigar."
+        await db.flush()
+        await db.refresh(operation)
+        return operation, response
+
     # Clarification loop: se há campos faltando e a confiança é baixa, perguntar ao analista
     if not session.ready_to_execute and session.missing_fields and session.intent:
         from app.agent.clarification_engine import (

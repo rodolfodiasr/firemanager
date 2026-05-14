@@ -238,10 +238,16 @@ async def create_bulk_job(
         # fail the job immediately so the frontend doesn't poll forever.
         if first_op.status != OperationStatus.approved:
             bulk_job.status = BulkJobStatus.failed
-            bulk_job.error_summary = (
-                f"Não foi possível gerar o plano automaticamente para a categoria '{category}'. "
-                f"O assistente respondeu: {agent_message}"
-            )
+            if first_op.intent == "diagnose":
+                bulk_job.error_summary = (
+                    "Esta solicitação é de diagnóstico/análise e não pode ser executada em lote. "
+                    "Use a aba Investigar no Agente de Redes ou Agente de Firewall para diagnósticos iterativos."
+                )
+            else:
+                bulk_job.error_summary = (
+                    f"Não foi possível gerar o plano automaticamente para a categoria '{category}'. "
+                    f"O assistente respondeu: {agent_message}"
+                )
             await db.flush()
             await db.refresh(bulk_job)
             ops = await _get_job_operations(db, bulk_job.id)
