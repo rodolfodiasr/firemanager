@@ -21,6 +21,17 @@ def upgrade() -> None:
     op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
 
     op.create_table(
+        "tenants",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("name", sa.String(100), nullable=False),
+        sa.Column("slug", sa.String(100), nullable=False, unique=True),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
+    )
+    op.create_index("ix_tenants_slug", "tenants", ["slug"])
+
+    op.create_table(
         "users",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("email", sa.String(255), nullable=False, unique=True),
@@ -30,9 +41,19 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("mfa_secret", sa.String(64), nullable=True),
         sa.Column("mfa_enabled", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column("is_super_admin", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
     )
+
+    op.create_table(
+        "user_tenant_roles",
+        sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, primary_key=True),
+        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, primary_key=True),
+        sa.Column("role", sa.String(20), nullable=False, server_default="analyst"),
+        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False),
+    )
+    op.create_index("ix_user_tenant_roles_tenant_id", "user_tenant_roles", ["tenant_id"])
 
     op.create_table(
         "devices",
@@ -133,4 +154,8 @@ def downgrade() -> None:
     op.drop_table("operation_steps")
     op.drop_table("operations")
     op.drop_table("devices")
+    op.drop_index("ix_user_tenant_roles_tenant_id", "user_tenant_roles")
+    op.drop_table("user_tenant_roles")
     op.drop_table("users")
+    op.drop_index("ix_tenants_slug", "tenants")
+    op.drop_table("tenants")
