@@ -15,16 +15,18 @@ import type { DeviceGroup } from "../types/device_group";
 
 const CATEGORY_ICON: Record<string, React.ElementType> = {
   firewall: Shield,
-  router: Route,
   switch: Network,
-  l3_switch: Layers,
+  routing: Route,
+  server: Layers,
+  hypervisor: Layers,
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
   firewall: "Firewall",
-  router: "Roteador",
-  switch: "Switch",
-  l3_switch: "Switch L3",
+  switch: "Switch L2",
+  routing: "Switch L3 / Roteador",
+  server: "Servidor",
+  hypervisor: "Hypervisor",
 };
 
 function CategoryBadge({ category, count }: { category: string; count: number }) {

@@ -170,7 +170,7 @@ function NewMigrationModal({
   const [targetId, setTargetId] = useState("");
   const [aiLevel, setAiLevel] = useState(2);
   const switchDevices = devices.filter((d) =>
-    d.category === "switch" || d.category === "routing" || d.category === "l3_switch"
+    d.category === "switch" || d.category === "routing"
   );
 
   const handleSubmit = (e: React.FormEvent) => {

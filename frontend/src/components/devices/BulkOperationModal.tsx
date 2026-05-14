@@ -12,14 +12,15 @@ interface BulkOperationModalProps {
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
-  firewall: "Firewall", router: "Roteador", switch: "Switch", l3_switch: "Switch L3",
+  firewall: "Firewall", switch: "Switch L2", routing: "Switch L3 / Roteador", server: "Servidor", hypervisor: "Hypervisor",
 };
 
 const CATEGORY_ICON: Record<string, React.ElementType> = {
-  firewall:  Shield,
-  router:    Route,
-  switch:    Network,
-  l3_switch: Layers,
+  firewall:   Shield,
+  switch:     Network,
+  routing:    Route,
+  server:     Layers,
+  hypervisor: Layers,
 };
 
 const VENDOR_LABELS: Record<string, string> = {

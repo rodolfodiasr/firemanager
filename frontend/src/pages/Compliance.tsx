@@ -568,7 +568,7 @@ function NetworkGenerateForm({
   const { data: devices = [] } = useQuery({ queryKey: ["devices"], queryFn: devicesApi.list });
   const filtered = devices.filter((d: Device) => {
     if (deviceType === "firewall") return d.category === "firewall";
-    return ["switch", "routing", "l3_switch", "router"].includes(d.category);
+    return ["switch", "routing"].includes(d.category);
   });
 
   const qc = useQueryClient();

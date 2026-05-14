@@ -35,11 +35,11 @@ const VENDOR_LABEL: Record<VendorEnum, string> = {
 };
 
 const CAT_LABEL: Record<DeviceCategory, string> = {
-  firewall:  "Firewall",
-  router:    "Roteador",
-  switch:    "Switch",
-  l3_switch: "Switch L3",
-  routing:   "Roteamento",
+  firewall:   "Firewall",
+  switch:     "Switch L2",
+  routing:    "Switch L3 / Roteador",
+  server:     "Servidor",
+  hypervisor: "Hypervisor",
 };
 
 const INTG_META: Record<string, { label: string; dot: string }> = {
@@ -66,8 +66,8 @@ function StatusDot({ status }: { status: Device["status"] }) {
 
 function CategoryIcon({ cat, size = 14 }: { cat: DeviceCategory; size?: number }) {
   if (cat === "firewall")  return <Shield     size={size} className="text-orange-400 shrink-0" />;
-  if (cat === "router")    return <Globe      size={size} className="text-blue-400 shrink-0" />;
-  if (cat === "l3_switch") return <Layers     size={size} className="text-purple-400 shrink-0" />;
+  if (cat === "routing")   return <Globe      size={size} className="text-blue-400 shrink-0" />;
+  if (cat === "switch")    return <Layers     size={size} className="text-green-400 shrink-0" />;
   return                          <ServerIcon size={size} className="text-gray-400 shrink-0" />;
 }
 
@@ -111,8 +111,8 @@ function DevicesOverviewCard({ devices }: { devices: Device[] }) {
 
   const catCounts = {
     firewall: devices.filter((d) => d.category === "firewall").length,
-    switch:   devices.filter((d) => d.category === "switch" || d.category === "l3_switch").length,
-    router:   devices.filter((d) => d.category === "router").length,
+    switch:   devices.filter((d) => d.category === "switch").length,
+    routing:  devices.filter((d) => d.category === "routing").length,
   };
 
   const vendorCounts = Object.entries(

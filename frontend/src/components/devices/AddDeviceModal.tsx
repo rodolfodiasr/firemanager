@@ -194,19 +194,19 @@ const VENDOR_CONFIG: Record<VendorEnum, VendorConfig> = {
 };
 
 const CATEGORY_LABELS: Record<DeviceCategory, string> = {
-  firewall:  "Firewall",
-  router:    "Roteador",
-  switch:    "Switch",
-  l3_switch: "Switch L3",
-  routing:   "Roteamento",
+  firewall:   "Firewall",
+  switch:     "Switch L2",
+  routing:    "Switch L3 / Roteador",
+  server:     "Servidor",
+  hypervisor: "Hypervisor",
 };
 
 const CATEGORY_VENDORS: Record<DeviceCategory, VendorEnum[]> = {
-  firewall:  ["fortinet", "sonicwall", "pfsense", "opnsense", "mikrotik", "endian"],
-  router:    ["cisco_ios", "juniper", "mikrotik", "ubiquiti"],
-  switch:    ["cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n", "hp_comware", "ubiquiti", "edgeswitch"],
-  l3_switch: ["cisco_ios", "cisco_nxos", "juniper", "aruba", "dell", "dell_n", "hp_comware", "edgeswitch"],
-  routing:   ["cisco_ios", "cisco_nxos", "juniper", "mikrotik", "ubiquiti"],
+  firewall:   ["fortinet", "sonicwall", "pfsense", "opnsense", "mikrotik", "endian"],
+  switch:     ["cisco_ios", "cisco_nxos", "aruba", "dell", "dell_n", "hp_comware", "ubiquiti", "edgeswitch"],
+  routing:    ["cisco_ios", "cisco_nxos", "juniper", "aruba", "dell", "dell_n", "hp_comware", "mikrotik", "ubiquiti", "edgeswitch"],
+  server:     [],
+  hypervisor: [],
 };
 
 export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProps) {

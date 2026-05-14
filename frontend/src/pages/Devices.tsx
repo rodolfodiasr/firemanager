@@ -371,10 +371,10 @@ function CreateTemplateModal({ onClose }: { onClose: () => void }) {
 // ── Grupos helpers ────────────────────────────────────────────────────────────
 
 const GROUP_CATEGORY_ICON: Record<string, React.ElementType> = {
-  firewall: Shield, router: Route, switch: Network, l3_switch: Layers,
+  firewall: Shield, switch: Network, routing: Route, server: Layers, hypervisor: Layers,
 };
 const GROUP_CATEGORY_LABEL: Record<string, string> = {
-  firewall: "Firewall", router: "Roteador", switch: "Switch", l3_switch: "Switch L3",
+  firewall: "Firewall", switch: "Switch L2", routing: "Switch L3 / Roteador", server: "Servidor", hypervisor: "Hypervisor",
 };
 
 function CategoryBadge({ category, count }: { category: string; count: number }) {
@@ -468,11 +468,11 @@ function EditGroupWrapper({ groupId, onClose }: { groupId: string; onClose: () =
 // ── Tab components ────────────────────────────────────────────────────────────
 
 const FILTER_TABS: { key: FilterCategory; label: string; icon: React.ElementType }[] = [
-  { key: "all",       label: "Todos",     icon: LayoutGrid },
-  { key: "firewall",  label: "Firewall",  icon: Shield },
-  { key: "router",    label: "Roteador",  icon: Route },
-  { key: "switch",    label: "Switch",    icon: Network },
-  { key: "l3_switch", label: "Switch L3", icon: Layers },
+  { key: "all",       label: "Todos",              icon: LayoutGrid },
+  { key: "firewall",  label: "Firewall",           icon: Shield },
+  { key: "switch",    label: "Switch L2",          icon: Network },
+  { key: "routing",   label: "Switch L3 / Roteador", icon: Route },
+  { key: "server",    label: "Servidor",           icon: Layers },
 ];
 
 function DevicesTab() {
