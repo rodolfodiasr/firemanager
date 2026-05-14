@@ -187,11 +187,13 @@ export function EditDeviceModal({ isOpen, device, onClose, onSubmit }: EditDevic
                       </p>
                     </div>
                   )}
-                  {device.vendor === "edgeswitch" && (
+                  {(device.vendor === "edgeswitch" || device.vendor === "dell") && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Senha de enable{" "}
-                        <span className="text-red-500 font-normal">(obrigatória)</span>
+                        {device.vendor === "edgeswitch"
+                          ? <span className="text-red-500 font-normal">(obrigatória)</span>
+                          : <span className="text-gray-400 font-normal">(opcional)</span>}
                       </label>
                       <input
                         {...register("credentials.enable_password")}

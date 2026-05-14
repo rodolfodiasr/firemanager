@@ -133,6 +133,8 @@ class GenericSSHConnector:
                 self.credentials.get("enable_password")
                 or self.credentials.get("password", "")
             )
+        elif self.vendor == "dell" and self.credentials.get("enable_password"):
+            params["secret"] = self.credentials["enable_password"]
         return params
 
     def _connect_handler(self):

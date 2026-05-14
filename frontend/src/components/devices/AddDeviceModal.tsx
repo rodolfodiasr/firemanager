@@ -168,7 +168,8 @@ const VENDOR_CONFIG: Record<VendorEnum, VendorConfig> = {
     usernamePlaceholder: "admin",
     passwordLabel: "Senha",
     defaultPort: 22,
-    hint: "DELL EMC PowerSwitch S/Z-series (OS10) · SSH habilitado",
+    extraFields: "enable_password",
+    hint: "DELL EMC PowerSwitch S/Z-series (OS10) · SSH habilitado · senha de enable opcional",
   },
   dell_n: {
     label: "DELL N-Series (DNOS6)",
@@ -406,12 +407,14 @@ export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProp
             </div>
           )}
 
-          {/* EdgeSwitch extra: enable password */}
+          {/* enable password (obrigatória EdgeSwitch, opcional Dell OS10) */}
           {cfg.extraFields === "enable_password" && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Senha de enable{" "}
-                <span className="text-red-500 font-normal">(obrigatória — necessária para todas as operações)</span>
+                {vendor === "edgeswitch"
+                  ? <span className="text-red-500 font-normal">(obrigatória)</span>
+                  : <span className="text-gray-400 font-normal">(opcional)</span>}
               </label>
               <input
                 {...register("credentials.enable_password")}
