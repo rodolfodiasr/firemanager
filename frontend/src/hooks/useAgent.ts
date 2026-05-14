@@ -13,6 +13,7 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
     clarifying,
     clarificationQuestions,
     confidenceScore,
+    intent,
     addMessage,
     setOperationId,
     setReadyToExecute,
@@ -350,5 +351,5 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
     [currentOperationId, addMessage, setLoading, setReadyToExecute, setRequiresApproval, setIntent, setClarifying, setConfidenceScore]
   );
 
-  return { messages, readyToExecute, requiresApproval, loading, clarifying, clarificationQuestions, confidenceScore, send, execute, submitForReview, submitClarification, reset };
+  return { messages, readyToExecute, requiresApproval, loading, clarifying, clarificationQuestions, confidenceScore, intent, send, execute, submitForReview, submitClarification, reset };
 }

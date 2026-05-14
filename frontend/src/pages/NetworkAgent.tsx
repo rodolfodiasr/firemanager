@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Layers, Square, CheckSquare, AlertCircle, Loader2, Search, MessageSquare } from "lucide-react";
+import { Layers, Square, CheckSquare, AlertCircle, Loader2, Search, MessageSquare, Microscope } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { ChatWindow } from "../components/agent/ChatWindow";
 import { useDevices } from "../hooks/useDevices";
@@ -160,7 +160,7 @@ export function NetworkAgent() {
   const [bulkMode, setBulkMode] = useState(false);
   const [mode, setMode] = useState<"operate" | "investigate">("operate");
 
-  const { messages, readyToExecute, requiresApproval, loading, send, execute, submitForReview, reset } =
+  const { messages, readyToExecute, requiresApproval, loading, intent, send, execute, submitForReview, reset } =
     useAgent(selectedDeviceId, null, false);
 
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
@@ -261,6 +261,24 @@ export function NetworkAgent() {
                 ) : (
                   <div className="px-4 py-3 border-b border-gray-100 bg-yellow-50">
                     <p className="text-xs text-yellow-700">Selecione um switch ou roteador para iniciar</p>
+                  </div>
+                )}
+                {intent === "diagnose" && (
+                  <div className="mx-4 mt-3 flex items-start gap-2.5 bg-violet-50 border border-violet-200 rounded-xl p-3">
+                    <Microscope size={15} className="text-violet-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-violet-800">Solicitação de diagnóstico detectada</p>
+                      <p className="text-xs text-violet-700 mt-0.5">
+                        Use a aba Investigar para diagnósticos iterativos com execução de comandos de leitura e análise por fase.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { setMode("investigate"); reset(); }}
+                      className="shrink-0 flex items-center gap-1.5 text-xs px-3 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 font-medium"
+                    >
+                      <Search size={11} />
+                      Investigar
+                    </button>
                   </div>
                 )}
                 <ChatWindow
