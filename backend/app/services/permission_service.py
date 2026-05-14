@@ -24,12 +24,13 @@ async def resolve_device_role(
     user_id: UUID,
     tenant_id: UUID,
     device_category: DeviceCategory,
+    ctx_role: TenantRole | None = None,
 ) -> TenantRole | None:
     """Return the effective TenantRole for a user on a given device category.
 
-    Returns None only when the user has no membership in the tenant at all.
-    Category roles override the tenant-wide role; absence of a category role
-    falls back to the tenant-wide role.
+    Resolution order: category-specific role > tenant-wide role > ctx_role > None.
+    ctx_role is the role already resolved by TenantContext (e.g. admin for super admin
+    in assume-tenant mode) and is used as final fallback when no DB record exists.
     """
     device_category = CATEGORY_ALIAS.get(device_category, device_category)
     result = await db.execute(
@@ -50,7 +51,7 @@ async def resolve_device_role(
         )
     )
     utr = result2.scalar_one_or_none()
-    return utr.role if utr else None
+    return utr.role if utr else ctx_role
 
 
 async def upsert_category_role(

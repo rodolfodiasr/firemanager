@@ -170,7 +170,7 @@ async def execute_op(
 
     device_result = await db.execute(select(Device).where(Device.id == operation.device_id))
     device = device_result.scalar_one()
-    effective_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, device.category)
+    effective_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, device.category, ctx_role=ctx.role)
 
     if effective_role is None or effective_role == TenantRole.readonly:
         raise HTTPException(
@@ -339,7 +339,7 @@ async def create_direct_ssh_operation(
     except DeviceNotFoundError:
         raise HTTPException(status_code=404, detail="Dispositivo não encontrado.")
 
-    effective_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, device.category)
+    effective_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, device.category, ctx_role=ctx.role)
     if effective_role is None or effective_role in (TenantRole.readonly, TenantRole.analyst_n1):
         raise HTTPException(
             status_code=403,

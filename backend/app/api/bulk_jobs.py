@@ -173,7 +173,7 @@ async def create_bulk_job(
         except DeviceNotFoundError:
             raise HTTPException(status_code=404, detail=f"Dispositivo {device_id} não encontrado")
 
-        effective_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, dev.category)
+        effective_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, dev.category, ctx_role=ctx.role)
         if effective_role is None or effective_role == TenantRole.readonly:
             raise HTTPException(
                 status_code=403,
@@ -350,7 +350,7 @@ async def execute_bulk_job(
     for op in executable:
         dev = exec_devices.get(op.device_id)
         if dev:
-            eff_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, dev.category)
+            eff_role = await resolve_device_role(db, ctx.user.id, ctx.tenant.id, dev.category, ctx_role=ctx.role)
             if eff_role is None or eff_role == TenantRole.readonly:
                 errors.append(
                     f"{dev.name}: sem permissão para executar em categoria '{dev.category.value}'"
