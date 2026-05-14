@@ -126,6 +126,7 @@ const navSections: NavSection[] = [
       { to: "/remediation",  icon: ShieldCheck, label: "Remediações"       },
       { to: "/playbooks",    icon: ShieldHalf,  label: "SOAR Playbooks"    },
       { to: "/siem",         icon: Radar,       label: "Integrações SIEM"  },
+      { to: "/rmm",          icon: Server,      label: "RMM"               },
       { to: "/cloud-posture", icon: Globe,       label: "Cloud Posture"    },
       { to: "#", icon: Brain,  label: "Threat Intelligence", upcoming: "F35" },
     ],

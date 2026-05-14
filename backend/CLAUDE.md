@@ -199,7 +199,7 @@ async def _collect_ssh_resources(device, data):
 ## Fases implementadas
 
 ### Cadeia de migrations completa
-`0051` (GLPI bridge) → `0052` (F29 AI observability) → `0053` (F36 identity governance) → `0054` (F39 self-service OTP) → `0055` (F35 SOAR playbooks) → `0056` (F29.cont API key rate limit) → `0057` (F37 SIEM) → `0058` (F38 CSPM) → `0059` (F36.cont identity advanced) → `0060` (F35.cont SOAR builder) → `0061` (F30 compliance enterprise) → `0062` (F33 AI safety) → `0063` (F39.cont selfservice portal) → `0064` (F34 security infra) → `0065` (F31 edge agents) → `0066` (F32 product) → `0067` (F28.1 DLP — em progresso)
+`0051` → `0052` → `0053` → `0054` → `0055` → `0056` → `0057` → `0058` → `0059` → `0060` → `0061` (F30) → `0062` (F33) → `0063` (F39.cont) → `0064` (F34) → `0065` (F31) → `0066` (F32) → `0067` (F28.1 DLP) → `0068` (F23.ext RMM) → `0069` (F31.cont SSO role mapping) → `0070` (F36.ext file share) → `0071` (F37.ext CEF syslog) → `0072` (F49 GLPI widget) → `0073` (F32.cont Stripe)
 
 ### F29 — Multi-Agent Orchestrator
 | Arquivo | Descrição |

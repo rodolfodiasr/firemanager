@@ -100,3 +100,14 @@ class RbacRoleAssignment(Base):
     assigned_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     role: Mapped["RbacCustomRole"] = relationship("RbacCustomRole", back_populates="assignments")
+
+
+class SsoRoleMapping(Base):
+    __tablename__ = "sso_role_mappings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sso_config_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sso_configs.id", ondelete="CASCADE"), nullable=False, index=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    external_group: Mapped[str] = mapped_column(String(300), nullable=False)
+    platform_role: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

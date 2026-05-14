@@ -1,8 +1,28 @@
 networks:
-  # public-net: only nginx, frontend and api are reachable from outside
-  public-net: {}
-  # internal-net: data tier + workers — never directly exposed to host
-  internal-net: {}
+  # public-net: only nginx + frontend (no backend services)
+  public-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  # api-net: api + celery + workers (no direct DB access from public)
+  api-net:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.20.1.0/24
+  # data-net: postgres + redis only (most restricted — no external access)
+  data-net:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.20.2.0/24
+  # internal-net: kept for legacy compatibility (bridge to api-net services)
+  internal-net:
+    driver: bridge
+    internal: true
 
 services:
   postgres:
@@ -11,8 +31,9 @@ services:
       POSTGRES_USER: fm_user
       POSTGRES_PASSWORD: fm_pass
       POSTGRES_DB: firemanager
-    # No host port binding — only reachable within internal-net
+    # Accessible only from data-net (api reads via api-net→data-net bridge on api container)
     networks:
+      - data-net
       - internal-net
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -24,8 +45,9 @@ services:
 
   redis:
     image: redis:7.2-alpine
-    # No host port binding — only reachable within internal-net
+    # Accessible only from data-net
     networks:
+      - data-net
       - internal-net
     volumes:
       - redis_data:/data
@@ -53,6 +75,8 @@ services:
         condition: service_healthy
     networks:
       - public-net
+      - api-net
+      - data-net
       - internal-net
     volumes:
       - ../backend:/app
@@ -76,6 +100,8 @@ services:
     depends_on:
       - api
     networks:
+      - api-net
+      - data-net
       - internal-net
     volumes:
       - ../backend:/app

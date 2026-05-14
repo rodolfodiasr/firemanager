@@ -1,0 +1,109 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "test": "Test",
+    "sync": "Sync",
+    "loading": "Loading…",
+    "error": "Error",
+    "success": "Success",
+    "noData": "No records found.",
+    "confirm": "Confirm",
+    "close": "Close",
+    "search": "Search",
+    "active": "Active",
+    "inactive": "Inactive",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "online": "Online",
+    "offline": "Offline",
+    "status": "Status",
+    "name": "Name",
+    "actions": "Actions",
+    "createdAt": "Created at",
+    "updatedAt": "Updated at",
+    "lastSync": "Last sync"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "devices": "Devices",
+    "operations": "Operations",
+    "servers": "Servers",
+    "identity": "Identity",
+    "compliance": "Compliance",
+    "siem": "SIEM",
+    "soar": "SOAR",
+    "rmm": "RMM",
+    "glpi": "GLPI",
+    "settings": "Settings",
+    "assistant": "AI Assistant",
+    "audit": "Audit"
+  },
+  "rmm": {
+    "title": "RMM Integrations",
+    "subtitle": "Manage connections with Tactical RMM, NinjaRMM, Atera and ConnectWise",
+    "addIntegration": "New Integration",
+    "type": "RMM Type",
+    "baseUrl": "Base URL",
+    "agents": "Agents",
+    "lastSync": "Last Sync",
+    "syncNow": "Sync Now",
+    "testConnection": "Test Connection",
+    "types": {
+      "tactical_rmm": "Tactical RMM",
+      "ninja_rmm": "NinjaRMM (NinjaOne)",
+      "atera": "Atera",
+      "connectwise_automate": "ConnectWise Automate"
+    }
+  },
+  "sso": {
+    "roleMappings": "Group Mappings",
+    "externalGroup": "IdP Group",
+    "platformRole": "Platform Role",
+    "addMapping": "Add Mapping",
+    "jitInfo": "Users who log in via SSO automatically receive the role mapped to their IdP group."
+  },
+  "fileShares": {
+    "title": "File Shares",
+    "subtitle": "ACL and permission audit on Windows Server",
+    "addConfig": "New Config",
+    "serverHostname": "Server (hostname)",
+    "uncRoot": "Root UNC path",
+    "scanDepth": "Scan depth",
+    "getScanScript": "Get Scan Script",
+    "shares": "Shares",
+    "acls": "ACL Entries",
+    "health": {
+      "ok": "Healthy",
+      "warning": "Warning",
+      "error": "Critical",
+      "unknown": "Not scanned"
+    }
+  },
+  "syslog": {
+    "title": "CEF Syslog Forwarder",
+    "subtitle": "Forward Eternity events to any SIEM via syslog CEF",
+    "addConfig": "New Target",
+    "targetHost": "Target host",
+    "targetPort": "Port",
+    "protocol": "Protocol",
+    "eventsForwarded": "Events forwarded",
+    "testSend": "Send test event"
+  },
+  "billing": {
+    "title": "Billing & Plans",
+    "currentPlan": "Current plan",
+    "invoices": "Invoices",
+    "upgradePrompt": "Upgrade to unlock more features.",
+    "stripePortal": "Payment Portal",
+    "status": {
+      "active": "Active",
+      "trialing": "Trial",
+      "past_due": "Payment pending",
+      "canceled": "Canceled"
+    }
+  }
+}

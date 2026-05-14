@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, ai_safety, alerts, assistant, assistant_docs, audit, auth, bulk_jobs, category_roles, cloud_accounts, compliance, compliance_packs, config_migration, connectivity, database_connectors, device_groups, devices, dlp, documents, edge_agents, enterprise, executive, firewall_migration, firmware, glpi, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, orchestrator, platform_config, playbooks, product, recommendations, remediation, security_infra, self_service, selfservice_portal, server_operations, servers, siem, templates, tenants, variables, vm_migration
+from app.api import admin, ai_safety, alerts, assistant, assistant_docs, audit, auth, bulk_jobs, category_roles, cloud_accounts, compliance, compliance_packs, config_migration, connectivity, database_connectors, device_groups, devices, dlp, documents, edge_agents, enterprise, executive, file_shares, firewall_migration, firmware, glpi, glpi_widget, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, invite, knowledge, module_roles, onboarding, operations, orchestrator, platform_config, playbooks, product, recommendations, remediation, rmm, security_infra, self_service, selfservice_portal, server_operations, servers, siem, siem_syslog, sso_mappings, stripe_webhook, templates, tenants, variables, vm_migration
 from app.config import settings
 
 log = structlog.get_logger()
@@ -102,6 +102,12 @@ app.include_router(security_infra.router,      prefix="/security-infra",        
 app.include_router(edge_agents.router,         prefix="/platform",                     tags=["edge-agents"])
 app.include_router(product.router,             prefix="/product",                      tags=["product"])
 app.include_router(dlp.router,                 prefix="/dlp",                           tags=["dlp"])
+app.include_router(rmm.router,                 prefix="/rmm",                           tags=["rmm"])
+app.include_router(sso_mappings.router,        prefix="/sso-mappings",                  tags=["sso-mappings"])
+app.include_router(file_shares.router,         prefix="/file-shares",                   tags=["file-shares"])
+app.include_router(siem_syslog.router,         prefix="/siem-syslog",                   tags=["siem-syslog"])
+app.include_router(glpi_widget.router,         prefix="/glpi-widget",                   tags=["glpi-widget"])
+app.include_router(stripe_webhook.router,      prefix="/webhooks",                      tags=["stripe-webhook"])
 
 
 class FireManagerError(Exception):

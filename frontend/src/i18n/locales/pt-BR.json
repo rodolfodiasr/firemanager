@@ -1,0 +1,123 @@
+{
+  "common": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "create": "Criar",
+    "test": "Testar",
+    "sync": "Sincronizar",
+    "loading": "Carregando…",
+    "error": "Erro",
+    "success": "Sucesso",
+    "noData": "Nenhum registro encontrado.",
+    "confirm": "Confirmar",
+    "close": "Fechar",
+    "search": "Buscar",
+    "active": "Ativo",
+    "inactive": "Inativo",
+    "enabled": "Habilitado",
+    "disabled": "Desabilitado",
+    "online": "Online",
+    "offline": "Offline",
+    "status": "Status",
+    "name": "Nome",
+    "actions": "Ações",
+    "createdAt": "Criado em",
+    "updatedAt": "Atualizado em",
+    "lastSync": "Última sincronização"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "devices": "Dispositivos",
+    "operations": "Operações",
+    "servers": "Servidores",
+    "identity": "Identidade",
+    "compliance": "Compliance",
+    "siem": "SIEM",
+    "soar": "SOAR",
+    "rmm": "RMM",
+    "glpi": "GLPI",
+    "settings": "Configurações",
+    "assistant": "Assistente IA",
+    "audit": "Auditoria"
+  },
+  "rmm": {
+    "title": "Integrações RMM",
+    "subtitle": "Gerencie conexões com Tactical RMM, NinjaRMM, Atera e ConnectWise",
+    "addIntegration": "Nova Integração",
+    "type": "Tipo de RMM",
+    "baseUrl": "URL Base",
+    "agents": "Agentes",
+    "lastSync": "Última Sincronização",
+    "syncNow": "Sincronizar Agora",
+    "testConnection": "Testar Conexão",
+    "types": {
+      "tactical_rmm": "Tactical RMM",
+      "ninja_rmm": "NinjaRMM (NinjaOne)",
+      "atera": "Atera",
+      "connectwise_automate": "ConnectWise Automate"
+    },
+    "credentials": {
+      "tactical_rmm": { "label": "API Key", "hint": "Chave de API do Tactical RMM" },
+      "ninja_rmm": { "clientId": "Client ID", "clientSecret": "Client Secret", "hint": "Credenciais OAuth2 do NinjaOne" },
+      "atera": { "label": "API Key", "hint": "Chave X-API-KEY do Atera" },
+      "connectwise_automate": { "username": "Usuário", "password": "Senha", "hint": "Credenciais do ConnectWise Automate" }
+    }
+  },
+  "sso": {
+    "roleMappings": "Mapeamentos de Grupos",
+    "externalGroup": "Grupo no IdP",
+    "platformRole": "Role na Plataforma",
+    "addMapping": "Adicionar Mapeamento",
+    "jitInfo": "Usuários que fazem login via SSO recebem automaticamente o role correspondente ao grupo do IdP."
+  },
+  "fileShares": {
+    "title": "Pastas Compartilhadas",
+    "subtitle": "Auditoria de ACLs e permissões em Windows Server",
+    "addConfig": "Nova Configuração",
+    "serverHostname": "Servidor (hostname)",
+    "uncRoot": "Caminho UNC raiz",
+    "scanDepth": "Profundidade de varredura",
+    "getScanScript": "Obter Script de Varredura",
+    "submitResult": "Enviar Resultado",
+    "shares": "Compartilhamentos",
+    "acls": "Entradas de ACL",
+    "health": {
+      "ok": "Saudável",
+      "warning": "Atenção",
+      "error": "Crítico",
+      "unknown": "Não escaneado"
+    },
+    "issues": {
+      "abe": "ABE desativado",
+      "excessive": "Permissões excessivas"
+    }
+  },
+  "syslog": {
+    "title": "CEF Syslog Forwarder",
+    "subtitle": "Encaminhe eventos do Eternity para qualquer SIEM via syslog CEF",
+    "addConfig": "Novo Destino",
+    "targetHost": "Host destino",
+    "targetPort": "Porta",
+    "protocol": "Protocolo",
+    "tls": "TLS",
+    "facility": "Facility",
+    "minSeverity": "Severidade mínima",
+    "eventsForwarded": "Eventos encaminhados",
+    "testSend": "Enviar evento de teste"
+  },
+  "billing": {
+    "title": "Billing & Planos",
+    "currentPlan": "Plano atual",
+    "invoices": "Faturas",
+    "upgradePrompt": "Faça upgrade para desbloquear mais recursos.",
+    "stripePortal": "Portal de Pagamento",
+    "status": {
+      "active": "Ativo",
+      "trialing": "Trial",
+      "past_due": "Pagamento pendente",
+      "canceled": "Cancelado"
+    }
+  }
+}
