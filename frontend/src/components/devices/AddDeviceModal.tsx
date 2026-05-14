@@ -289,7 +289,7 @@ export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProp
             <input
               {...register("name", { required: "Nome obrigatório" })}
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              placeholder={category === "firewall" ? "FW-Sede-01" : category === "router" ? "RTR-Edge-01" : "SW-Andar2-01"}
+              placeholder={category === "firewall" ? "FW-Sede-01" : category === "routing" ? "RTR-Edge-01" : "SW-Andar2-01"}
             />
             {errors.name && <p className="text-red-600 text-xs mt-1">{errors.name.message}</p>}
           </div>
@@ -467,7 +467,7 @@ export function AddDeviceModal({ isOpen, onClose, onSubmit }: AddDeviceModalProp
               {...register("notes")}
               rows={2}
               className="w-full border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
-              placeholder={`Ex: ${category === "firewall" ? "Firewall perimetral sede SP" : category === "router" ? "Roteador de borda ISP primário" : "Switch de distribuição 2º andar"}`}
+              placeholder={`Ex: ${category === "firewall" ? "Firewall perimetral sede SP" : category === "routing" ? "Roteador de borda ISP primário" : "Switch de distribuição 2º andar"}`}
             />
           </div>
 

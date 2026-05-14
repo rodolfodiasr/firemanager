@@ -162,10 +162,10 @@ function DevicesOverviewCard({ devices }: { devices: Device[] }) {
             {catCounts.switch} {catCounts.switch === 1 ? "switch" : "switches"}
           </div>
         )}
-        {catCounts.router > 0 && (
+        {catCounts.routing > 0 && (
           <div className="flex items-center gap-1 text-xs text-gray-500">
             <Globe size={11} className="text-blue-400" />
-            {catCounts.router} {catCounts.router === 1 ? "roteador" : "roteadores"}
+            {catCounts.routing} {catCounts.routing === 1 ? "roteador" : "roteadores"}
           </div>
         )}
       </div>
