@@ -1,7 +1,5 @@
 """F36.cont — Governança de Identidade: postura, role mining, saúde de grupos."""
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 
 revision = "0059"
 down_revision = "0058"
@@ -10,65 +8,66 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "identity_posture_snapshots",
-        sa.Column("id", PG_UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", PG_UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("score", sa.Integer, nullable=False),               # 0-100
-        sa.Column("mfa_pct", sa.Float, nullable=True),
-        sa.Column("admin_permanent_pct", sa.Float, nullable=True),    # % admins com roles permanentes
-        sa.Column("campaigns_on_time_pct", sa.Float, nullable=True),
-        sa.Column("sod_critical_open", sa.Integer, nullable=True),
-        sa.Column("inactive_accounts", sa.Integer, nullable=True),
-        sa.Column("details", JSONB, nullable=True),
-        sa.Column("computed_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False),
-    )
-    op.create_index("ix_identity_posture_tenant_id", "identity_posture_snapshots", ["tenant_id"])
-    op.create_index("ix_identity_posture_computed_at", "identity_posture_snapshots", ["tenant_id", "computed_at"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS identity_posture_snapshots (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            score INTEGER NOT NULL,
+            mfa_pct FLOAT,
+            admin_permanent_pct FLOAT,
+            campaigns_on_time_pct FLOAT,
+            sod_critical_open INTEGER,
+            inactive_accounts INTEGER,
+            details JSONB,
+            computed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_identity_posture_tenant_id ON identity_posture_snapshots(tenant_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_identity_posture_computed_at ON identity_posture_snapshots(tenant_id, computed_at)")
 
-    op.create_table(
-        "excessive_access_alerts",
-        sa.Column("id", PG_UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", PG_UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("user_id", PG_UUID(as_uuid=True), sa.ForeignKey("ad_users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("rule_type", sa.String(60), nullable=False),       # too_many_groups | multi_dept | stale_admin | excess_vs_peers
-        sa.Column("details", JSONB, nullable=True),
-        sa.Column("severity", sa.String(20), nullable=False, server_default="medium"),
-        sa.Column("status", sa.String(20), nullable=False, server_default="open"),  # open | dismissed | remediated
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False),
-    )
-    op.create_index("ix_excessive_access_tenant_id", "excessive_access_alerts", ["tenant_id"])
+    # user_id sem FK para ad_users — tabela pode não existir neste deployment
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS excessive_access_alerts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            user_id UUID NOT NULL,
+            rule_type VARCHAR(60) NOT NULL,
+            details JSONB,
+            severity VARCHAR(20) NOT NULL DEFAULT 'medium',
+            status VARCHAR(20) NOT NULL DEFAULT 'open',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_excessive_access_tenant_id ON excessive_access_alerts(tenant_id)")
 
-    op.create_table(
-        "group_health_reports",
-        sa.Column("id", PG_UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", PG_UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("group_id", PG_UUID(as_uuid=True), sa.ForeignKey("ad_groups.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("health_score", sa.Integer, nullable=False),        # 0-100
-        sa.Column("issues", JSONB, nullable=True),                    # list of {type, description}
-        sa.Column("analyzed_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False),
-    )
-    op.create_index("ix_group_health_tenant_id", "group_health_reports", ["tenant_id"])
+    # group_id sem FK para ad_groups — tabela pode não existir neste deployment
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS group_health_reports (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            group_id UUID NOT NULL,
+            health_score INTEGER NOT NULL,
+            issues JSONB,
+            analyzed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_group_health_tenant_id ON group_health_reports(tenant_id)")
 
-    op.create_table(
-        "role_profiles",
-        sa.Column("id", PG_UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", PG_UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("job_title", sa.String(200), nullable=False),
-        sa.Column("department", sa.String(200), nullable=True),
-        sa.Column("standard_groups", JSONB, nullable=True),           # list of group object_ids present in >80% of users
-        sa.Column("computed_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now(), nullable=False),
-    )
-    op.create_index("ix_role_profiles_tenant_id", "role_profiles", ["tenant_id"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS role_profiles (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            job_title VARCHAR(200) NOT NULL,
+            department VARCHAR(200),
+            standard_groups JSONB,
+            computed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_role_profiles_tenant_id ON role_profiles(tenant_id)")
 
 
 def downgrade() -> None:
-    op.drop_index("ix_role_profiles_tenant_id", table_name="role_profiles")
-    op.drop_table("role_profiles")
-    op.drop_index("ix_group_health_tenant_id", table_name="group_health_reports")
-    op.drop_table("group_health_reports")
-    op.drop_index("ix_excessive_access_tenant_id", table_name="excessive_access_alerts")
-    op.drop_table("excessive_access_alerts")
-    op.drop_index("ix_identity_posture_computed_at", table_name="identity_posture_snapshots")
-    op.drop_index("ix_identity_posture_tenant_id", table_name="identity_posture_snapshots")
-    op.drop_table("identity_posture_snapshots")
+    op.execute("DROP TABLE IF EXISTS role_profiles")
+    op.execute("DROP TABLE IF EXISTS group_health_reports")
+    op.execute("DROP TABLE IF EXISTS excessive_access_alerts")
+    op.execute("DROP TABLE IF EXISTS identity_posture_snapshots")
