@@ -24,7 +24,7 @@ def upgrade() -> None:
             tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
             user_id UUID REFERENCES users(id) ON DELETE SET NULL,
             operation_id UUID REFERENCES operations(id) ON DELETE SET NULL,
-            session_id UUID REFERENCES assistant_sessions(id) ON DELETE SET NULL,
+            session_id UUID,
             model VARCHAR(100) NOT NULL,
             prompt_tokens INTEGER NOT NULL DEFAULT 0,
             completion_tokens INTEGER NOT NULL DEFAULT 0,
