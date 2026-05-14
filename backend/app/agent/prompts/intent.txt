@@ -31,7 +31,8 @@ Analise a solicitação do usuário e identifique:
    - create_vlan: Criar uma ou mais VLANs no switch/roteador — use quando o usuário pede "criar VLAN", "adicionar VLAN", "crie as VLANs", "configurar VLAN X" com descrição/nome
    - delete_vlan: Remover/deletar uma ou mais VLANs do switch/roteador
    - configure_port: Configurar uma porta/interface do switch — access, trunk, hybrid, SVI; inclui definir VLAN de acesso, uplink trunk, porta de AP, etc.
-   - unknown: Solicitação não reconhecida
+   - diagnose: Diagnosticar, analisar ou investigar um problema — uso de CPU alta, memória, latência, conectividade, performance, erro em serviço, comportamento anômalo, "como posso ver", "como posso analisar", "ajude a investigar", "o que pode ser", "como verificar", "estamos com problema de X"
+   - unknown: Solicitação não reconhecida ou ambígua
 
 2. **present_fields**: Campos já fornecidos pelo usuário (ex: src_address, dst_address, service, action, name)
 

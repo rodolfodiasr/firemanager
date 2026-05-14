@@ -269,7 +269,9 @@ def check_action_plan(action_plan: dict[str, Any], user_input: str = "") -> Guar
         result.violations.append(GuardrailViolation(
             Severity.BLOCK, "unknown_intent", intent,
             "O agente não conseguiu mapear esta solicitação para uma operação segura conhecida. "
-            "Reformule o pedido com mais detalhes ou use o CLI Direto para executar manualmente.",
+            "Dica: para diagnósticos (CPU, latência, tráfego) use a aba Investigar. "
+            "Para executar um comando específico de leitura diga: 'execute o comando show X'. "
+            "Para configurações, descreva a operação desejada com mais detalhes.",
         ))
 
     # Warn for dangerous intents with no confirmation context
