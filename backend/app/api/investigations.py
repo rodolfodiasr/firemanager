@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.auth import TenantContext, get_tenant_context
 from app.database import get_db
@@ -121,9 +122,17 @@ def _session_read(s: InvestigationSession) -> InvestigationRead:
     )
 
 
+_LOAD_RELATIONS = [
+    selectinload(InvestigationSession.phases),
+    selectinload(InvestigationSession.messages),
+]
+
+
 async def _get_session(db: AsyncSession, session_id: UUID, tenant_id: UUID) -> InvestigationSession:
     result = await db.execute(
-        select(InvestigationSession).where(
+        select(InvestigationSession)
+        .options(*_LOAD_RELATIONS)
+        .where(
             InvestigationSession.id == session_id,
             InvestigationSession.tenant_id == tenant_id,
         )
@@ -132,6 +141,16 @@ async def _get_session(db: AsyncSession, session_id: UUID, tenant_id: UUID) -> I
     if not session:
         raise HTTPException(status_code=404, detail="Sessão de investigação não encontrada.")
     return session
+
+
+async def _reload_session(db: AsyncSession, session_id: UUID) -> InvestigationSession:
+    """Re-fetch a session with relationships after mutations (avoids lazy-load MissingGreenlet)."""
+    result = await db.execute(
+        select(InvestigationSession)
+        .options(*_LOAD_RELATIONS)
+        .where(InvestigationSession.id == session_id)
+    )
+    return result.scalar_one()
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -171,8 +190,7 @@ async def start_investigation(
 
     await svc.plan_investigation(db, session)
     await db.flush()
-    await db.refresh(session)
-    return _session_read(session)
+    return _session_read(await _reload_session(db, session.id))
 
 
 @router.get("", response_model=list[InvestigationRead])
@@ -183,8 +201,10 @@ async def list_investigations(
     limit: int = 20,
 ) -> list[InvestigationRead]:
     """List recent investigation sessions for this tenant."""
-    q = select(InvestigationSession).where(
-        InvestigationSession.tenant_id == ctx.tenant.id
+    q = (
+        select(InvestigationSession)
+        .options(*_LOAD_RELATIONS)
+        .where(InvestigationSession.tenant_id == ctx.tenant.id)
     )
     if agent_type:
         q = q.where(InvestigationSession.agent_type == agent_type)
@@ -228,8 +248,7 @@ async def run_phase(
     await svc.execute_phase(db, session, phase)
     await svc.analyze_phase(db, session, phase)
     await db.flush()
-    await db.refresh(session)
-    return _session_read(session)
+    return _session_read(await _reload_session(db, session_id))
 
 
 @router.post("/{session_id}/message", response_model=dict)
@@ -259,8 +278,7 @@ async def synthesize(
     session = await _get_session(db, session_id, ctx.tenant.id)
     await svc.synthesize_investigation(db, session)
     await db.flush()
-    await db.refresh(session)
-    return _session_read(session)
+    return _session_read(await _reload_session(db, session_id))
 
 
 @router.post("/{session_id}/export-runbook", response_model=dict)
