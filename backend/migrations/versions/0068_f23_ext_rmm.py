@@ -4,9 +4,6 @@ Revision ID: 0068
 Revises: 0067
 """
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-import uuid
 
 revision = "0068"
 down_revision = "0067"
@@ -15,47 +12,47 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "rmm_integrations",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
-        sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("name", sa.String(200), nullable=False),
-        sa.Column("rmm_type", sa.String(30), nullable=False),
-        sa.Column("base_url", sa.Text, nullable=False),
-        sa.Column("config_encrypted", sa.Text, nullable=True),
-        sa.Column("verify_ssl", sa.Boolean, nullable=False, server_default="true"),
-        sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
-        sa.Column("last_sync_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("last_sync_status", sa.String(20), nullable=True),
-        sa.Column("last_sync_message", sa.Text, nullable=True),
-        sa.Column("agent_count", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-    )
-
-    op.create_table(
-        "rmm_agents",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
-        sa.Column("integration_id", UUID(as_uuid=True), sa.ForeignKey("rmm_integrations.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("external_id", sa.String(200), nullable=False),
-        sa.Column("hostname", sa.String(200), nullable=False),
-        sa.Column("os_name", sa.Text, nullable=True),
-        sa.Column("ip_address", sa.String(50), nullable=True),
-        sa.Column("status", sa.String(20), nullable=False, server_default="unknown"),
-        sa.Column("last_seen", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("patches_pending", sa.Integer, nullable=True),
-        sa.Column("alerts_count", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("raw_data", JSONB, nullable=True),
-        sa.Column("synced_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-    )
-    op.create_unique_constraint(
-        "uq_rmm_agents_integration_external",
-        "rmm_agents",
-        ["integration_id", "external_id"],
-    )
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS rmm_integrations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            name VARCHAR(200) NOT NULL,
+            rmm_type VARCHAR(30) NOT NULL,
+            base_url TEXT NOT NULL,
+            config_encrypted TEXT,
+            verify_ssl BOOLEAN NOT NULL DEFAULT true,
+            is_active BOOLEAN NOT NULL DEFAULT true,
+            last_sync_at TIMESTAMPTZ,
+            last_sync_status VARCHAR(20),
+            last_sync_message TEXT,
+            agent_count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_rmm_integrations_tenant_id ON rmm_integrations(tenant_id)")
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS rmm_agents (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            integration_id UUID NOT NULL REFERENCES rmm_integrations(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            external_id VARCHAR(200) NOT NULL,
+            hostname VARCHAR(200) NOT NULL,
+            os_name TEXT,
+            ip_address VARCHAR(50),
+            status VARCHAR(20) NOT NULL DEFAULT 'unknown',
+            last_seen TIMESTAMPTZ,
+            patches_pending INTEGER,
+            alerts_count INTEGER NOT NULL DEFAULT 0,
+            raw_data JSONB,
+            synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (integration_id, external_id)
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_rmm_agents_integration_id ON rmm_agents(integration_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_rmm_agents_tenant_id ON rmm_agents(tenant_id)")
 
 
 def downgrade() -> None:
-    op.drop_table("rmm_agents")
-    op.drop_table("rmm_integrations")
+    op.execute("DROP TABLE IF EXISTS rmm_agents")
+    op.execute("DROP TABLE IF EXISTS rmm_integrations")

@@ -4,9 +4,6 @@ Revision ID: 0070
 Revises: 0069
 """
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-import uuid
 
 revision = "0070"
 down_revision = "0069"
@@ -15,55 +12,61 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "file_share_configs",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
-        sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("name", sa.String(200), nullable=False),
-        sa.Column("server_hostname", sa.String(200), nullable=False),
-        sa.Column("unc_root", sa.String(500), nullable=False),
-        sa.Column("edge_agent_id", UUID(as_uuid=True), sa.ForeignKey("edge_agents.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("config_encrypted", sa.Text, nullable=True),
-        sa.Column("scan_depth", sa.Integer, nullable=False, server_default="2"),
-        sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
-        sa.Column("last_scan_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("last_scan_status", sa.String(20), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-    )
-
-    op.create_table(
-        "file_share_shares",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
-        sa.Column("config_id", UUID(as_uuid=True), sa.ForeignKey("file_share_configs.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("share_name", sa.String(200), nullable=False),
-        sa.Column("unc_path", sa.String(500), nullable=False),
-        sa.Column("description", sa.Text, nullable=True),
-        sa.Column("abe_enabled", sa.Boolean, nullable=True),
-        sa.Column("health_status", sa.String(20), nullable=False, server_default="unknown"),
-        sa.Column("health_issues", JSONB, nullable=True),
-        sa.Column("acl_count", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("scanned_at", sa.DateTime(timezone=True), nullable=True),
-    )
-
-    op.create_table(
-        "file_share_acl_entries",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
-        sa.Column("share_id", UUID(as_uuid=True), sa.ForeignKey("file_share_shares.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("folder_path", sa.Text, nullable=False),
-        sa.Column("principal_name", sa.String(300), nullable=False),
-        sa.Column("principal_type", sa.String(20), nullable=False, server_default="unknown"),
-        sa.Column("permission_type", sa.String(50), nullable=False),
-        sa.Column("inherited", sa.Boolean, nullable=False, server_default="false"),
-        sa.Column("is_deny", sa.Boolean, nullable=False, server_default="false"),
-        sa.Column("depth", sa.Integer, nullable=False, server_default="0"),
-        sa.Column("scanned_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-    )
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS file_share_configs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            name VARCHAR(200) NOT NULL,
+            server_hostname VARCHAR(200) NOT NULL,
+            unc_root VARCHAR(500) NOT NULL,
+            edge_agent_id UUID REFERENCES edge_agents(id) ON DELETE SET NULL,
+            config_encrypted TEXT,
+            scan_depth INTEGER NOT NULL DEFAULT 2,
+            is_active BOOLEAN NOT NULL DEFAULT true,
+            last_scan_at TIMESTAMPTZ,
+            last_scan_status VARCHAR(20),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_file_share_configs_tenant_id ON file_share_configs(tenant_id)")
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS file_share_shares (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            config_id UUID NOT NULL REFERENCES file_share_configs(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            share_name VARCHAR(200) NOT NULL,
+            unc_path VARCHAR(500) NOT NULL,
+            description TEXT,
+            abe_enabled BOOLEAN,
+            health_status VARCHAR(20) NOT NULL DEFAULT 'unknown',
+            health_issues JSONB,
+            acl_count INTEGER NOT NULL DEFAULT 0,
+            scanned_at TIMESTAMPTZ
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_file_share_shares_config_id ON file_share_shares(config_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_file_share_shares_tenant_id ON file_share_shares(tenant_id)")
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS file_share_acl_entries (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            share_id UUID NOT NULL REFERENCES file_share_shares(id) ON DELETE CASCADE,
+            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+            folder_path TEXT NOT NULL,
+            principal_name VARCHAR(300) NOT NULL,
+            principal_type VARCHAR(20) NOT NULL DEFAULT 'unknown',
+            permission_type VARCHAR(50) NOT NULL,
+            inherited BOOLEAN NOT NULL DEFAULT false,
+            is_deny BOOLEAN NOT NULL DEFAULT false,
+            depth INTEGER NOT NULL DEFAULT 0,
+            scanned_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_file_share_acl_entries_share_id ON file_share_acl_entries(share_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_file_share_acl_entries_tenant_id ON file_share_acl_entries(tenant_id)")
 
 
 def downgrade() -> None:
-    op.drop_table("file_share_acl_entries")
-    op.drop_table("file_share_shares")
-    op.drop_table("file_share_configs")
+    op.execute("DROP TABLE IF EXISTS file_share_acl_entries")
+    op.execute("DROP TABLE IF EXISTS file_share_shares")
+    op.execute("DROP TABLE IF EXISTS file_share_configs")
