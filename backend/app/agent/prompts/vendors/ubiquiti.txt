@@ -91,6 +91,37 @@ DHCP server em interface:
    "set service dhcp-server shared-network-name LAN subnet 192.168.1.0/24 start 192.168.1.100 stop 192.168.1.200",
    "commit", "save"]
 
+NTP (ubiquiti EdgeOS):
+  ["set system ntp server 10.0.0.1",
+   "set system ntp server 10.0.0.2",
+   "commit", "save"]
+  Remover NTP: ["delete system ntp server 10.0.0.1", "commit", "save"]
+  Timezone:    ["set system time-zone America/Sao_Paulo", "commit", "save"]
+
+Hostname (ubiquiti EdgeOS):
+  ["set system host-name SW-NOME", "commit", "save"]
+
+Syslog (ubiquiti EdgeOS):
+  ["set system syslog host 10.0.0.1 facility all level info",
+   "commit", "save"]
+  Remover: ["delete system syslog host 10.0.0.1", "commit", "save"]
+
+SNMP (ubiquiti EdgeOS):
+  Community RO:
+    ["set service snmp community PUBLIC authorization ro",
+     "commit", "save"]
+  Localização e contato:
+    ["set service snmp location DATACENTER-NOME",
+     "set service snmp contact admin@empresa.com",
+     "commit", "save"]
+  Trap host:
+    ["set service snmp trap-target 10.0.0.70 community PUBLIC",
+     "commit", "save"]
+
+Banner de login (ubiquiti EdgeOS):
+  ["set system login banner \"Acesso Restrito. Monitorado e sujeito a sanções.\"",
+   "commit", "save"]
+
 STP — nota importante:
   EdgeOS (EdgeRouter) é um roteador L3 — NÃO possui STP nem comandos de spanning-tree.
   STP existe apenas nos switches EdgeSwitch (firmware diferente do EdgeOS).
@@ -118,6 +149,36 @@ REGRAS IMPORTANTES PARA UBIQUITI EDGEOS:
   ssh_show_commands: ["show ip route"]
   ssh_show_commands: ["show arp"]
   ssh_show_commands: ["show version"]
-  ssh_show_commands: ["show interfaces ethernet eth0"]
+  ssh_show_commands: ["show interfaces"]
+  ssh_show_commands: ["show interfaces ethernet eth1"]
   ssh_show_commands: ["show firewall"]
   ssh_show_commands: ["show nat"]
+  ssh_show_commands: ["show log"]
+  ssh_show_commands: ["show system processes"]
+
+── GET_INFO DIAGNÓSTICO (ubiquiti EdgeOS) — usuário descreve um PROBLEMA ─────────
+
+CPU alta / lentidão:
+  ssh_show_commands: [
+    "show system processes", "show system memory",
+    "show interfaces", "show ip route", "show version"
+  ]
+
+Problemas de conectividade / tráfego:
+  ssh_show_commands: [
+    "show interfaces", "show ip route",
+    "show arp", "show firewall", "show nat", "show version"
+  ]
+
+Erros / logs do sistema:
+  ssh_show_commands: [
+    "show log", "show system processes",
+    "show interfaces", "show version"
+  ]
+
+Diagnóstico geral:
+  ssh_show_commands: [
+    "show version", "show system processes", "show system memory",
+    "show interfaces", "show ip route", "show arp",
+    "show firewall", "show log"
+  ]

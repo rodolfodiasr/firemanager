@@ -85,6 +85,52 @@ Rota padrão / estática:
   ["ip route-static 0.0.0.0 0.0.0.0 10.100.0.1"]
   ["ip route-static 10.10.10.0 255.255.255.0 192.168.1.254"]
 
+VLAN (operações adicionais):
+  Renomear VLAN (mudar description): ["vlan 100", " description NOVO-NOME", "quit"]
+  Deletar VLAN:  ["undo vlan 100"]
+  Múltiplas:     ["vlan 100", " description GERENCIA", "quit",
+                  "vlan 200", " description CFTV", "quit"]
+
+LAG / LACP (Bridge-Aggregation):
+  Criar LAG e adicionar membros:
+    ["interface Bridge-Aggregation 1",
+     " description UPLINK-LAG",
+     " link-aggregation mode dynamic",
+     "quit",
+     "interface GigabitEthernet1/0/27",
+     " port link-aggregation group 1",
+     "quit",
+     "interface GigabitEthernet1/0/28",
+     " port link-aggregation group 1",
+     "quit"]
+  Trunk no LAG (VLANs permitidas):
+    ["interface Bridge-Aggregation 1",
+     " port link-type trunk",
+     " undo port trunk permit vlan 1",
+     " port trunk permit vlan 100 200 300",
+     "quit"]
+
+Speed e duplex:
+  ["interface GigabitEthernet1/0/1",
+   " speed 100",
+   " duplex full",
+   "quit"]
+  Voltar para auto:
+  ["interface GigabitEthernet1/0/1",
+   " undo speed",
+   " undo duplex",
+   "quit"]
+
+DHCP relay:
+  Habilitar no switch:   ["dhcp enable"]
+  No bloco de interface VLAN:
+    ["interface Vlan-interface100",
+     " dhcp relay server-group 1",
+     " dhcp relay information enable",
+     "quit"]
+  Configurar grupo de servidores:
+    ["dhcp relay server-group 1 ip 10.0.0.1"]
+
 STP — global (nível do switch, fora de qualquer bloco — NÃO inclua "quit" após estes):
   Ativar/desativar:
     ["stp enable"]
@@ -188,3 +234,65 @@ REGRAS IMPORTANTES PARA HP COMWARE:
   ssh_show_commands: ["display stp brief"]
   ssh_show_commands: ["display lldp neighbor-information list"]
   ssh_show_commands: ["display ip interface brief", "display vlan"]
+
+── SISTEMA (hp_comware):
+  Hostname:    ["sysname SW-NOME"]
+  Banner:      ["header login text \"Acesso Restrito. Monitorado e sujeito a sanções.\""]
+  Syslog:      ["info-center loghost 10.0.0.1 facility local7"]
+  Remover:     ["undo info-center loghost 10.0.0.1"]
+  Timezone:    ["clock timezone BRT minus 03:00:00"]
+  Desabilitar Telnet: ["undo telnet server enable"]
+
+── NTP (hp_comware):
+  ["ntp-service unicast-server 10.0.0.1 preference",
+   "ntp-service unicast-server 10.0.0.2"]
+  Remover NTP:  ["undo ntp-service unicast-server 10.0.0.1"]
+
+── SNMP (hp_comware):
+  Community RO: ["snmp-agent community read PUBLIC"]
+  Community RW: ["snmp-agent community write PRIVATE"]
+  Localização e contato:
+    ["snmp-agent sys-info location DATACENTER-NOME",
+     "snmp-agent sys-info contact admin@empresa.com",
+     "snmp-agent sys-info version v2c"]
+  Trap host v2c:
+    ["snmp-agent target-host trap address udp-domain 10.0.0.70 params securityname PUBLIC v2c"]
+  Habilitar SNMP (se necessário): ["snmp-agent"]
+  Desabilitar SNMP: ["undo snmp-agent"]
+
+── GET_INFO DIAGNÓSTICO (hp_comware) — usuário descreve um PROBLEMA ──────────────
+
+CPU alta / processos travados:
+  ssh_show_commands: [
+    "display cpu-usage", "display memory",
+    "display stp brief", "display mac-address count",
+    "display interface brief", "display version"
+  ]
+
+Spanning-tree / instabilidade:
+  ssh_show_commands: [
+    "display stp brief", "display stp",
+    "display mac-address count", "display interface brief",
+    "display lldp neighbor-information list", "display version"
+  ]
+
+Erros / logs do sistema:
+  ssh_show_commands: [
+    "display logbuffer", "display cpu-usage",
+    "display memory", "display interface brief", "display version"
+  ]
+
+Interfaces com erros:
+  ssh_show_commands: [
+    "display interface", "display stp brief",
+    "display lldp neighbor-information list",
+    "display mac-address count", "display version"
+  ]
+
+Diagnóstico geral:
+  ssh_show_commands: [
+    "display version", "display cpu-usage", "display memory",
+    "display interface brief", "display stp brief",
+    "display mac-address count", "display lldp neighbor-information list",
+    "display ip routing-table", "display vlan"
+  ]

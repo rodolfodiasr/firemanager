@@ -5,6 +5,11 @@ Sintaxe similar ao Cisco IOS. NÃO inclua configure/end.
 VLAN:
   ["vlan <VLAN_ID>", "name <NOME_VLAN>", "exit"]
 
+VLAN (operações adicionais):
+  Renomear VLAN:  ["vlan <VLAN_ID>", "name NOVO-NOME", "exit"]
+  Deletar VLAN:   ["no vlan <VLAN_ID>"]
+  Múltiplas:      ["vlan 100", "name GERENCIA", "exit", "vlan 200", "name CFTV", "exit"]
+
 Interface acesso:
   ["interface 1/1/1",
    "no shutdown",
@@ -162,3 +167,63 @@ REGRAS IMPORTANTES PARA ARUBA:
   ssh_show_commands: ["show spanning-tree"]
   ssh_show_commands: ["show lldp neighbors"]
   ssh_show_commands: ["show ip route"]
+
+── SISTEMA (aruba):
+  Hostname:       ["hostname SW-NOME"]
+  Banner MOTD:    ["banner motd # Acesso Restrito. Monitorado e sujeito a sanções. #"]
+  Syslog:         ["logging 10.0.0.1", "logging severity informational"]
+  Remover syslog: ["no logging 10.0.0.1"]
+  Desabilitar Telnet: ["no telnet-server", "ssh server vrf default"]
+
+── NTP (aruba):
+  ["ntp server 10.0.0.1 prefer",
+   "ntp server 10.0.0.2",
+   "ntp enable"]
+  Timezone:    ["clock timezone BRT -3"]
+  Remover NTP: ["no ntp server 10.0.0.1"]
+
+── SNMP (aruba):
+  Community RO: ["snmp-server community PUBLIC"]
+  Localização e contato:
+    ["snmp-server location DATACENTER-NOME",
+     "snmp-server contact admin@empresa.com"]
+  Trap host v2c: ["snmp-server host 10.0.0.70 community PUBLIC"]
+  Desabilitar traps desnecessários:
+    ["no snmp-server enable traps spanning-tree",
+     "no snmp-server enable traps port-security"]
+
+── GET_INFO DIAGNÓSTICO (aruba) — usuário descreve um PROBLEMA ──────────────────
+
+CPU alta / processos travados:
+  ssh_show_commands: [
+    "show processes cpu", "show system resource-utilization",
+    "show spanning-tree summary", "show mac-address-table count",
+    "show interfaces brief", "show version"
+  ]
+
+Spanning-tree / instabilidade:
+  ssh_show_commands: [
+    "show spanning-tree summary", "show spanning-tree detail",
+    "show mac-address-table count", "show interfaces brief",
+    "show lldp neighbors", "show version"
+  ]
+
+Erros / logs do sistema:
+  ssh_show_commands: [
+    "show logging", "show processes cpu",
+    "show interfaces brief", "show spanning-tree summary", "show version"
+  ]
+
+Interfaces com erros:
+  ssh_show_commands: [
+    "show interfaces brief", "show interfaces detail",
+    "show spanning-tree summary", "show lldp neighbors", "show version"
+  ]
+
+Diagnóstico geral:
+  ssh_show_commands: [
+    "show version", "show processes cpu", "show system resource-utilization",
+    "show interfaces brief", "show spanning-tree summary",
+    "show mac-address-table count", "show lldp neighbors",
+    "show ip route summary", "show vlans"
+  ]

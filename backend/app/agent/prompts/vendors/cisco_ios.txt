@@ -32,6 +32,54 @@ Trunk:
    "switchport trunk allowed vlan <VLAN_A>,<VLAN_B>",
    "exit"]
 
+VLAN (operações adicionais):
+  Renomear VLAN:          ["vlan 100", "name NOVO-NOME", "exit"]
+  Deletar VLAN:           ["no vlan 100"]
+  Múltiplas VLANs:        ["vlan 100", "name GERENCIA", "exit", "vlan 200", "name CFTV", "exit"]
+
+Interface acesso completa (com descrição, storm-control, portfast):
+  ["interface GigabitEthernet0/1",
+   "description WORKSTATION-01",
+   "switchport mode access",
+   "switchport access vlan 100",
+   "spanning-tree portfast",
+   "spanning-tree bpduguard enable",
+   "storm-control broadcast level 20",
+   "storm-control multicast level 20",
+   "no shutdown",
+   "exit"]
+
+Interface desativar / reativar:
+  ["interface GigabitEthernet0/1", "shutdown", "exit"]
+  ["interface GigabitEthernet0/1", "no shutdown", "exit"]
+
+Interface Voice VLAN (dados untagged + voz tagged):
+  ["interface GigabitEthernet0/1",
+   "description RAMAL-01",
+   "switchport mode access",
+   "switchport access vlan 10",
+   "switchport voice vlan 20",
+   "spanning-tree portfast",
+   "spanning-tree bpduguard enable",
+   "no shutdown",
+   "exit"]
+
+Interface L3 SVI (VLAN com IP):
+  ["interface Vlan100",
+   "ip address 192.168.100.1 255.255.255.0",
+   "no shutdown",
+   "exit"]
+
+DHCP relay (ip helper-address em SVI):
+  ["interface Vlan100",
+   "ip helper-address 10.0.0.1",
+   "no shutdown",
+   "exit"]
+
+Speed e duplex:
+  ["interface GigabitEthernet0/1", "speed 100", "duplex full", "exit"]
+  ["interface GigabitEthernet0/1", "speed auto", "duplex auto", "exit"]
+
 STP/RSTP — global (PVST+ por VLAN — modo padrão Cisco):
   Modo RPVST+:                ["spanning-tree mode rapid-pvst"]   ← recomendado
   Modo MSTP:                  ["spanning-tree mode mst"]
@@ -112,3 +160,74 @@ STP — show commands (diagnóstico):
   ssh_show_commands: ["show arp"]
   ssh_show_commands: ["show spanning-tree"]
   ssh_show_commands: ["show cdp neighbors"]
+
+── SISTEMA (cisco_ios):
+  Hostname:       ["hostname SW-NOME"]
+  Banner MOTD:    ["banner motd # Acesso Restrito. Monitorado e sujeito a sanções. #"]
+  Syslog:         ["logging host 10.0.0.1", "logging trap informational"]
+  Remover syslog: ["no logging host 10.0.0.1"]
+  Desabilitar Telnet (forçar SSH): ["line vty 0 15", "transport input ssh", "exit"]
+
+── NTP (cisco_ios):
+  ["ntp server 10.0.0.1 prefer",
+   "ntp server 10.0.0.2",
+   "clock timezone BRT -3"]
+  Remover NTP:  ["no ntp server 10.0.0.1"]
+
+── SNMP (cisco_ios):
+  Community RO:   ["snmp-server community PUBLIC ro"]
+  Community RO com ACL (restrição de IP recomendada):
+    ["ip access-list standard SNMP-ACL", "permit 10.0.0.70", "exit",
+     "snmp-server community PUBLIC ro SNMP-ACL"]
+  Localização e contato:
+    ["snmp-server location DATACENTER-NOME",
+     "snmp-server contact admin@empresa.com"]
+  Trap host v2c:  ["snmp-server host 10.0.0.70 version 2c PUBLIC"]
+  Desabilitar traps desnecessários:
+    ["no snmp-server enable traps spanning-tree",
+     "no snmp-server enable traps port-security",
+     "no snmp-server enable traps envmon"]
+
+── GET_INFO DIAGNÓSTICO (cisco_ios) — usuário descreve um PROBLEMA ──────────────
+
+CPU alta / processos travados:
+  ssh_show_commands: [
+    "show processes cpu sorted", "show processes cpu history",
+    "show memory statistics", "show spanning-tree summary",
+    "show interfaces status", "show version"
+  ]
+
+Spanning-tree / instabilidade / TCN:
+  ssh_show_commands: [
+    "show spanning-tree summary", "show spanning-tree detail",
+    "show mac address-table count", "show interfaces status",
+    "show cdp neighbors", "show version"
+  ]
+
+Interfaces com erros / link flapping:
+  ssh_show_commands: [
+    "show interfaces status", "show interfaces counters errors",
+    "show spanning-tree summary", "show cdp neighbors",
+    "show mac address-table count", "show version"
+  ]
+
+Lentidão de rede / tráfego lento:
+  ssh_show_commands: [
+    "show interfaces status", "show processes cpu sorted",
+    "show memory statistics", "show spanning-tree summary",
+    "show mac address-table count", "show ip route summary", "show version"
+  ]
+
+Erros / logs do sistema:
+  ssh_show_commands: [
+    "show logging", "show processes cpu sorted",
+    "show memory statistics", "show interfaces status", "show version"
+  ]
+
+Diagnóstico geral / verificação completa:
+  ssh_show_commands: [
+    "show version", "show processes cpu sorted", "show memory statistics",
+    "show interfaces status", "show spanning-tree summary",
+    "show mac address-table count", "show cdp neighbors",
+    "show ip route summary", "show vlan brief"
+  ]

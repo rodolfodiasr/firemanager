@@ -16,6 +16,55 @@ Rota estática:
 Feature (habilitar funcionalidade):
   ["feature vpc", "feature lacp"]
 
+VLAN (operações adicionais):
+  Renomear VLAN:  ["vlan 100", "name NOVO-NOME", "exit"]
+  Deletar VLAN:   ["no vlan 100"]
+  Múltiplas:      ["vlan 100", "name GERENCIA", "exit", "vlan 200", "name CFTV", "exit"]
+
+Interface acesso completa:
+  ["interface Ethernet1/1",
+   "description WORKSTATION-01",
+   "switchport mode access",
+   "switchport access vlan 100",
+   "spanning-tree port type edge",
+   "spanning-tree bpduguard enable",
+   "storm-control broadcast level 20",
+   "no shutdown",
+   "exit"]
+
+Interface trunk (uplink):
+  ["interface Ethernet1/48",
+   "description UPLINK-CORE",
+   "switchport mode trunk",
+   "switchport trunk allowed vlan 10,20,30,100",
+   "spanning-tree port type network",
+   "no shutdown",
+   "exit"]
+
+Interface desativar / reativar:
+  ["interface Ethernet1/1", "shutdown", "exit"]
+  ["interface Ethernet1/1", "no shutdown", "exit"]
+
+Interface Voice VLAN:
+  ["interface Ethernet1/1",
+   "description RAMAL-01",
+   "switchport mode access",
+   "switchport access vlan 10",
+   "switchport voice vlan 20",
+   "spanning-tree port type edge",
+   "no shutdown",
+   "exit"]
+
+DHCP relay:
+  ["interface Vlan100",
+   "ip dhcp relay address 10.0.0.1",
+   "no shutdown",
+   "exit"]
+
+Speed e duplex:
+  ["interface Ethernet1/1", "speed 1000", "duplex full", "exit"]
+  ["interface Ethernet1/1", "speed auto", "exit"]
+
 STP/RSTP — global (NX-OS usa RPVST+ ou MST):
   Modo RPVST+:              ["spanning-tree mode rapid-pvst"]    ← padrão
   Modo MST:                 ["spanning-tree mode mst"]
@@ -90,3 +139,54 @@ STP — show commands (diagnóstico):
   ssh_show_commands: ["show spanning-tree"]
   ssh_show_commands: ["show cdp neighbors"]
   ssh_show_commands: ["show vpc"]
+
+── SISTEMA (cisco_nxos):
+  Hostname:        ["hostname SW-NOME"]
+  Banner MOTD:     ["banner motd # Acesso Restrito #"]
+  Syslog:          ["logging server 10.0.0.1 5 use-vrf management"]
+  Remover syslog:  ["no logging server 10.0.0.1"]
+  Desabilitar Telnet: ["no feature telnet"]
+
+── NTP (cisco_nxos):
+  ["ntp server 10.0.0.1 prefer use-vrf management",
+   "ntp server 10.0.0.2 use-vrf management",
+   "clock timezone BRT -3 0"]
+  Remover NTP: ["no ntp server 10.0.0.1"]
+
+── SNMP (cisco_nxos):
+  Habilitar: ["feature snmp"]
+  Community RO: ["snmp-server community PUBLIC group network-operator"]
+  Localização e contato:
+    ["snmp-server location DATACENTER-NOME",
+     "snmp-server contact admin@empresa.com"]
+  Trap host v2c: ["snmp-server host 10.0.0.70 traps version 2c PUBLIC"]
+
+── GET_INFO DIAGNÓSTICO (cisco_nxos) — usuário descreve um PROBLEMA ─────────────
+
+CPU alta / processos travados:
+  ssh_show_commands: [
+    "show processes cpu sorted", "show system resources",
+    "show processes memory sorted", "show spanning-tree summary",
+    "show interfaces status", "show version"
+  ]
+
+Spanning-tree / instabilidade:
+  ssh_show_commands: [
+    "show spanning-tree summary", "show spanning-tree detail",
+    "show mac address-table count", "show interfaces status",
+    "show cdp neighbors", "show version"
+  ]
+
+Erros / logs do sistema:
+  ssh_show_commands: [
+    "show logging last 200", "show processes cpu sorted",
+    "show system resources", "show interfaces status", "show version"
+  ]
+
+Diagnóstico geral:
+  ssh_show_commands: [
+    "show version", "show processes cpu sorted", "show system resources",
+    "show interfaces status", "show spanning-tree summary",
+    "show mac address-table count", "show cdp neighbors",
+    "show ip route summary", "show vlan brief"
+  ]

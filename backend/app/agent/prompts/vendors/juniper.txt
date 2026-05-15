@@ -67,6 +67,39 @@ Rota padrão:
   ["set routing-options static route 0.0.0.0/0 next-hop 192.168.1.254",
    "commit"]
 
+Descrição de interface:
+  ["set interfaces ge-0/0/1 description WORKSTATION-01", "commit"]
+
+Desativar porta:
+  ["set interfaces ge-0/0/1 disable", "commit"]
+
+Reativar porta:
+  ["delete interfaces ge-0/0/1 disable", "commit"]
+
+LAG / LACP (aggregated-ethernet):
+  Habilitar AE (uma vez):
+    ["set chassis aggregated-devices ethernet device-count 8", "commit"]
+  Criar LAG e adicionar membros:
+    ["set interfaces ae0 description UPLINK-LAG",
+     "set interfaces ae0 aggregated-ether-options lacp active",
+     "set interfaces ge-0/0/0 ether-options 802.3ad ae0",
+     "set interfaces ge-0/0/1 ether-options 802.3ad ae0",
+     "commit"]
+  Trunk no LAG:
+    ["set interfaces ae0 unit 0 family ethernet-switching interface-mode trunk",
+     "set interfaces ae0 unit 0 family ethernet-switching vlan members <NOME_VLAN>",
+     "commit"]
+
+DHCP relay:
+  ["set forwarding-options helpers bootp server 10.0.0.1",
+   "set forwarding-options helpers bootp interface ge-0/0/1.0",
+   "commit"]
+
+Speed e duplex por interface:
+  ["set interfaces ge-0/0/1 speed 100m",
+   "set interfaces ge-0/0/1 link-mode full-duplex",
+   "commit"]
+
 STP/RSTP — global (Juniper EX Series usa "set protocols rstp"):
   Ativar RSTP:      ["set protocols rstp", "commit"]
   Desativar RSTP:   ["delete protocols rstp", "commit"]
@@ -147,3 +180,70 @@ REGRAS IMPORTANTES PARA JUNIPER:
   ssh_show_commands: ["show spanning-tree interface"]
   ssh_show_commands: ["show lldp neighbors"]
   ssh_show_commands: ["show chassis hardware"]
+
+── SISTEMA (juniper):
+  Hostname:    ["set system host-name SW-NOME", "commit"]
+  Banner:      ["set system login message \"Acesso Restrito. Monitorado.\"", "commit"]
+  Syslog:      ["set system syslog host 10.0.0.1 any info",
+                "set system syslog host 10.0.0.1 authorization info",
+                "commit"]
+  Remover syslog: ["delete system syslog host 10.0.0.1", "commit"]
+  Timezone:    ["set system time-zone America/Sao_Paulo", "commit"]
+
+── NTP (juniper):
+  ["set system ntp server 10.0.0.1 prefer",
+   "set system ntp server 10.0.0.2",
+   "commit"]
+  Remover NTP: ["delete system ntp server 10.0.0.1", "commit"]
+
+── SNMP (juniper):
+  Community RO:
+    ["set snmp community PUBLIC authorization read-only", "commit"]
+  Localização e contato:
+    ["set snmp location DATACENTER-NOME",
+     "set snmp contact admin@empresa.com",
+     "commit"]
+  Trap host v2c:
+    ["set snmp trap-group PUBLIC version v2",
+     "set snmp trap-group PUBLIC targets 10.0.0.70",
+     "commit"]
+  Restringir SNMP a IP específico:
+    ["set snmp client-list ALLOWED-NMS 10.0.0.70/32",
+     "set snmp community PUBLIC client-list-name ALLOWED-NMS",
+     "commit"]
+
+── GET_INFO DIAGNÓSTICO (juniper) — usuário descreve um PROBLEMA ─────────────────
+
+CPU alta / processos travados:
+  ssh_show_commands: [
+    "show system processes extensive", "show chassis routing-engine",
+    "show spanning-tree bridge", "show spanning-tree interface",
+    "show interfaces terse", "show version"
+  ]
+
+Spanning-tree / instabilidade:
+  ssh_show_commands: [
+    "show spanning-tree bridge", "show spanning-tree interface",
+    "show spanning-tree statistics", "show ethernet-switching table count",
+    "show interfaces terse", "show version"
+  ]
+
+Erros / logs do sistema:
+  ssh_show_commands: [
+    "show log messages | last 200", "show system processes extensive",
+    "show chassis routing-engine", "show interfaces terse", "show version"
+  ]
+
+Interfaces com erros:
+  ssh_show_commands: [
+    "show interfaces extensive", "show spanning-tree interface",
+    "show lldp neighbors", "show ethernet-switching table count", "show version"
+  ]
+
+Diagnóstico geral:
+  ssh_show_commands: [
+    "show version", "show system processes extensive",
+    "show chassis routing-engine", "show interfaces terse",
+    "show spanning-tree bridge", "show ethernet-switching table count",
+    "show lldp neighbors", "show route summary"
+  ]

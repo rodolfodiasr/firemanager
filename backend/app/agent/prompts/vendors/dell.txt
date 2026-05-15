@@ -48,6 +48,46 @@ Rota estática:
 Rota padrão:
   ["ip route 0.0.0.0/0 192.168.1.254"]
 
+VLAN (operações adicionais):
+  Renomear VLAN (mudar description):
+    ["interface vlan 100", "description NOVO-NOME", "exit"]
+  Deletar VLAN:
+    ["no interface vlan 100"]
+  Múltiplas VLANs:
+    ["interface vlan 100", "description GERENCIA", "no shutdown", "exit",
+     "interface vlan 200", "description CFTV", "no shutdown", "exit"]
+
+Interface acesso completa (com descrição e storm-control):
+  ["interface ethernet 1/1/1",
+   "description WORKSTATION-01",
+   "no shutdown",
+   "switchport mode access",
+   "switchport access vlan 100",
+   "spanning-tree port type edge",
+   "spanning-tree bpduguard enable",
+   "storm-control broadcast pps 1000",
+   "storm-control multicast pps 1000",
+   "exit"]
+
+Interface trunk completa:
+  ["interface ethernet 1/1/48",
+   "description UPLINK-CORE",
+   "no shutdown",
+   "switchport mode trunk",
+   "switchport trunk allowed-vlan 10,20,30,100,200",
+   "spanning-tree port type network",
+   "exit"]
+
+Adicionar VLAN a trunk existente:
+  ["interface ethernet 1/1/48", "switchport trunk allowed-vlan add 300", "exit"]
+
+Remover VLAN de trunk existente:
+  ["interface ethernet 1/1/48", "switchport trunk allowed-vlan remove 300", "exit"]
+
+Speed e duplex:
+  ["interface ethernet 1/1/1", "speed 1000", "duplex full", "exit"]
+  ["interface ethernet 1/1/1", "autoneg on", "exit"]
+
 Port-channel / LAG:
   ["interface port-channel 1",
    "no shutdown",
@@ -230,3 +270,29 @@ SNMP / alto consumo de processos específicos:
     "show memory summary", "show logging",
     "show version"
   ]
+
+── SISTEMA (dell OS10):
+  Hostname:    ["hostname SW-NOME"]
+  Banner:      ["banner login \"Acesso Restrito. Monitorado e sujeito a sanções.\""]
+  Syslog:      ["logging server 10.0.0.1"]
+  Remover:     ["no logging server 10.0.0.1"]
+  Timezone:    ["clock timezone BRT -3 0"]
+  Desabilitar Telnet: ["no telnet server enable"]
+
+── NTP (dell OS10):
+  ["ntp server 10.0.0.1 prefer",
+   "ntp server 10.0.0.2"]
+  Remover NTP:  ["no ntp server 10.0.0.1"]
+
+── SNMP (dell OS10):
+  Community RO: ["snmp-server community PUBLIC ro"]
+  Community com restrição de host:
+    ["snmp-server community PUBLIC ro ipaddress 10.0.0.70 ipmask 255.255.255.255"]
+  Localização e contato:
+    ["snmp-server location DATACENTER-NOME",
+     "snmp-server contact admin@empresa.com"]
+  Trap host v2c: ["snmp-server host 10.0.0.70 traps version 2c PUBLIC"]
+  Desabilitar traps desnecessários:
+    ["no snmp-server enable traps spanning-tree",
+     "no snmp-server enable traps link",
+     "no snmp-server enable traps port-security"]
