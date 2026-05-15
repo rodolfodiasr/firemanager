@@ -460,6 +460,9 @@ export function InvestigationPanel({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Investigação ativa</p>
+          {targetLabel && (
+            <p className="text-[11px] text-brand-600 font-medium truncate">{targetLabel}</p>
+          )}
           <p className="text-sm font-medium text-gray-800 truncate">{session.problem_description}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">

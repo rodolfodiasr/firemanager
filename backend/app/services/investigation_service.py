@@ -681,9 +681,25 @@ async def export_to_assistant(
     Returns the new assistant session ID.
     """
     from app.models.assistant import AssistantSession, AssistantMessage
+    from app.models.device import Device
+    from app.models.server import Server
 
     context = _build_export_context(session)
-    title = f"Runbook: {session.problem_description[:60]}"
+
+    # Build a descriptive title including the target device/server name
+    target_label = ""
+    if session.device_id:
+        res = await db.execute(select(Device).where(Device.id == session.device_id))
+        dev = res.scalar_one_or_none()
+        if dev:
+            target_label = f" [{dev.name}]"
+    elif session.server_id:
+        res = await db.execute(select(Server).where(Server.id == session.server_id))
+        srv = res.scalar_one_or_none()
+        if srv:
+            target_label = f" [{srv.name}]"
+
+    title = f"Runbook{target_label}: {session.problem_description[:55]}"
 
     asst_session = AssistantSession(
         tenant_id=tenant_id,

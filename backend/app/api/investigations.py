@@ -84,6 +84,8 @@ class InvestigationRead(BaseModel):
     synthesis: str | None
     cross_domain_detected: bool
     cross_domain_hint: str | None
+    device_id: UUID | None = None
+    server_id: UUID | None = None
     phases: list[PhaseRead]
     messages: list[MessageRead]
     created_at: str
@@ -140,6 +142,8 @@ def _session_read(s: InvestigationSession) -> InvestigationRead:
         synthesis=s.synthesis,
         cross_domain_detected=s.cross_domain_detected,
         cross_domain_hint=s.cross_domain_hint,
+        device_id=s.device_id,
+        server_id=s.server_id,
         phases=[_phase_read(p) for p in (s.phases or [])],
         messages=[_msg_read(m) for m in (s.messages or [])],
         created_at=s.created_at.isoformat(),

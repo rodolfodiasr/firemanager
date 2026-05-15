@@ -40,6 +40,8 @@ export interface InvestigationSession {
   synthesis: string | null;
   cross_domain_detected: boolean;
   cross_domain_hint: string | null;
+  device_id: string | null;
+  server_id: string | null;
   phases: InvestigationPhase[];
   messages: InvestigationMessage[];
   created_at: string;
