@@ -11,7 +11,7 @@ import {
   Send,
   Loader2,
 } from "lucide-react";
-import type { DiagnosticAnalysis, DiagnosticSeverity } from "@/types/operation";
+import type { DiagnosticAnalysis, DiagnosticSeverity } from "../../types/operation";
 
 interface DiagnosticPanelProps {
   analysis: DiagnosticAnalysis;

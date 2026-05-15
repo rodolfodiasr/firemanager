@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { DiagnosticAnalysis } from "@/types/operation";
+import type { DiagnosticAnalysis } from "../types/operation";
 
 export interface TableColumn {
   key: string;
