@@ -216,6 +216,15 @@ async def start_or_continue_operation(
         session = _sessions.get(operation.id)
         if not session:
             session = AgentSession(device, db=db)
+            # Reconstruct analysis context from a completed get_info operation
+            if operation.status == OperationStatus.completed:
+                result_data = (operation.action_plan or {}).get("result", {})
+                if isinstance(result_data, dict) and result_data.get("output"):
+                    session.inject_execution_context(
+                        commands=result_data.get("commands", []),
+                        output=result_data.get("output", ""),
+                        analysis=result_data.get("analysis"),
+                    )
             _sessions[operation.id] = session
 
     response = await session.process(user_message)

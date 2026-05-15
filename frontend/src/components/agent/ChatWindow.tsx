@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, Loader2 } from "lucide-react";
 import type { ChatMessage, ClarificationQuestion } from "../../store/agentStore";
+import type { DiagnosticAnalysis } from "../../types/operation";
 import { MessageBubble } from "./MessageBubble";
 import { ActionPlanCard } from "./ActionPlanCard";
 import { ClarificationCard } from "./ClarificationCard";
+import { DiagnosticPanel } from "./DiagnosticPanel";
 
 interface ChatWindowProps {
   messages: ChatMessage[];
@@ -20,6 +22,11 @@ interface ChatWindowProps {
   clarificationQuestions?: ClarificationQuestion[];
   onSubmitClarification?: (answers: { id: string; answer: string }[]) => void;
   confidenceScore?: number | null;
+  // Diagnostic panel (interactive get_info follow-up)
+  diagnosticResult?: DiagnosticAnalysis | null;
+  onRunDiagnosticCommand?: (cmd: string) => void;
+  onClearDiagnostic?: () => void;
+  onDiagnosticFollowUp?: (message: string) => Promise<string>;
 }
 
 export function ChatWindow({
@@ -36,6 +43,10 @@ export function ChatWindow({
   clarificationQuestions = [],
   onSubmitClarification,
   confidenceScore,
+  diagnosticResult,
+  onRunDiagnosticCommand,
+  onClearDiagnostic,
+  onDiagnosticFollowUp,
 }: ChatWindowProps) {
   const [input, setInput] = useState(defaultInput ?? "");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -51,10 +62,18 @@ export function ChatWindow({
     setInput("");
   };
 
+  const handleRunDiagnosticCommand = (cmd: string) => {
+    if (onRunDiagnosticCommand) {
+      onRunDiagnosticCommand(cmd);
+    } else {
+      setInput(cmd);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 && (
+        {messages.length === 0 && !diagnosticResult && (
           <div className="text-center text-gray-400 mt-16">
             <p className="text-lg mb-2">Olá! Sou o FireManager AI.</p>
             <p className="text-sm">Descreva o que você precisa fazer no firewall selecionado.</p>
@@ -76,6 +95,18 @@ export function ChatWindow({
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* Diagnostic panel — rendered above input, persists across new operations */}
+      {diagnosticResult && onDiagnosticFollowUp && onClearDiagnostic && (
+        <div className="px-4 pb-2">
+          <DiagnosticPanel
+            analysis={diagnosticResult}
+            onRunCommand={handleRunDiagnosticCommand}
+            onClose={onClearDiagnostic}
+            onFollowUp={onDiagnosticFollowUp}
+          />
+        </div>
+      )}
 
       {clarifying && clarificationQuestions.length > 0 && onSubmitClarification && (
         <ClarificationCard

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { DiagnosticAnalysis } from "@/types/operation";
 
 export interface TableColumn {
   key: string;
@@ -36,6 +37,9 @@ interface AgentState {
   clarifying: boolean;
   clarificationQuestions: ClarificationQuestion[];
   confidenceScore: number | null;
+  // Diagnostic panel state — intentionally NOT cleared by resetSession
+  diagnosticResult: DiagnosticAnalysis | null;
+  diagnosticOperationId: string | null;
   addMessage: (role: "user" | "assistant", content: string, tableData?: TableData, directModeDeviceId?: string) => void;
   setOperationId: (id: string | null) => void;
   setReadyToExecute: (ready: boolean) => void;
@@ -44,6 +48,8 @@ interface AgentState {
   setLoading: (loading: boolean) => void;
   setClarifying: (clarifying: boolean, questions?: ClarificationQuestion[]) => void;
   setConfidenceScore: (score: number | null) => void;
+  setDiagnosticResult: (result: DiagnosticAnalysis | null, opId: string | null) => void;
+  clearDiagnosticResult: () => void;
   resetSession: () => void;
   reset: () => void;
 }
@@ -58,6 +64,8 @@ export const useAgentStore = create<AgentState>((set) => ({
   clarifying: false,
   clarificationQuestions: [],
   confidenceScore: null,
+  diagnosticResult: null,
+  diagnosticOperationId: null,
 
   addMessage: (role, content, tableData?, directModeDeviceId?) =>
     set((state) => ({
@@ -72,7 +80,12 @@ export const useAgentStore = create<AgentState>((set) => ({
   setClarifying: (clarifying, questions = []) =>
     set({ clarifying, clarificationQuestions: questions }),
   setConfidenceScore: (score) => set({ confidenceScore: score }),
+  setDiagnosticResult: (result, opId) =>
+    set({ diagnosticResult: result, diagnosticOperationId: opId }),
+  clearDiagnosticResult: () =>
+    set({ diagnosticResult: null, diagnosticOperationId: null }),
 
+  // resetSession clears the operation flow but intentionally preserves diagnosticResult
   resetSession: () =>
     set({
       currentOperationId: null,
@@ -96,5 +109,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       clarifying: false,
       clarificationQuestions: [],
       confidenceScore: null,
+      diagnosticResult: null,
+      diagnosticOperationId: null,
     }),
 }));

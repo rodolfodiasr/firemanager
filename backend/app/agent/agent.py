@@ -1,12 +1,22 @@
 """Main AI agent orchestrator."""
+import anthropic
 from typing import Any
 from uuid import UUID
 
 from app.agent.context_collector import ask_clarification, get_next_question
 from app.agent.intent_parser import parse_intent
 from app.agent.plan_generator import generate_action_plan
+from app.config import settings
 from app.models.device import Device
 from app.policy_engine.schemas import ActionPlan, IntentType
+
+_ANALYSIS_SYSTEM = (
+    "Você é um especialista em diagnóstico de infraestrutura de rede e segurança. "
+    "Analise SOMENTE os dados coletados do dispositivo que estão no contexto da conversa. "
+    "NÃO INVENTE dados, IPs, métricas ou configurações que não estejam nos dados fornecidos. "
+    "Se o usuário pedir informações que não estão nos dados coletados, indique quais comandos "
+    "precisariam ser executados para obter essa informação. Responda em português."
+)
 
 _REQUIRED_FIELDS_BY_INTENT: dict[str, list[str]] = {
     "create_rule": ["name", "src_address", "dst_address", "service", "action"],
@@ -46,6 +56,38 @@ class AgentSession:
         self.missing_fields: list[str] = []
         self.plan: ActionPlan | None = None
         self.ready_to_execute: bool = False
+        self.analysis_mode: bool = False
+        self.executed_commands: list[str] = []
+        self.executed_output: str = ""
+
+    def inject_execution_context(
+        self,
+        commands: list[str],
+        output: str,
+        analysis: dict[str, Any] | None = None,
+    ) -> None:
+        """Reconstruct session state from a completed execution so the user can ask follow-up questions."""
+        self.analysis_mode = True
+        self.intent = "get_info"
+        self.ready_to_execute = False
+        self.executed_commands = commands
+        self.executed_output = output
+
+        summary_line = ""
+        if analysis and analysis.get("summary"):
+            summary_line = f"\nResumo da análise: {analysis['summary']}"
+
+        data_block = (
+            "═══ DADOS REAIS COLETADOS DO DISPOSITIVO ═══\n"
+            f"Comandos executados: {', '.join(commands)}\n"
+            f"{summary_line}\n"
+            f"Saída do dispositivo:\n{output[:5000]}\n"
+            "═══ FIM DOS DADOS — NÃO INVENTE INFORMAÇÕES ALÉM DESTES DADOS ═══"
+        )
+        self.conversation_history = [
+            {"role": "user", "content": "[Sistema: dados de diagnóstico coletados do dispositivo]"},
+            {"role": "assistant", "content": data_block},
+        ]
 
     def _compute_missing(self) -> list[str]:
         required = _REQUIRED_FIELDS_BY_INTENT.get(self.intent or "unknown", [])
@@ -54,6 +96,12 @@ class AgentSession:
     async def process(self, user_message: str) -> str:
         """Process a user message and return the agent response."""
         self.conversation_history.append({"role": "user", "content": user_message})
+
+        # Analysis mode: LLM answers from already-collected device data — no SSH, no plan generation
+        if self.analysis_mode:
+            response = await self._analyze_with_context(user_message)
+            self.conversation_history.append({"role": "assistant", "content": response})
+            return response
 
         # First message: parse intent
         if self.intent is None:
@@ -92,6 +140,44 @@ class AgentSession:
 
         self.conversation_history.append({"role": "assistant", "content": response})
         return response
+
+    async def _analyze_with_context(self, user_message: str) -> str:
+        """Answer a follow-up question using only the collected device data in conversation history."""
+        messages = list(self.conversation_history)
+
+        if self.db is not None and self.tenant_id is not None:
+            try:
+                from app.services.llm_config_service import resolve_provider
+                provider = await resolve_provider(self.tenant_id, self.db)
+                response_text, _, _ = await provider.chat(
+                    messages=messages,
+                    system=_ANALYSIS_SYSTEM,
+                    max_tokens=2048,
+                )
+                return response_text
+            except Exception:
+                pass
+
+        # Fallback: direct Anthropic call
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        try:
+            msg = await client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=2048,
+                system=_ANALYSIS_SYSTEM,
+                messages=messages,
+            )
+        except anthropic.InternalServerError as exc:
+            if exc.status_code == 529:
+                msg = await client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=2048,
+                    system=_ANALYSIS_SYSTEM,
+                    messages=messages,
+                )
+            else:
+                raise
+        return msg.content[0].text if msg.content else "Não foi possível analisar os dados."
 
     async def _extract_from_reply(self, reply: str) -> None:
         """Parse the user reply to extract field values for missing fields."""

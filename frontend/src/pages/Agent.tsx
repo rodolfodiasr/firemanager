@@ -169,7 +169,9 @@ export function Agent() {
   const {
     messages, readyToExecute, requiresApproval, loading,
     clarifying, clarificationQuestions, confidenceScore, intent,
-    send, execute, submitForReview, submitClarification, reset,
+    diagnosticResult,
+    send, execute, submitForReview, submitClarification,
+    sendDiagnosticFollowUp, clearDiagnosticResult, reset,
   } = useAgent(selectedDeviceId, editOp?.id ?? null, useBookstackContext);
 
   useEffect(() => {
@@ -350,6 +352,10 @@ export function Agent() {
                   clarificationQuestions={clarificationQuestions}
                   onSubmitClarification={submitClarification}
                   confidenceScore={confidenceScore}
+                  diagnosticResult={diagnosticResult}
+                  onRunDiagnosticCommand={send}
+                  onClearDiagnostic={clearDiagnosticResult}
+                  onDiagnosticFollowUp={sendDiagnosticFollowUp}
                 />
               </div>
             )}

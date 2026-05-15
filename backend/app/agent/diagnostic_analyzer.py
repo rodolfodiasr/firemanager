@@ -37,10 +37,12 @@ Com base nos dados acima, retorne APENAS um JSON (sem markdown) com:
   ],
   "root_causes": ["causa raiz 1 identificada", "causa raiz 2"],
   "recommendations": ["ação recomendada 1", "ação recomendada 2"],
-  "requires_immediate_action": false
+  "requires_immediate_action": false,
+  "suggested_follow_up_commands": ["comando1 para investigar mais", "comando2"]
 }}
 
-Inclua apenas findings reais encontrados nos dados. Se não houver problemas, diga isso no summary."""
+Inclua apenas findings reais encontrados nos dados. Se não houver problemas, diga isso no summary.
+Em suggested_follow_up_commands, inclua 2-5 comandos de leitura (show/display) que aprofundariam o diagnóstico com base nos problemas encontrados. Se não houver nada a investigar, retorne lista vazia."""
 
 
 async def analyze_diagnostic(
@@ -92,6 +94,7 @@ async def analyze_diagnostic(
             "root_causes": [],
             "recommendations": [],
             "requires_immediate_action": False,
+            "suggested_follow_up_commands": [],
         }
 
 

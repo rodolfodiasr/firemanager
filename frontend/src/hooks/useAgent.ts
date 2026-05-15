@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import toast from "react-hot-toast";
 import { operationsApi } from "../api/operations";
 import { useAgentStore, type TableData } from "../store/agentStore";
+import type { DiagnosticAnalysis } from "../types/operation";
 
 export function useAgent(deviceId: string | null, parentOperationId?: string | null, useBookstackContext: boolean = true) {
   const {
@@ -14,6 +15,8 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
     clarificationQuestions,
     confidenceScore,
     intent,
+    diagnosticResult,
+    diagnosticOperationId,
     addMessage,
     setOperationId,
     setReadyToExecute,
@@ -22,6 +25,8 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
     setLoading,
     setClarifying,
     setConfidenceScore,
+    setDiagnosticResult,
+    clearDiagnosticResult,
     resetSession,
     reset,
   } = useAgentStore();
@@ -65,9 +70,11 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
 
   const execute = useCallback(async () => {
     if (!currentOperationId) return;
+    // Capture before resetSession clears it
+    const savedOpId = currentOperationId;
     setLoading(true);
     try {
-      const operation = await operationsApi.execute(currentOperationId);
+      const operation = await operationsApi.execute(savedOpId);
       if (operation.status === "completed") {
         const intent = operation.intent;
         const ap = operation.action_plan as Record<string, unknown> | null;
@@ -279,7 +286,17 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
         } else {
           const result = ap?.result as Record<string, unknown> | undefined;
           const sshOutput = result?.output as string | undefined;
-          if (sshOutput?.trim()) {
+          const analysis = result?.analysis as DiagnosticAnalysis | undefined;
+
+          if (analysis?.summary) {
+            // Rich diagnostic result: show summary in chat and open DiagnosticPanel
+            summary = `✅ **Diagnóstico concluído.**\n\n${analysis.summary}`;
+            addMessage("assistant", summary, tableData);
+            toast.success("Diagnóstico concluído!");
+            resetSession();
+            setDiagnosticResult(analysis, savedOpId);
+            return;
+          } else if (sshOutput?.trim()) {
             summary = sshOutput;
           } else {
             summary = "Operação executada com sucesso!";
@@ -308,7 +325,7 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
     } finally {
       setLoading(false);
     }
-  }, [currentOperationId, addMessage, setLoading, resetSession]);
+  }, [currentOperationId, addMessage, setLoading, resetSession, setDiagnosticResult]);
 
   const submitForReview = useCallback(async () => {
     if (!currentOperationId) return;
@@ -351,5 +368,36 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
     [currentOperationId, addMessage, setLoading, setReadyToExecute, setRequiresApproval, setIntent, setClarifying, setConfidenceScore]
   );
 
-  return { messages, readyToExecute, requiresApproval, loading, clarifying, clarificationQuestions, confidenceScore, intent, send, execute, submitForReview, submitClarification, reset };
+  const sendDiagnosticFollowUp = useCallback(
+    async (message: string): Promise<string> => {
+      if (!diagnosticOperationId) return "Sessão de diagnóstico não encontrada.";
+      try {
+        const response = await operationsApi.continueChat(diagnosticOperationId, message);
+        return response.agent_message;
+      } catch {
+        return "Erro ao comunicar com o agente. Tente novamente.";
+      }
+    },
+    [diagnosticOperationId]
+  );
+
+  return {
+    messages,
+    readyToExecute,
+    requiresApproval,
+    loading,
+    clarifying,
+    clarificationQuestions,
+    confidenceScore,
+    intent,
+    diagnosticResult,
+    diagnosticOperationId,
+    send,
+    execute,
+    submitForReview,
+    submitClarification,
+    sendDiagnosticFollowUp,
+    clearDiagnosticResult,
+    reset,
+  };
 }

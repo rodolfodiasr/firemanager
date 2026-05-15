@@ -37,6 +37,23 @@ export interface ClarificationQuestion {
   options?: string[];
 }
 
+export type DiagnosticSeverity = "critical" | "high" | "medium" | "low" | "info";
+
+export interface DiagnosticFinding {
+  severity: DiagnosticSeverity;
+  title: string;
+  detail: string;
+}
+
+export interface DiagnosticAnalysis {
+  summary: string;
+  findings: DiagnosticFinding[];
+  root_causes: string[];
+  recommendations: string[];
+  requires_immediate_action: boolean;
+  suggested_follow_up_commands: string[];
+}
+
 export interface ChatResponse {
   operation_id: string;
   status: OperationStatus;
