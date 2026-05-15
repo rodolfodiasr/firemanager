@@ -1,4 +1,5 @@
-import axios from "axios";
+import apiClient from "./client";
+const axios = apiClient;
 
 export interface InvestigationPhase {
   id: string;
