@@ -19,7 +19,7 @@ def upgrade() -> None:
             name VARCHAR(200) NOT NULL,
             server_hostname VARCHAR(200) NOT NULL,
             unc_root VARCHAR(500) NOT NULL,
-            edge_agent_id UUID REFERENCES edge_agents(id) ON DELETE SET NULL,
+            edge_agent_id UUID,
             config_encrypted TEXT,
             scan_depth INTEGER NOT NULL DEFAULT 2,
             is_active BOOLEAN NOT NULL DEFAULT true,

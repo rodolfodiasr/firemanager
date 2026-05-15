@@ -15,7 +15,7 @@ def upgrade() -> None:
     op.execute("""
         CREATE TABLE IF NOT EXISTS sso_role_mappings (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            sso_config_id UUID NOT NULL REFERENCES sso_configs(id) ON DELETE CASCADE,
+            sso_config_id UUID NOT NULL,
             tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
             external_group VARCHAR(300) NOT NULL,
             platform_role VARCHAR(50) NOT NULL,

@@ -12,14 +12,30 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100)")
-    op.execute("ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(100)")
-    op.execute("ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS stripe_price_id VARCHAR(100)")
-
-    op.execute("ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS stripe_invoice_id VARCHAR(100)")
-    op.execute("ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS stripe_payment_intent VARCHAR(100)")
-    op.execute("ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS payment_url TEXT")
-
+    op.execute("""
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'billing_subscriptions'
+            ) THEN
+                ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(100);
+                ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(100);
+                ALTER TABLE billing_subscriptions ADD COLUMN IF NOT EXISTS stripe_price_id VARCHAR(100);
+            END IF;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'billing_invoices'
+            ) THEN
+                ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS stripe_invoice_id VARCHAR(100);
+                ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS stripe_payment_intent VARCHAR(100);
+                ALTER TABLE billing_invoices ADD COLUMN IF NOT EXISTS payment_url TEXT;
+            END IF;
+        END $$;
+    """)
     op.execute("""
         CREATE TABLE IF NOT EXISTS stripe_webhook_events (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
