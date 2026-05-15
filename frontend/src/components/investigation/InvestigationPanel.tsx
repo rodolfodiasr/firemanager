@@ -7,6 +7,7 @@ import {
   Check, X, Pencil, CheckSquare,
 } from "lucide-react";
 import { investigationsApi, type InvestigationSession, type InvestigationPhase, type CommandState } from "../../api/investigations";
+import { MarkdownText } from "../shared/MarkdownText";
 import { useNavigate } from "react-router-dom";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -261,19 +262,9 @@ function PhaseCard({
       {isDone && expanded && phase.analysis && (
         <div className="px-4 pb-4 border-t border-gray-100 pt-3">
           <p className="text-xs font-medium text-gray-500 mb-2">Análise</p>
-          <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-            {phase.analysis}
+          <div className="max-h-80 overflow-y-auto pr-1">
+            <MarkdownText content={phase.analysis} />
           </div>
-          {phase.findings.length > 0 && (
-            <div className="mt-3 space-y-1">
-              {phase.findings.slice(0, 5).map((f, i) => (
-                <div key={i} className="flex items-start gap-1.5 text-xs text-gray-600">
-                  <ArrowRight size={11} className="text-brand-500 mt-0.5 shrink-0" />
-                  {f}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -286,12 +277,15 @@ function ChatMessage({ role, content }: { role: string; content: string }) {
   const isUser = role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
+      <div className={`max-w-[90%] px-3.5 py-2.5 rounded-2xl ${
         isUser
-          ? "bg-brand-600 text-white rounded-br-sm"
+          ? "bg-brand-600 text-white rounded-br-sm text-sm leading-relaxed"
           : "bg-gray-100 text-gray-800 rounded-bl-sm"
       }`}>
-        <div className="whitespace-pre-wrap">{content}</div>
+        {isUser
+          ? <div className="whitespace-pre-wrap text-sm">{content}</div>
+          : <MarkdownText content={content} />
+        }
       </div>
     </div>
   );
