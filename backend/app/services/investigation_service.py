@@ -54,13 +54,39 @@ def _validate_readonly(commands: list[str]) -> list[str]:
 
 # ── Claude prompts ────────────────────────────────────────────────────────────
 
+_VENDOR_CLI_HINTS: dict[str, str] = {
+    "fortinet":   "FortiOS CLI — exemplos: get system status, get system performance status, diagnose sys top 1 20, diagnose netlink interface list, diagnose hardware sysinfo cpu, diagnose hardware sysinfo memory",
+    "sonicwall":  "SonicOS CLI — exemplos: show system-uptime, show cpu, show memory, show current-users, show arp-cache, show interface, show log",
+    "pfsense":    "pfSense shell (bash) — exemplos: top -b -n 1, vmstat -w 1 5, netstat -s, ifconfig, df -h, cat /var/run/dmesg.boot",
+    "opnsense":   "OPNsense shell (bash) — exemplos: top -b -n 1, vmstat -w 1 5, netstat -s, ifconfig, df -h",
+    "mikrotik":   "RouterOS CLI — exemplos: /system resource print, /system resource cpu print, /interface print stats, /ip route print, /ip firewall connection print count-only, /log print",
+    "endian":     "Endian shell (bash) — exemplos: top -b -n 1, free -m, df -h, netstat -an | head -40",
+    "sophos":     "Sophos XG CLI — exemplos: show cpu-usage, show memory-usage, show arp-cache, show interface statistics, system diagnostics show ip-routing-table",
+    "cisco_ios":  "Cisco IOS/IOS-XE CLI — exemplos: show processes cpu sorted, show memory summary, show interfaces, show ip route, show version",
+    "cisco_nxos": "Cisco NX-OS CLI — exemplos: show system resources, show processes cpu sort, show interface brief, show ip route, show version",
+    "cisco_asa":  "Cisco ASA CLI — exemplos: show cpu usage, show memory, show conn count, show interface, show version",
+    "juniper":    "Junos CLI (operational mode) — exemplos: show chassis routing-engine, show system processes extensive, show interfaces, show route summary, show version",
+    "aruba":      "ArubaOS CLI — exemplos: show cpu, show memory, show ap active, show interface counters, show version",
+    "ubiquiti":   "Ubiquiti EdgeOS/UniFi CLI — exemplos: show system processes, show interfaces, show ip route, show arp",
+    "edgeswitch": "Ubiquiti EdgeSwitch CLI — exemplos: show system, show port utilization, show mac-addr-table, show interface ethernet",
+    "dell":       "Dell OS10 (SmartFabric OS10) CLI — exemplos: show processes cpu, show memory, show interface status, show version, show spanning-tree",
+    "dell_n":     "Dell N-Series DNOS6 CLI — exemplos: show processes cpu sort cpu, show memory, show system, show version, show interfaces status, show spanning-tree",
+    "hp_comware": "HP Comware CLI — exemplos: display cpu-usage, display memory, display version, display interface brief, display ip routing-table",
+    "palo_alto":  "PAN-OS CLI — exemplos: show system resources, show system info, show interface all, show routing route, show system statistics",
+    "checkpoint": "Check Point Gaia CLI — exemplos: show routed, show interfaces all, show route, cpview, fw stat",
+}
+
 _PLAN_SYSTEM = """Você é um especialista em diagnóstico de infraestrutura de redes e segurança.
 Sua tarefa é criar um plano de investigação em fases para diagnosticar um problema descrito pelo analista.
+
+REGRA MAIS IMPORTANTE: Use SOMENTE comandos nativos do vendor/OS indicado no contexto do dispositivo.
+Não misture sintaxe de vendors diferentes. Se o device for Dell OS10, use comandos Dell OS10.
+Se for Fortinet, use FortiOS. Se for servidor Linux, use bash. Etc.
 
 Regras críticas:
 - Todos os comandos devem ser SOMENTE LEITURA (show, display, get, cat, ps, etc.)
 - NUNCA inclua comandos que modifiquem configuração, reiniciem serviços ou alterem dados
-- Para dispositivos de rede/firewall: use comandos show/display compatíveis com CLI (Cisco/Juniper/HP Comware/Dell/Fortinet/SonicWall)
+- Adapte os comandos ao vendor e OS exatos informados no contexto
 - Para servidores Linux: use comandos como ps, df, free, ss, journalctl, cat /proc/...
 - Para servidores Windows: use Get-* do PowerShell e Test-NetConnection
 
@@ -119,12 +145,11 @@ async def plan_investigation(
     from app.services.llm_provider import get_provider
     provider = get_provider(None)
 
-    device_context = _build_device_context(session)
+    device_context = await _build_device_context(db, session)
     user_prompt = (
         f"Problema relatado: {session.problem_description}\n\n"
         f"Contexto do ambiente:\n{device_context}\n\n"
-        f"Tipo de agente: {session.agent_type}\n"
-        "Gere um plano de investigação em fases."
+        "Gere um plano de investigação em fases usando SOMENTE os comandos do vendor/OS indicado acima."
     )
 
     messages = [{"role": "user", "content": user_prompt}]
@@ -554,14 +579,38 @@ async def export_to_assistant(
 
 # ── Context helpers ───────────────────────────────────────────────────────────
 
-def _build_device_context(session: InvestigationSession) -> str:
+async def _build_device_context(db: AsyncSession, session: InvestigationSession) -> str:
+    from app.models.device import Device
+    from app.models.server import Server
+
     parts = [f"Tipo de agente: {session.agent_type}"]
+
     if session.device_id:
-        parts.append(f"Device ID: {session.device_id}")
+        result = await db.execute(select(Device).where(Device.id == session.device_id))
+        device = result.scalar_one_or_none()
+        if device:
+            parts.append(f"Device: {device.name}")
+            parts.append(f"Vendor: {device.vendor.value}")
+            parts.append(f"Categoria: {device.category.value}")
+            if device.firmware_version:
+                parts.append(f"Firmware/OS: {device.firmware_version}")
+            hint = _VENDOR_CLI_HINTS.get(device.vendor.value)
+            if hint:
+                parts.append(f"Sintaxe CLI correta para este vendor: {hint}")
+        else:
+            parts.append(f"Device ID: {session.device_id}")
+
     if session.server_id:
-        parts.append(f"Server ID: {session.server_id}")
+        result = await db.execute(select(Server).where(Server.id == session.server_id))
+        server = result.scalar_one_or_none()
+        if server:
+            parts.append(f"Servidor: {server.name} ({server.os_type.value if hasattr(server.os_type, 'value') else server.os_type})")
+        else:
+            parts.append(f"Server ID: {session.server_id}")
+
     if session.integration_ids:
         parts.append(f"Integrações: {', '.join(session.integration_ids)}")
+
     return "\n".join(parts)
 
 
