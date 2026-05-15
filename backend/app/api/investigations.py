@@ -269,6 +269,14 @@ async def run_phase(
     if phase.status == "done":
         raise HTTPException(status_code=400, detail="Fase já executada.")
 
+    # Prevent parallel execution — only one phase at a time per session
+    executing = [p for p in session.phases if p.status == "executing"]
+    if executing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Fase {executing[0].phase_number} já está em execução. Aguarde antes de iniciar outra.",
+        )
+
     await svc.execute_phase(db, session, phase)
     await svc.analyze_phase(db, session, phase)
     await db.flush()

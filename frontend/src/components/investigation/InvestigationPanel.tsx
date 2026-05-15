@@ -146,12 +146,14 @@ function PhaseCard({
   onRun,
   onUpdateCommand,
   isRunning,
+  isBlocked,
   updatingCmd,
 }: {
   phase: InvestigationPhase;
   onRun: () => void;
   onUpdateCommand: (cmdIdx: number, data: { status?: "pending" | "approved" | "rejected"; edited?: string | null }) => void;
   isRunning: boolean;
+  isBlocked?: boolean;
   updatingCmd: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -227,7 +229,8 @@ function PhaseCard({
                 )}
                 <button
                   onClick={(e) => { e.stopPropagation(); onRun(); }}
-                  disabled={isRunning || runnableCount === 0}
+                  disabled={isRunning || isBlocked || runnableCount === 0}
+                  title={isBlocked ? "Aguarde a fase em execução terminar" : undefined}
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50"
                 >
                   {isRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
@@ -517,23 +520,31 @@ export function InvestigationPanel({
       {/* Phases tab */}
       {tab === "phases" && (
         <div className="flex-1 flex flex-col gap-2.5 overflow-y-auto min-h-0">
-          {session.phases.map((phase) => (
-            <PhaseCard
-              key={phase.id}
-              phase={phase}
-              onRun={() => runPhaseMut.mutate(phase.phase_number)}
-              onUpdateCommand={(cmdIdx, data) =>
-                updateCmdMut.mutate({ phaseNumber: phase.phase_number, cmdIdx, data })
-              }
-              isRunning={runPhaseMut.isPending && runPhaseMut.variables === phase.phase_number}
-              updatingCmd={
-                updateCmdMut.isPending &&
-                (updateCmdMut.variables as any)?.phaseNumber === phase.phase_number
-                  ? (updateCmdMut.variables as any)?.cmdIdx
-                  : null
-              }
-            />
-          ))}
+          {(() => {
+            // Block all run buttons while any phase is executing or a mutation is pending
+            const anyExecuting = session.phases.some((p) => p.status === "executing") || runPhaseMut.isPending;
+            return session.phases.map((phase) => (
+              <PhaseCard
+                key={phase.id}
+                phase={phase}
+                onRun={() => runPhaseMut.mutate(phase.phase_number)}
+                onUpdateCommand={(cmdIdx, data) =>
+                  updateCmdMut.mutate({ phaseNumber: phase.phase_number, cmdIdx, data })
+                }
+                isRunning={
+                  anyExecuting &&
+                  (runPhaseMut.variables === phase.phase_number || phase.status === "executing")
+                }
+                isBlocked={anyExecuting && runPhaseMut.variables !== phase.phase_number && phase.status !== "executing"}
+                updatingCmd={
+                  updateCmdMut.isPending &&
+                  (updateCmdMut.variables as any)?.phaseNumber === phase.phase_number
+                    ? (updateCmdMut.variables as any)?.cmdIdx
+                    : null
+                }
+              />
+            ));
+          })()}
 
           {/* Synthesis / actions */}
           {allPhasesDone && (
