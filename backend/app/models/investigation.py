@@ -55,6 +55,7 @@ class InvestigationPhase(Base):
     phase_purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     commands: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    command_states: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True, default=list)
     raw_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
     findings: Mapped[list[str]] = mapped_column(JSONB, nullable=True, default=list)

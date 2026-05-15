@@ -164,6 +164,23 @@ Se detectar necessidade de investigar outro domínio, sugira "Expandir diagnóst
 Responda em Português do Brasil.
 """
 
+# ── Command state helpers ─────────────────────────────────────────────────────
+
+def _init_command_states(commands: list[str]) -> list[dict]:
+    return [{"idx": i, "command": cmd, "edited": None, "status": "pending"} for i, cmd in enumerate(commands)]
+
+
+def _commands_to_run(phase: InvestigationPhase) -> list[str]:
+    """Return commands to execute, respecting command_states (edited + non-rejected)."""
+    if not phase.command_states:
+        return phase.commands
+    return [
+        (cs["edited"] if cs.get("edited") else cs["command"])
+        for cs in phase.command_states
+        if cs.get("status") != "rejected"
+    ]
+
+
 # ── Phase planning ────────────────────────────────────────────────────────────
 
 async def plan_investigation(
@@ -193,12 +210,14 @@ async def plan_investigation(
 
     phases: list[InvestigationPhase] = []
     for p in plan.get("phases", []):
+        cmds = p.get("commands", [])
         phase = InvestigationPhase(
             session_id=session.id,
             phase_number=p.get("phase_number", len(phases) + 1),
             phase_name=p.get("phase_name", f"Fase {len(phases) + 1}"),
             phase_purpose=p.get("phase_purpose"),
-            commands=p.get("commands", []),
+            commands=cmds,
+            command_states=_init_command_states(cmds),
             status="pending",
         )
         db.add(phase)
@@ -229,7 +248,11 @@ async def execute_phase(
     """Execute a phase's commands read-only against the target device/server.
     Returns combined raw output.
     """
-    violations = _validate_readonly(phase.commands)
+    commands_to_run = _commands_to_run(phase)
+    if not commands_to_run:
+        raise ValueError("Nenhum comando aprovado para executar. Aprove ao menos um comando.")
+
+    violations = _validate_readonly(commands_to_run)
     if violations:
         raise ValueError(f"Comandos não permitidos (somente leitura): {violations}")
 
@@ -238,9 +261,9 @@ async def execute_phase(
 
     raw_output = ""
     if session.agent_type in ("network", "firewall"):
-        raw_output = await _execute_device_commands(db, session, phase.commands)
+        raw_output = await _execute_device_commands(db, session, commands_to_run)
     elif session.agent_type == "n3":
-        raw_output = await _execute_server_commands(db, session, phase.commands)
+        raw_output = await _execute_server_commands(db, session, commands_to_run)
     else:
         raw_output = "(Agente unificado — execute cada sub-agente individualmente)"
 
@@ -620,12 +643,14 @@ async def continue_investigation(
 
     new_phases: list[InvestigationPhase] = []
     for p in plan.get("phases", []):
+        cmds = p.get("commands", [])
         phase = InvestigationPhase(
             session_id=session.id,
             phase_number=p.get("phase_number", max_phase + len(new_phases) + 1),
             phase_name=p.get("phase_name", f"Fase {max_phase + len(new_phases) + 1}"),
             phase_purpose=p.get("phase_purpose"),
-            commands=p.get("commands", []),
+            commands=cmds,
+            command_states=_init_command_states(cmds),
             status="pending",
         )
         db.add(phase)

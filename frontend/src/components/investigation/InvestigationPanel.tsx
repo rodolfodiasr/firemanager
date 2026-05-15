@@ -4,8 +4,9 @@ import {
   Search, Play, ChevronDown, ChevronRight, Loader2,
   CheckCircle2, AlertTriangle, Share2,
   MessageSquare, Terminal, Layers, ArrowRight, RefreshCw,
+  Check, X, Pencil, CheckSquare,
 } from "lucide-react";
-import { investigationsApi, type InvestigationSession, type InvestigationPhase } from "../../api/investigations";
+import { investigationsApi, type InvestigationSession, type InvestigationPhase, type CommandState } from "../../api/investigations";
 import { useNavigate } from "react-router-dom";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -26,28 +27,165 @@ interface InvestigationPanelProps {
   onSessionCreated?: (sessionId: string) => void;
 }
 
+// ── Command row ───────────────────────────────────────────────────────────────
+
+function CommandRow({
+  cs,
+  phaseStatus,
+  onApprove,
+  onReject,
+  onEdit,
+  isUpdating,
+}: {
+  cs: CommandState;
+  phaseStatus: string;
+  onApprove: () => void;
+  onReject: () => void;
+  onEdit: (text: string) => void;
+  isUpdating: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(cs.edited ?? cs.command);
+
+  const displayCmd = cs.edited ?? cs.command;
+  const isApproved = cs.status === "approved";
+  const isRejected = cs.status === "rejected";
+  const canEdit = phaseStatus === "pending";
+
+  function commitEdit() {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== (cs.edited ?? cs.command)) {
+      onEdit(trimmed);
+    }
+    setEditing(false);
+  }
+
+  return (
+    <div className={`flex items-start gap-2 p-2 rounded-lg border transition-colors ${
+      isRejected
+        ? "bg-red-50 border-red-200 opacity-60"
+        : isApproved
+        ? "bg-green-50 border-green-200"
+        : "bg-gray-50 border-gray-200"
+    }`}>
+      {/* Status indicator */}
+      <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+        isRejected ? "bg-red-400" : isApproved ? "bg-green-500" : "bg-gray-300"
+      }`}>
+        {isApproved && <Check size={10} className="text-white" />}
+        {isRejected && <X size={10} className="text-white" />}
+      </div>
+
+      {/* Command text / edit field */}
+      <div className="flex-1 min-w-0">
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") { setDraft(cs.edited ?? cs.command); setEditing(false); }
+            }}
+            className="w-full text-xs font-mono bg-white border border-brand-400 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+        ) : (
+          <p className={`text-xs font-mono break-all ${
+            isRejected ? "line-through text-gray-400" : "text-gray-800"
+          }`}>
+            {displayCmd}
+            {cs.edited && cs.edited !== cs.command && (
+              <span className="ml-1 text-[10px] text-brand-500 font-sans font-medium">(editado)</span>
+            )}
+          </p>
+        )}
+      </div>
+
+      {/* Action buttons — only when phase is pending */}
+      {canEdit && !editing && (
+        <div className="flex items-center gap-1 shrink-0">
+          {isUpdating ? (
+            <Loader2 size={11} className="animate-spin text-gray-400" />
+          ) : (
+            <>
+              <button
+                title="Aprovar"
+                onClick={onApprove}
+                className={`p-0.5 rounded hover:bg-green-100 ${isApproved ? "text-green-600" : "text-gray-400 hover:text-green-600"}`}
+              >
+                <Check size={13} />
+              </button>
+              <button
+                title="Rejeitar"
+                onClick={onReject}
+                className={`p-0.5 rounded hover:bg-red-100 ${isRejected ? "text-red-500" : "text-gray-400 hover:text-red-500"}`}
+              >
+                <X size={13} />
+              </button>
+              <button
+                title="Editar comando"
+                onClick={() => { setDraft(cs.edited ?? cs.command); setEditing(true); }}
+                className="p-0.5 rounded hover:bg-brand-100 text-gray-400 hover:text-brand-600"
+              >
+                <Pencil size={11} />
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ── Phase card ────────────────────────────────────────────────────────────────
 
 function PhaseCard({
   phase,
   onRun,
+  onUpdateCommand,
   isRunning,
+  updatingCmd,
 }: {
   phase: InvestigationPhase;
   onRun: () => void;
+  onUpdateCommand: (cmdIdx: number, data: { status?: "pending" | "approved" | "rejected"; edited?: string | null }) => void;
   isRunning: boolean;
+  updatingCmd: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isDone = phase.status === "done";
   const isPending = phase.status === "pending";
 
+  const states = phase.command_states ?? phase.commands.map((cmd, idx) => ({
+    idx, command: cmd, edited: null, status: "pending" as const,
+  }));
+
+  const approvedCount = states.filter((cs) => cs.status === "approved").length;
+  const rejectedCount = states.filter((cs) => cs.status === "rejected").length;
+  const pendingCount = states.filter((cs) => cs.status === "pending").length;
+  const runnableCount = states.filter((cs) => cs.status !== "rejected").length;
+
+  const allApproved = states.length > 0 && states.every((cs) => cs.status === "approved");
+  const hasPending = pendingCount > 0;
+
+  function approveAll() {
+    states.forEach((cs) => {
+      if (cs.status !== "approved") {
+        onUpdateCommand(cs.idx, { status: "approved" });
+      }
+    });
+  }
+
   return (
     <div className={`border rounded-xl overflow-hidden ${
       isDone ? "border-green-200 bg-green-50" : "border-gray-200 bg-white"
     }`}>
+      {/* Header */}
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
-        onClick={() => isDone && setExpanded((v) => !v)}
+        onClick={() => (isDone || isPending) && setExpanded((v) => !v)}
       >
         <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
           isDone ? "bg-green-500 text-white" : "bg-gray-200 text-gray-600"
@@ -61,31 +199,56 @@ function PhaseCard({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {isPending && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onRun(); }}
-              disabled={isRunning}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50"
-            >
-              {isRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-              {isRunning ? "Executando..." : "Executar fase"}
-            </button>
-          )}
-          {isDone && (
-            expanded ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />
-          )}
+          {isDone || isPending
+            ? (expanded ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />)
+            : null}
         </div>
       </div>
 
-      {/* Commands preview (always visible for pending) */}
-      {(isPending || (isDone && expanded)) && phase.commands.length > 0 && (
-        <div className="px-4 pb-3 border-t border-gray-100 pt-2">
-          <p className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1">
-            <Terminal size={11} /> Comandos ({phase.commands.length})
-          </p>
-          <div className="bg-gray-900 rounded-lg p-2.5 space-y-0.5">
-            {phase.commands.map((cmd, i) => (
-              <p key={i} className="text-xs font-mono text-green-400">{cmd}</p>
+      {/* Commands section — expandable */}
+      {(isPending || (isDone && expanded)) && (
+        <div className="px-4 pb-3 border-t border-gray-100 pt-2 space-y-2">
+          {/* Toolbar */}
+          {isPending && (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                <Terminal size={11} /> Comandos ({states.length})
+                {approvedCount > 0 && <span className="ml-1 text-green-600">{approvedCount} aprovado(s)</span>}
+                {rejectedCount > 0 && <span className="ml-1 text-red-500">{rejectedCount} rejeitado(s)</span>}
+              </p>
+              <div className="flex items-center gap-2">
+                {hasPending && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); approveAll(); }}
+                    className="flex items-center gap-1 text-[11px] text-brand-600 hover:text-brand-800 font-medium"
+                  >
+                    <CheckSquare size={12} /> Aprovar todos
+                  </button>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRun(); }}
+                  disabled={isRunning || runnableCount === 0}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {isRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                  {isRunning ? "Executando..." : `Executar${allApproved ? " aprovados" : ""}${runnableCount < states.length ? ` (${runnableCount})` : ""}`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Per-command rows */}
+          <div className="space-y-1.5">
+            {states.map((cs) => (
+              <CommandRow
+                key={cs.idx}
+                cs={cs}
+                phaseStatus={phase.status}
+                isUpdating={updatingCmd === cs.idx}
+                onApprove={() => onUpdateCommand(cs.idx, { status: cs.status === "approved" ? "pending" : "approved" })}
+                onReject={() => onUpdateCommand(cs.idx, { status: cs.status === "rejected" ? "pending" : "rejected" })}
+                onEdit={(text) => onUpdateCommand(cs.idx, { edited: text })}
+              />
             ))}
           </div>
         </div>
@@ -189,6 +352,21 @@ export function InvestigationPanel({
     },
   });
 
+  const updateCmdMut = useMutation({
+    mutationFn: ({
+      phaseNumber,
+      cmdIdx,
+      data,
+    }: {
+      phaseNumber: number;
+      cmdIdx: number;
+      data: { status?: "pending" | "approved" | "rejected"; edited?: string | null };
+    }) => investigationsApi.updateCommand(sessionId!, phaseNumber, cmdIdx, data),
+    onSuccess: (s) => {
+      qc.setQueryData(["investigation", sessionId], s);
+    },
+  });
+
   const chatMut = useMutation({
     mutationFn: (msg: string) => investigationsApi.sendMessage(sessionId!, msg),
     onSuccess: () => {
@@ -271,7 +449,6 @@ export function InvestigationPanel({
 
   const allPhasesDone = session.phases.length > 0 &&
     session.phases.every((p) => p.status === "done");
-  const nextPendingPhase = session.phases.find((p) => p.status === "pending");
   const donePhasesCount = session.phases.filter((p) => p.status === "done").length;
 
   return (
@@ -345,7 +522,16 @@ export function InvestigationPanel({
               key={phase.id}
               phase={phase}
               onRun={() => runPhaseMut.mutate(phase.phase_number)}
+              onUpdateCommand={(cmdIdx, data) =>
+                updateCmdMut.mutate({ phaseNumber: phase.phase_number, cmdIdx, data })
+              }
               isRunning={runPhaseMut.isPending && runPhaseMut.variables === phase.phase_number}
+              updatingCmd={
+                updateCmdMut.isPending &&
+                (updateCmdMut.variables as any)?.phaseNumber === phase.phase_number
+                  ? (updateCmdMut.variables as any)?.cmdIdx
+                  : null
+              }
             />
           ))}
 

@@ -1,12 +1,20 @@
 import apiClient from "./client";
 const axios = apiClient;
 
+export interface CommandState {
+  idx: number;
+  command: string;
+  edited: string | null;
+  status: "pending" | "approved" | "rejected";
+}
+
 export interface InvestigationPhase {
   id: string;
   phase_number: number;
   phase_name: string;
   phase_purpose: string | null;
   commands: string[];
+  command_states: CommandState[] | null;
   raw_output: string | null;
   analysis: string | null;
   findings: string[];
@@ -69,6 +77,16 @@ export const investigationsApi = {
 
   continue: (sessionId: string): Promise<InvestigationSession> =>
     axios.post(`/investigations/${sessionId}/continue`).then((r) => r.data),
+
+  updateCommand: (
+    sessionId: string,
+    phaseNumber: number,
+    cmdIdx: number,
+    data: { status?: "pending" | "approved" | "rejected"; edited?: string | null }
+  ): Promise<InvestigationSession> =>
+    axios
+      .patch(`/investigations/${sessionId}/phases/${phaseNumber}/commands/${cmdIdx}`, data)
+      .then((r) => r.data),
 
   synthesize: (sessionId: string): Promise<InvestigationSession> =>
     axios.post(`/investigations/${sessionId}/synthesize`).then((r) => r.data),

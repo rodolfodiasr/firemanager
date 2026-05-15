@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -33,12 +33,25 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class CommandStateRead(BaseModel):
+    idx: int
+    command: str
+    edited: str | None
+    status: str  # pending | approved | rejected
+
+
+class CommandStateUpdate(BaseModel):
+    status: str | None = None   # pending | approved | rejected
+    edited: str | None = None
+
+
 class PhaseRead(BaseModel):
     id: UUID
     phase_number: int
     phase_name: str
     phase_purpose: str | None
     commands: list[str]
+    command_states: list[CommandStateRead] | None
     raw_output: str | None
     analysis: str | None
     findings: list[str]
@@ -80,12 +93,23 @@ class InvestigationRead(BaseModel):
 
 
 def _phase_read(p: InvestigationPhase) -> PhaseRead:
+    cs_raw = p.command_states or []
+    command_states = [
+        CommandStateRead(
+            idx=cs.get("idx", i),
+            command=cs.get("command", ""),
+            edited=cs.get("edited"),
+            status=cs.get("status", "pending"),
+        )
+        for i, cs in enumerate(cs_raw)
+    ] if cs_raw else None
     return PhaseRead(
         id=p.id,
         phase_number=p.phase_number,
         phase_name=p.phase_name,
         phase_purpose=p.phase_purpose,
         commands=p.commands or [],
+        command_states=command_states,
         raw_output=p.raw_output,
         analysis=p.analysis,
         findings=p.findings or [],
@@ -247,6 +271,58 @@ async def run_phase(
 
     await svc.execute_phase(db, session, phase)
     await svc.analyze_phase(db, session, phase)
+    await db.flush()
+    return _session_read(await _reload_session(db, session_id))
+
+
+@router.patch("/{session_id}/phases/{phase_number}/commands/{cmd_idx}", response_model=InvestigationRead)
+async def update_command_state(
+    session_id: UUID,
+    phase_number: int,
+    cmd_idx: int,
+    body: CommandStateUpdate,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> InvestigationRead:
+    """Update a single command's status (approve/reject) or edited text."""
+    await _get_session(db, session_id, ctx.tenant.id)
+
+    phase_result = await db.execute(
+        select(InvestigationPhase).where(
+            InvestigationPhase.session_id == session_id,
+            InvestigationPhase.phase_number == phase_number,
+        )
+    )
+    phase = phase_result.scalar_one_or_none()
+    if not phase:
+        raise HTTPException(status_code=404, detail=f"Fase {phase_number} não encontrada.")
+    if phase.status == "done":
+        raise HTTPException(status_code=400, detail="Fase já executada — não é possível alterar comandos.")
+
+    states: list[dict] = list(phase.command_states or [])
+    # Find or create the command state entry
+    target = next((cs for cs in states if cs.get("idx") == cmd_idx), None)
+    if target is None:
+        if 0 <= cmd_idx < len(phase.commands):
+            target = {"idx": cmd_idx, "command": phase.commands[cmd_idx], "edited": None, "status": "pending"}
+            states.append(target)
+        else:
+            raise HTTPException(status_code=404, detail=f"Comando índice {cmd_idx} não encontrado.")
+
+    if body.status is not None:
+        if body.status not in ("pending", "approved", "rejected"):
+            raise HTTPException(status_code=400, detail="status deve ser pending, approved ou rejected.")
+        target["status"] = body.status
+    if body.edited is not None:
+        target["edited"] = body.edited.strip() or None
+
+    # Sort by idx to keep order consistent
+    states.sort(key=lambda x: x.get("idx", 0))
+    await db.execute(
+        sql_update(InvestigationPhase)
+        .where(InvestigationPhase.id == phase.id)
+        .values(command_states=states)
+    )
     await db.flush()
     return _session_read(await _reload_session(db, session_id))
 
