@@ -206,7 +206,7 @@ async def start_or_continue_operation(
             )
         else:
             bookstack_context = ""
-        session = AgentSession(device, bookstack_context=bookstack_context)
+        session = AgentSession(device, bookstack_context=bookstack_context, db=db)
         _sessions[operation.id] = session
     else:
         result = await db.execute(select(Operation).where(Operation.id == operation_id))
@@ -215,7 +215,7 @@ async def start_or_continue_operation(
             raise OperationNotFoundError()
         session = _sessions.get(operation.id)
         if not session:
-            session = AgentSession(device)
+            session = AgentSession(device, db=db)
             _sessions[operation.id] = session
 
     response = await session.process(user_message)

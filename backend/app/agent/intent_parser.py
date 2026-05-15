@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import anthropic
 
@@ -19,11 +20,44 @@ class IntentParseResult:
         self.extracted_data: dict[str, Any] = data.get("extracted_data", {})
 
 
-async def parse_intent(user_input: str) -> IntentParseResult:
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-
+async def parse_intent(
+    user_input: str,
+    tenant_id: UUID | None = None,
+    db: Any = None,
+) -> IntentParseResult:
     prompt = _INTENT_PROMPT.replace("{user_input}", user_input)
 
+    # Use per-tenant LLM provider when db + tenant_id are available
+    if db is not None and tenant_id is not None:
+        try:
+            from app.services.llm_config_service import resolve_provider
+            provider = await resolve_provider(tenant_id, db)
+            content, _, _ = await provider.chat(
+                messages=[{"role": "user", "content": prompt}],
+                system=_SYSTEM_PROMPT,
+                max_tokens=1024,
+            )
+        except Exception:
+            content = await _call_anthropic(prompt)
+    else:
+        content = await _call_anthropic(prompt)
+
+    content = content.strip()
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        data = {"intent": "unknown", "present_fields": [], "missing_fields": [], "extracted_data": {}}
+
+    return IntentParseResult(data)
+
+
+async def _call_anthropic(prompt: str) -> str:
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     primary = settings.anthropic_model
     try:
         message = await client.messages.create(
@@ -43,18 +77,4 @@ async def parse_intent(user_input: str) -> IntentParseResult:
         else:
             raise
 
-    content = message.content[0].text if message.content else "{}"
-
-    # Strip possible markdown fences
-    content = content.strip()
-    if content.startswith("```"):
-        content = content.split("```")[1]
-        if content.startswith("json"):
-            content = content[4:]
-
-    try:
-        data = json.loads(content)
-    except json.JSONDecodeError:
-        data = {"intent": "unknown", "present_fields": [], "missing_fields": [], "extracted_data": {}}
-
-    return IntentParseResult(data)
+    return message.content[0].text if message.content else "{}"

@@ -32,22 +32,27 @@ _DEFAULT_REQUIRES_APPROVAL: dict[str, bool] = {
     "toggle_botnet": False,
     "toggle_dpi_ssl": False,
     # read-only — never require approval
+    "get_info": False,
     "list_rules": False,
     "list_nat_policies": False,
     "list_route_policies": False,
     "get_security_status": False,
     "health_check": False,
     "get_snapshot": False,
+    "list_vlans": False,
+    "list_ports": False,
 }
 
 _READ_ONLY_INTENTS = {
-    "list_rules", "list_nat_policies", "list_route_policies",
-    "get_security_status", "health_check",
+    "get_info", "list_rules", "list_nat_policies", "list_route_policies",
+    "get_security_status", "health_check", "get_snapshot", "list_vlans", "list_ports",
 }
 
 
 async def check_requires_approval(db: AsyncSession, user: User, intent: str) -> bool:
     """Return True if this user+intent combination requires N2 approval before execution."""
+    if user.is_super_admin:
+        return False
     if user.role == UserRole.admin:
         return False
     if intent in _READ_ONLY_INTENTS:

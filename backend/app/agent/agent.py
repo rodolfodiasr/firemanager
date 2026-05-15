@@ -35,9 +35,11 @@ _REQUIRED_FIELDS_BY_INTENT: dict[str, list[str]] = {
 class AgentSession:
     """Holds the state of an ongoing agent conversation for one operation."""
 
-    def __init__(self, device: Device, bookstack_context: str = "") -> None:
+    def __init__(self, device: Device, bookstack_context: str = "", db: Any = None) -> None:
         self.device = device
         self.bookstack_context = bookstack_context
+        self.db = db
+        self.tenant_id: UUID | None = getattr(device, "tenant_id", None)
         self.conversation_history: list[dict[str, str]] = []
         self.intent: str | None = None
         self.collected_data: dict[str, Any] = {}
@@ -55,7 +57,7 @@ class AgentSession:
 
         # First message: parse intent
         if self.intent is None:
-            result = await parse_intent(user_message)
+            result = await parse_intent(user_message, tenant_id=self.tenant_id, db=self.db)
             self.intent = result.intent
             self.collected_data.update(result.extracted_data)
             self.missing_fields = self._compute_missing()
@@ -78,6 +80,8 @@ class AgentSession:
                 intent=self.intent or "unknown",
                 collected_data=self.collected_data,
                 bookstack_context=self.bookstack_context,
+                tenant_id=self.tenant_id,
+                db=self.db,
             )
             self.ready_to_execute = True
             response = self._format_plan_summary()

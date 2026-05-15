@@ -32,9 +32,9 @@ async def generate_action_plan(
     intent: str,
     collected_data: dict[str, Any],
     bookstack_context: str = "",
+    tenant_id: UUID | None = None,
+    db: Any = None,
 ) -> ActionPlan:
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-
     vendor_section = _vendor_prompt(vendor)
     full_template = _PLAN_BASE + ("\n\n" + vendor_section if vendor_section else "")
 
@@ -57,6 +57,35 @@ async def generate_action_plan(
         )
         prompt = context_section + prompt
 
+    # Use per-tenant LLM provider when db + tenant_id are available
+    if db is not None and tenant_id is not None:
+        try:
+            from app.services.llm_config_service import resolve_provider
+            provider = await resolve_provider(tenant_id, db)
+            content, _, _ = await provider.chat(
+                messages=[{"role": "user", "content": prompt}],
+                system=_SYSTEM_PROMPT,
+                max_tokens=settings.anthropic_max_tokens,
+            )
+        except Exception:
+            content = await _call_anthropic(prompt)
+    else:
+        content = await _call_anthropic(prompt)
+
+    content = content.strip()
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.rsplit("```", 1)[0]
+
+    data = json.loads(content)
+    data["device_id"] = str(device_id)
+    return ActionPlan.model_validate(data)
+
+
+async def _call_anthropic(prompt: str) -> str:
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     primary = settings.anthropic_model
     try:
         message = await client.messages.create(
@@ -76,14 +105,4 @@ async def generate_action_plan(
         else:
             raise
 
-    content = message.content[0].text if message.content else "{}"
-    content = content.strip()
-    if content.startswith("```"):
-        content = content.split("```")[1]
-        if content.startswith("json"):
-            content = content[4:]
-        content = content.rsplit("```", 1)[0]
-
-    data = json.loads(content)
-    data["device_id"] = str(device_id)
-    return ActionPlan.model_validate(data)
+    return message.content[0].text if message.content else "{}"
