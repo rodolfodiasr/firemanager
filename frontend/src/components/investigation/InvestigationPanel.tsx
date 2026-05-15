@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Search, Play, ChevronDown, ChevronRight, Loader2,
-  CheckCircle2, AlertTriangle, ExternalLink, Share2,
-  MessageSquare, Terminal, Layers, ArrowRight,
+  CheckCircle2, AlertTriangle, Share2,
+  MessageSquare, Terminal, Layers, ArrowRight, RefreshCw,
 } from "lucide-react";
 import { investigationsApi, type InvestigationSession, type InvestigationPhase } from "../../api/investigations";
 import { useNavigate } from "react-router-dom";
@@ -207,6 +207,14 @@ export function InvestigationPanel({
     onSuccess: (r) => navigate(`/assistant?session=${r.assistant_session_id}`),
   });
 
+  const continueMut = useMutation({
+    mutationFn: () => investigationsApi.continue(sessionId!),
+    onSuccess: (s) => {
+      qc.setQueryData(["investigation", sessionId], s);
+      setTab("phases");
+    },
+  });
+
   // ── No session yet — start form ───────────────────────────────────────────
   if (!sessionId) {
     return (
@@ -344,24 +352,39 @@ export function InvestigationPanel({
           {/* Synthesis / actions */}
           {allPhasesDone && (
             <div className="border border-brand-200 bg-brand-50 rounded-xl p-4 space-y-3">
-              {session.synthesis ? (
+              {session.synthesis && (
                 <>
                   <p className="text-xs font-semibold text-brand-700">Síntese final</p>
                   <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
                     {session.synthesis}
                   </p>
+                  <div className="border-t border-brand-200 pt-2" />
                 </>
-              ) : (
+              )}
+
+              {/* Continue investigation — always available when all phases done */}
+              <button
+                onClick={() => continueMut.mutate()}
+                disabled={continueMut.isPending}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50"
+              >
+                {continueMut.isPending
+                  ? <><Loader2 size={13} className="animate-spin" /> Planejando novas fases...</>
+                  : <><RefreshCw size={13} /> Continuar Investigação</>}
+              </button>
+
+              {!session.synthesis && (
                 <button
                   onClick={() => synthesizeMut.mutate()}
                   disabled={synthesizeMut.isPending}
-                  className="w-full flex items-center justify-center gap-2 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 py-2 border border-brand-300 text-brand-700 text-sm font-medium rounded-lg hover:bg-brand-100 disabled:opacity-50"
                 >
                   {synthesizeMut.isPending
                     ? <><Loader2 size={13} className="animate-spin" /> Gerando síntese...</>
                     : "Gerar síntese final"}
                 </button>
               )}
+
               <button
                 onClick={() => exportMut.mutate()}
                 disabled={exportMut.isPending}

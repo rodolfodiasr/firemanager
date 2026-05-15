@@ -67,6 +67,9 @@ export const investigationsApi = {
   ): Promise<{ response: string; cross_domain_detected: boolean; cross_domain_hint: string | null }> =>
     axios.post(`/investigations/${sessionId}/message`, { message }).then((r) => r.data),
 
+  continue: (sessionId: string): Promise<InvestigationSession> =>
+    axios.post(`/investigations/${sessionId}/continue`).then((r) => r.data),
+
   synthesize: (sessionId: string): Promise<InvestigationSession> =>
     axios.post(`/investigations/${sessionId}/synthesize`).then((r) => r.data),
 

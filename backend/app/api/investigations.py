@@ -268,6 +268,27 @@ async def send_message(
     return {"response": response, "cross_domain_detected": session.cross_domain_detected, "cross_domain_hint": session.cross_domain_hint}
 
 
+@router.post("/{session_id}/continue", response_model=InvestigationRead)
+async def continue_investigation(
+    session_id: UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> InvestigationRead:
+    """Generate new investigation phases building on the existing findings."""
+    session = await _get_session(db, session_id, ctx.tenant.id)
+    pending = [p for p in session.phases if p.status == "pending"]
+    if pending:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Execute as {len(pending)} fase(s) pendentes antes de continuar.",
+        )
+    if not session.phases:
+        raise HTTPException(status_code=400, detail="Nenhuma fase executada ainda.")
+    await svc.continue_investigation(db, session)
+    await db.flush()
+    return _session_read(await _reload_session(db, session_id))
+
+
 @router.post("/{session_id}/synthesize", response_model=InvestigationRead)
 async def synthesize(
     session_id: UUID,

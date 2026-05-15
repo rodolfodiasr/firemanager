@@ -106,6 +106,35 @@ Retorne SOMENTE JSON válido, sem markdown:
 Crie de 2 a 4 fases. Cada fase tem no máximo 5 comandos. Vá do diagnóstico geral (fase 1) para o específico.
 """
 
+_CONTINUE_SYSTEM = """Você é um especialista em diagnóstico de infraestrutura de redes e segurança.
+Uma investigação foi realizada e achados críticos foram identificados. Sua tarefa é criar NOVAS fases
+de investigação que aprofundem os problemas encontrados e confirmem (ou descartem) as hipóteses levantadas.
+
+REGRA MAIS IMPORTANTE: Use SOMENTE comandos nativos do vendor/OS indicado no contexto do dispositivo.
+Não misture sintaxe de vendors diferentes.
+
+Regras críticas:
+- Todos os comandos devem ser SOMENTE LEITURA (show, display, get, cat, ps, etc.)
+- NÃO repita comandos já executados nas fases anteriores
+- Foque nos achados mais críticos e nas próximas ações sugeridas pelas análises anteriores
+- Crie fases que aprofundem a investigação — não repita diagnóstico inicial
+
+Retorne SOMENTE JSON válido, sem markdown:
+{
+  "continuation_rationale": "por que essas novas fases são necessárias com base nos achados",
+  "phases": [
+    {
+      "phase_number": N,
+      "phase_name": "Nome curto da fase",
+      "phase_purpose": "O que esta fase pretende descobrir",
+      "commands": ["comando1", "comando2", ...]
+    }
+  ]
+}
+
+Crie de 2 a 4 novas fases. Cada fase tem no máximo 5 comandos.
+"""
+
 _ANALYZE_SYSTEM = """Você é um especialista em diagnóstico de infraestrutura de redes e segurança.
 Analise os resultados coletados e forneça um diagnóstico claro e acionável.
 
@@ -531,6 +560,91 @@ Responda em Português do Brasil, de forma clara e acionável."""
     await db.flush()
 
     return synthesis
+
+
+# ── Continue investigation ─────────────────────────────────────────────────────
+
+async def continue_investigation(
+    db: AsyncSession,
+    session: InvestigationSession,
+) -> list[InvestigationPhase]:
+    """Generate new investigation phases building on completed phases' findings."""
+    from app.services.llm_provider import get_provider
+    provider = get_provider(None)
+
+    device_context = await _build_device_context(db, session)
+    max_phase = max((p.phase_number for p in session.phases), default=0)
+
+    # Build rich summary of all completed phases
+    phases_summary_parts: list[str] = []
+    for phase in session.phases:
+        if phase.status == "done":
+            findings_text = (
+                "\n".join(f"  - {f}" for f in phase.findings[:5])
+                if phase.findings
+                else "  (sem findings estruturados)"
+            )
+            phases_summary_parts.append(
+                f"Fase {phase.phase_number}: {phase.phase_name}\n"
+                f"Propósito: {phase.phase_purpose or 'N/A'}\n"
+                f"Comandos executados: {', '.join(phase.commands)}\n"
+                f"Achados:\n{findings_text}"
+            )
+
+    phases_text = "\n\n".join(phases_summary_parts)
+
+    cross_hint = (
+        f"\nAlerta multi-domínio identificado: {session.cross_domain_hint}"
+        if session.cross_domain_hint else ""
+    )
+
+    user_prompt = (
+        f"Problema investigado: {session.problem_description}\n\n"
+        f"Contexto do ambiente:\n{device_context}\n\n"
+        f"Fases já executadas:\n{phases_text}"
+        f"{cross_hint}\n\n"
+        f"Com base nos achados acima, gere NOVAS fases de investigação que aprofundem "
+        f"os pontos críticos e NÃO repitam o que já foi feito. "
+        f"Numere as novas fases a partir de {max_phase + 1}. "
+        "Use SOMENTE os comandos do vendor/OS indicado no contexto."
+    )
+
+    messages = [{"role": "user", "content": user_prompt}]
+    raw, _, _ = await provider.chat(messages, _CONTINUE_SYSTEM)
+
+    try:
+        plan = json.loads(raw)
+    except Exception:
+        m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+        plan = json.loads(m.group(1)) if m else {"phases": []}
+
+    new_phases: list[InvestigationPhase] = []
+    for p in plan.get("phases", []):
+        phase = InvestigationPhase(
+            session_id=session.id,
+            phase_number=p.get("phase_number", max_phase + len(new_phases) + 1),
+            phase_name=p.get("phase_name", f"Fase {max_phase + len(new_phases) + 1}"),
+            phase_purpose=p.get("phase_purpose"),
+            commands=p.get("commands", []),
+            status="pending",
+        )
+        db.add(phase)
+        new_phases.append(phase)
+
+    if new_phases:
+        rationale = plan.get("continuation_rationale", "")
+        db.add(InvestigationMessage(
+            session_id=session.id,
+            role="assistant",
+            content=(
+                f"**Continuação da investigação — {len(new_phases)} novas fase(s) planejadas**"
+                + (f"\n\n{rationale}" if rationale else "")
+            ),
+        ))
+        session.status = "active"
+        await db.flush()
+
+    return new_phases
 
 
 # ── Export to AI Assistant ────────────────────────────────────────────────────
