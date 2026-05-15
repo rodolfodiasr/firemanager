@@ -70,7 +70,7 @@ _VENDOR_CLI_HINTS: dict[str, str] = {
     "ubiquiti":   "Ubiquiti EdgeOS/UniFi CLI — exemplos: show system processes, show interfaces, show ip route, show arp",
     "edgeswitch": "Ubiquiti EdgeSwitch CLI — exemplos: show system, show port utilization, show mac-addr-table, show interface ethernet",
     "dell":       "Dell OS10 (SmartFabric OS10) CLI — exemplos: show processes cpu, show memory, show interface status, show version, show spanning-tree",
-    "dell_n":     "Dell N-Series DNOS6 CLI — exemplos: show processes cpu sort cpu, show memory, show system, show version, show interfaces status, show spanning-tree",
+    "dell_n":     "Dell N-Series DNOS6 CLI — exemplos: show processes cpu sort cpu, show memory, show system, show version, show interfaces status, show interfaces ethernet 1/0/1 counters, show spanning-tree, show spanning-tree vlan <id>, show spanning-tree brief, show spanning-tree blockedports, show storm-control, show mac-addr-table, show port-channel detail, show loop-protect. IMPORTANTE: use 'ethernet 1/0/X' (não GigabitEthernet/TenGigabit). NÃO existe 'show spanning-tree detail' no DNOS6.",
     "hp_comware": "HP Comware CLI — exemplos: display cpu-usage, display memory, display version, display interface brief, display ip routing-table",
     "palo_alto":  "PAN-OS CLI — exemplos: show system resources, show system info, show interface all, show routing route, show system statistics",
     "checkpoint": "Check Point Gaia CLI — exemplos: show routed, show interfaces all, show route, cpview, fw stat",
@@ -599,19 +599,16 @@ async def continue_investigation(
     max_phase = max((p.phase_number for p in session.phases), default=0)
 
     # Build rich summary of all completed phases
+    # Use analysis text directly — the findings regex misses emoji/table formats that Claude often uses
     phases_summary_parts: list[str] = []
     for phase in session.phases:
         if phase.status == "done":
-            findings_text = (
-                "\n".join(f"  - {f}" for f in phase.findings[:5])
-                if phase.findings
-                else "  (sem findings estruturados)"
-            )
+            analysis_excerpt = (phase.analysis or "(sem análise)")[:1200]
             phases_summary_parts.append(
                 f"Fase {phase.phase_number}: {phase.phase_name}\n"
                 f"Propósito: {phase.phase_purpose or 'N/A'}\n"
                 f"Comandos executados: {', '.join(phase.commands)}\n"
-                f"Achados:\n{findings_text}"
+                f"Análise:\n{analysis_excerpt}"
             )
 
     phases_text = "\n\n".join(phases_summary_parts)

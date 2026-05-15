@@ -569,6 +569,11 @@ export function InvestigationPanel({
                   ? <><Loader2 size={13} className="animate-spin" /> Planejando novas fases...</>
                   : <><RefreshCw size={13} /> Continuar Investigação</>}
               </button>
+              {continueMut.isError && (
+                <p className="text-xs text-red-600 text-center">
+                  {(continueMut.error as any)?.response?.data?.detail ?? "Erro ao gerar novas fases. Tente novamente."}
+                </p>
+              )}
 
               {!session.synthesis && (
                 <button

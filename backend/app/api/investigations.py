@@ -407,6 +407,11 @@ async def continue_investigation(
 
     reloaded = await _reload_session(db, session_id)
     new_phases = [p for p in reloaded.phases if p.status == "pending"]
+    if not new_phases:
+        raise HTTPException(
+            status_code=500,
+            detail="Não foi possível gerar novas fases de investigação. Tente novamente.",
+        )
     await write_audit(
         db,
         action="investigation.continued",
