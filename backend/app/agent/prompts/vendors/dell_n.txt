@@ -185,24 +185,70 @@ Remover um ip helper-address específico de uma VLAN:
 
 ─── SPANNING TREE ─────────────────────────────────────────────────────────
 
-STP — global (nível do switch, fora de qualquer bloco de interface):
-  Ativar STP:                    ["spanning-tree"]
-  Desativar STP:                 ["no spanning-tree"]
-  Modo RSTP:                     ["spanning-tree mode rstp"]
-  Modo STP clássico:             ["spanning-tree mode stp"]
-  Modo MSTP:                     ["spanning-tree mode mstp"]
-  BPDU Protection global:        ["spanning-tree bpdu-protection"]
-  Desativar BPDU Protection:     ["no spanning-tree bpdu-protection"]
-  Loop Protection global:        ["spanning-tree loopguard default"]
+STP/RSTP — global (nível do switch, fora de qualquer bloco de interface):
+  Ativar/desativar:
+    ["spanning-tree"]
+    ["no spanning-tree"]
 
-STP — por porta (dentro do bloco de interface, antes do "exit"):
-  "spanning-tree portfast"       → ativa portfast — USE em portas de acesso (Gi com dispositivos)
-  "no spanning-tree portfast"    → desativa portfast
-  "spanning-tree guard root"     → ativa root guard — USE em portas de acesso (impede loops)
-  "no spanning-tree guard root"  → desativa root guard
-  "spanning-tree guard loop"     → ativa loop guard por porta
-  "spanning-tree tcnguard"       → ativa TCN guard — USE em uplinks (Te e Gi trunk) para reduzir instabilidade
-  "spanning-tree cost 10000"     → define custo de porta para preferência de caminho STP
+  Modo:
+    ["spanning-tree mode rstp"]      ← recomendado
+    ["spanning-tree mode mstp"]
+    ["spanning-tree mode stp"]       ← STP clássico (802.1D)
+
+  Priority da bridge (múltiplos de 4096; padrão=32768):
+    ["spanning-tree priority 4096"]  ← forçar root
+    ["spanning-tree priority 8192"]  ← root secundário
+    ["spanning-tree priority 32768"] ← padrão
+
+  Proteções globais:
+    ["spanning-tree bpdu-protection"]          ← BPDU Protection (desativa porta ao receber BPDU)
+    ["no spanning-tree bpdu-protection"]
+    ["spanning-tree loopguard default"]        ← Loop Guard global
+    ["no spanning-tree loopguard default"]
+
+  Timers globais:
+    ["spanning-tree hello-time 2"]
+    ["spanning-tree forward-time 15"]
+    ["spanning-tree max-age 20"]
+
+  MSTP — configuração de região:
+    ["spanning-tree mst configuration",
+     "name NOME_REGIAO",
+     "revision 1",
+     "instance 1 vlan 10,20,30",
+     "instance 2 vlan 40,50",
+     "exit"]
+  MSTP — priority por instância:
+    ["spanning-tree mst 1 priority 4096"]
+
+STP/RSTP — por porta (dentro do bloco de interface, antes do "exit"):
+  Portfast e tipo:
+    "spanning-tree portfast"          ← edge port: hosts/servidores/APs
+    "no spanning-tree portfast"
+
+  Proteções:
+    "spanning-tree guard root"        ← root guard (uplinks de acesso)
+    "no spanning-tree guard root"
+    "spanning-tree guard loop"        ← loop guard por porta
+    "no spanning-tree guard loop"
+    "spanning-tree tcnguard"          ← TCN guard: USE em uplinks trunk (reduz flapping)
+    "no spanning-tree tcnguard"
+
+  Custo e prioridade:
+    "spanning-tree cost 10000"        ← custo da porta (menor = preferido)
+    "spanning-tree port-priority 128" ← prioridade (múltiplos de 16; padrão=128)
+
+  MSTP por porta:
+    "spanning-tree mst 1 cost 20000"
+    "spanning-tree mst 1 port-priority 128"
+
+STP — show commands (diagnóstico):
+  "show spanning-tree"
+  "show spanning-tree summary"
+  "show spanning-tree detail"
+  "show spanning-tree interface GigabitEthernet1/0/1"
+  "show spanning-tree mst"
+  "show spanning-tree mst configuration"
 
 ─── SNMP ──────────────────────────────────────────────────────────────────
 

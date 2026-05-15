@@ -73,19 +73,72 @@ ACL:
    "ip access-group FM-PERMIT-HTTPS in",
    "exit"]
 
-STP — global:
-  Modo RSTP:                   ["spanning-tree mode rpvst"]
-  BPDU Guard global:           ["spanning-tree bpduguard default"]
-  Desativar BPDU Guard global: ["no spanning-tree bpduguard default"]
-  Ativar STP:                  ["spanning-tree"]
-  Desativar STP:               ["no spanning-tree"]
+STP/RSTP — global (ArubaOS-CX):
+  Ativar/desativar:
+    ["spanning-tree"]
+    ["no spanning-tree"]
 
-STP — por porta (dentro do bloco de interface):
-  Edge port (portfast):        "spanning-tree port-type admin-edge"
-  Desativar edge:              "no spanning-tree port-type admin-edge"
-  BPDU Guard por porta:        "spanning-tree bpduguard enable"
-  Desativar BPDU Guard:        "no spanning-tree bpduguard enable"
-  Root Guard por porta:        "spanning-tree root-guard"
+  Modo:
+    ["spanning-tree mode rpvst"]    ← RPVST+ (per-VLAN) — recomendado
+    ["spanning-tree mode mstp"]
+    ["spanning-tree mode stp"]
+
+  Priority (0-15, onde 1=4096, 2=8192, ..., 8=32768 padrão):
+    ["spanning-tree priority 1"]    ← forçar root (= prioridade 4096)
+    ["spanning-tree priority 7"]    ← root secundário (= 28672)
+    ["spanning-tree priority 8"]    ← padrão (= 32768)
+
+  Proteções globais:
+    ["spanning-tree bpduguard default"]
+    ["no spanning-tree bpduguard default"]
+    ["spanning-tree loop-guard"]
+    ["no spanning-tree loop-guard"]
+
+  Timers:
+    ["spanning-tree hello-time 2"]
+    ["spanning-tree forward-delay 15"]
+    ["spanning-tree max-age 20"]
+
+STP/RSTP — por porta (dentro do bloco de interface):
+  Tipo de porta:
+    "spanning-tree port-type admin-edge"          ← portfast: hosts/servidores
+    "no spanning-tree port-type admin-edge"
+    "spanning-tree port-type admin-network"       ← uplinks entre switches
+
+  Proteções:
+    "spanning-tree bpduguard enable"
+    "no spanning-tree bpduguard enable"
+    "spanning-tree bpdufilter enable"
+    "no spanning-tree bpdufilter enable"
+    "spanning-tree root-guard"
+    "no spanning-tree root-guard"
+    "spanning-tree loop-guard"
+    "no spanning-tree loop-guard"
+
+  Custo e prioridade:
+    "spanning-tree cost 20000"
+    "spanning-tree port-priority 8"               ← 0-14; padrão=8 (= 128 × 16)
+
+STP/RSTP — MSTP (quando mode mstp):
+  Configuração:
+    ["spanning-tree mst configuration",
+     "name NOME_REGIAO",
+     "revision 1",
+     "instance 1 vlan 10,20,30",
+     "exit"]
+  Priority MST por instância:
+    ["spanning-tree mst 1 priority 1"]
+  Por porta:
+    "spanning-tree mst 1 cost 20000"
+    "spanning-tree mst 1 port-priority 8"
+
+STP — show commands (diagnóstico):
+  "show spanning-tree"
+  "show spanning-tree summary"
+  "show spanning-tree detail"
+  "show spanning-tree interface 1/1/1"
+  "show spanning-tree mst"
+  "show spanning-tree mst configuration"
 
 REGRAS IMPORTANTES PARA ARUBA:
 - Interface naming: 1/1/X (slot/módulo/porta)

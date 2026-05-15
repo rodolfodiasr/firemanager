@@ -86,20 +86,68 @@ Rota padrão / estática:
   ["ip route-static 10.10.10.0 255.255.255.0 192.168.1.254"]
 
 STP — global (nível do switch, fora de qualquer bloco — NÃO inclua "quit" após estes):
-  Ativar STP:               ["stp enable"]
-  Desativar STP:            ["undo stp enable"]
-  Modo RSTP:                ["stp mode rstp"]
-  Modo STP clássico:        ["stp mode stp"]
-  Modo MSTP:                ["stp mode mstp"]
-  BPDU Protection global:   ["stp bpdu-protection"]
-  Desativar BPDU Protection: ["undo stp bpdu-protection"]
-  Ativar + definir modo:    ["stp enable", "stp mode rstp", "stp bpdu-protection"]
+  Ativar/desativar:
+    ["stp enable"]
+    ["undo stp enable"]
+
+  Modo:
+    ["stp mode rstp"]        ← recomendado
+    ["stp mode mstp"]
+    ["stp mode stp"]         ← STP clássico (802.1D)
+
+  Priority da bridge (múltiplos de 4096; padrão=32768):
+    ["stp priority 4096"]    ← forçar root
+    ["stp priority 8192"]    ← root secundário
+    ["stp priority 32768"]   ← padrão
+    ← MSTP instância: ["stp instance 1 priority 4096"]
+
+  Proteções globais:
+    ["stp bpdu-protection"]           ← BPDU Protection (desativa porta ao receber BPDU)
+    ["undo stp bpdu-protection"]
+    ["stp loop-protection"]           ← Loop Protection global
+    ["undo stp loop-protection"]
+    ["stp root-protection"]           ← Root Protection global (impede mudança de root)
+    ["undo stp root-protection"]
+
+  Timers globais (alterar com cuidado):
+    ["stp timer hello 200"]           ← hello time em centésimos (200 = 2s)
+    ["stp timer forward-delay 1500"]  ← forward delay em centésimos (1500 = 15s)
+    ["stp timer max-age 2000"]        ← max age em centésimos (2000 = 20s)
+
+  MSTP — configuração de região:
+    ["stp region-configuration",
+     "region-name NOME_REGIAO",
+     "revision-level 1",
+     "instance 1 vlan 10 to 20",
+     "instance 2 vlan 30 40 50",
+     "active region-configuration",
+     "quit"]
 
 STP — por porta (dentro do bloco de interface, antes do "quit"):
-  " stp edged-port enable"   → ativa portfast (edge port)
-  " undo stp edged-port"     → desativa portfast
-  " stp disable"             → desativa STP nesta porta
-  " undo stp disable"        → reativa STP nesta porta
+  Tipo de porta:
+    " stp edged-port enable"          ← portfast: hosts/servidores/APs
+    " undo stp edged-port"            ← remover edge
+    " stp edged-port auto"            ← detecção automática
+
+  Proteções por porta:
+    " stp bpdu-protection"            ← BPDU protection nesta porta
+    " undo stp bpdu-protection"
+    " stp loop-protection"            ← loop guard por porta
+    " undo stp loop-protection"
+    " stp root-protection"            ← root guard por porta
+    " undo stp root-protection"
+    " stp disable"                    ← desativar STP nesta porta
+    " undo stp disable"
+
+  Custo e prioridade por porta:
+    " stp cost 20000"                 ← custo da porta (1-200000000)
+    " stp port priority 128"          ← prioridade (múltiplos de 16; padrão=128)
+
+STP — show commands (HP Comware usa "display"):
+  "display stp brief"                 ← estado resumido de todas as portas
+  "display stp"                       ← estado detalhado da bridge
+  "display stp instance 0"            ← instância MSTP específica
+  "display stp interface GigabitEthernet 1/0/1"  ← estado por porta
 
 REGRAS IMPORTANTES PARA HP COMWARE:
 - SEMPRE use "quit" para sair de cada bloco — NUNCA use "exit" (não existe!)

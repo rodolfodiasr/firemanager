@@ -16,13 +16,63 @@ Rota estática:
 Feature (habilitar funcionalidade):
   ["feature vpc", "feature lacp"]
 
-STP — global:
-  Modo RSTP:          ["spanning-tree mode rapid-pvst"]
-  BPDU Guard global:  ["spanning-tree bpduguard default"]
+STP/RSTP — global (NX-OS usa RPVST+ ou MST):
+  Modo RPVST+:              ["spanning-tree mode rapid-pvst"]    ← padrão
+  Modo MST:                 ["spanning-tree mode mst"]
+  BPDU Guard global:        ["spanning-tree bpduguard default"]
+  Loop Guard global:        ["spanning-tree loopguard default"]
+  Bridge Assurance global:  ["spanning-tree bridge assurance"]   ← detecta falha unidirecional
 
-STP — por porta:
-  ["interface Ethernet1/1", "spanning-tree port type edge", "exit"]
-  ["interface Ethernet1/1", "spanning-tree bpduguard enable", "exit"]
+  Priority por VLAN (múltiplos de 4096; padrão=32768):
+    ["spanning-tree vlan 1 priority 4096"]
+    ["spanning-tree vlan 1,10,20 priority 4096"]
+
+  Timers por VLAN:
+    ["spanning-tree vlan 1 hello-time 2"]
+    ["spanning-tree vlan 1 forward-time 15"]
+    ["spanning-tree vlan 1 max-age 20"]
+
+STP/RSTP — por porta (NX-OS usa "port type" em vez de "portfast"):
+  Tipo de porta:
+    "spanning-tree port type edge"            ← portfast: hosts/servidores
+    "spanning-tree port type network"         ← uplinks (habilita bridge assurance)
+    "spanning-tree port type normal"          ← porta normal (padrão)
+
+  Proteções:
+    "spanning-tree bpduguard enable"
+    "no spanning-tree bpduguard enable"
+    "spanning-tree bpdufilter enable"
+    "no spanning-tree bpdufilter enable"
+    "spanning-tree guard root"
+    "no spanning-tree guard root"
+    "spanning-tree guard loop"
+    "no spanning-tree guard loop"
+
+  Custo e prioridade por VLAN:
+    "spanning-tree vlan 1 cost 10000"
+    "spanning-tree vlan 1 port-priority 128"  ← múltiplos de 32 no NX-OS
+
+STP/RSTP — MSTP (quando mode mst):
+  Configuração:
+    ["spanning-tree mst configuration",
+     "name NOME_REGIAO",
+     "revision 1",
+     "instance 1 vlan 10,20,30",
+     "exit"]
+  Priority por instância:
+    ["spanning-tree mst 1 priority 4096"]
+  Por porta:
+    "spanning-tree mst 1 cost 20000"
+    "spanning-tree mst 1 port-priority 128"
+
+STP — show commands (diagnóstico):
+  "show spanning-tree"
+  "show spanning-tree summary"
+  "show spanning-tree detail"
+  "show spanning-tree vlan 1"
+  "show spanning-tree interface Ethernet1/1"
+  "show spanning-tree mst"
+  "show spanning-tree mst configuration"
 
 ── LIST_VLANS (cisco_nxos): ssh_show_commands: ["show vlan brief"]
 

@@ -32,16 +32,69 @@ Trunk:
    "switchport trunk allowed vlan <VLAN_A>,<VLAN_B>",
    "exit"]
 
-STP — global (fora de qualquer interface):
-  Modo RSTP:                  ["spanning-tree mode rapid-pvst"]
+STP/RSTP — global (PVST+ por VLAN — modo padrão Cisco):
+  Modo RPVST+:                ["spanning-tree mode rapid-pvst"]   ← recomendado
+  Modo MSTP:                  ["spanning-tree mode mst"]
+  Portfast global (edge):     ["spanning-tree portfast default"]
   BPDU Guard global:          ["spanning-tree portfast bpduguard default"]
-  Desativar BPDU Guard global: ["no spanning-tree portfast bpduguard default"]
-  Portfast global:            ["spanning-tree portfast default"]
+  Loop Guard global:          ["spanning-tree loopguard default"]
 
-STP — por porta (dentro do bloco de interface):
-  ["interface GigabitEthernet0/1", "spanning-tree portfast", "exit"]
-  ["interface GigabitEthernet0/1", "spanning-tree bpduguard enable", "exit"]
-  ["interface GigabitEthernet0/1", "no spanning-tree portfast", "exit"]
+  Priority por VLAN (múltiplos de 4096; padrão=32768):
+    ["spanning-tree vlan 1 priority 4096"]    ← forçar root para VLAN 1
+    ["spanning-tree vlan 1,10,20 priority 4096"]  ← múltiplas VLANs
+    ["spanning-tree vlan 1 priority 28672"]   ← root secundário
+
+  Timers por VLAN:
+    ["spanning-tree vlan 1 hello-time 2"]
+    ["spanning-tree vlan 1 forward-time 15"]
+    ["spanning-tree vlan 1 max-age 20"]
+
+STP/RSTP — por porta (dentro do bloco de interface):
+  Portfast (edge port — hosts/servidores):
+    "spanning-tree portfast"
+    "no spanning-tree portfast"
+
+  Proteções:
+    "spanning-tree bpduguard enable"          ← bloqueia porta ao receber BPDU
+    "no spanning-tree bpduguard enable"
+    "spanning-tree bpdufilter enable"         ← suprime BPDUs (usar com cautela)
+    "no spanning-tree bpdufilter enable"
+    "spanning-tree guard root"                ← root guard (uplinks)
+    "no spanning-tree guard root"
+    "spanning-tree guard loop"                ← loop guard individual
+    "no spanning-tree guard loop"
+    "spanning-tree link-type point-to-point"  ← transição rápida em uplinks full-duplex
+
+  Custo e prioridade por VLAN (ajuste de topologia):
+    "spanning-tree vlan 1 cost 10000"
+    "spanning-tree vlan 1 port-priority 128"  ← múltiplos de 32; padrão=128
+
+STP/RSTP — MSTP (quando mode mst):
+  Configuração da região:
+    ["spanning-tree mst configuration",
+     "name NOME_REGIAO",
+     "revision 1",
+     "instance 1 vlan 10,20,30",
+     "instance 2 vlan 40,50",
+     "exit"]
+
+  Priority por instância MST:
+    ["spanning-tree mst 1 priority 4096"]
+    ["spanning-tree mst 0 priority 32768"]    ← instância 0 = IST
+
+  Por porta MST:
+    "spanning-tree mst 1 cost 20000"
+    "spanning-tree mst 1 port-priority 128"
+
+STP — show commands (diagnóstico):
+  "show spanning-tree"                                 ← resumo todas as VLANs
+  "show spanning-tree summary"                         ← contagem e modo
+  "show spanning-tree detail"                          ← timers, root, TCNs
+  "show spanning-tree vlan 1"                          ← VLAN específica
+  "show spanning-tree interface GigabitEthernet0/1"    ← estado por porta
+  "show spanning-tree interface GigabitEthernet0/1 detail"
+  "show spanning-tree mst"                             ← MSTP
+  "show spanning-tree mst configuration"               ← região MST
 
 ── LIST_VLANS (cisco_ios): ssh_show_commands: ["show vlan brief"]
 

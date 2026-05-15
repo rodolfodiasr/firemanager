@@ -67,15 +67,62 @@ Rota padrão:
   ["set routing-options static route 0.0.0.0/0 next-hop 192.168.1.254",
    "commit"]
 
-STP — global:
-  Ativar RSTP:              ["set protocols rstp", "commit"]
-  Desativar RSTP:           ["delete protocols rstp", "commit"]
-  Prioridade do switch:     ["set protocols rstp bridge-priority 4k", "commit"]
+STP/RSTP — global (Juniper EX Series usa "set protocols rstp"):
+  Ativar RSTP:      ["set protocols rstp", "commit"]
+  Desativar RSTP:   ["delete protocols rstp", "commit"]
 
-STP — por porta:
-  Edge port (portfast):     ["set protocols rstp interface ge-0/0/1 edge", "commit"]
-  Desativar edge:           ["delete protocols rstp interface ge-0/0/1 edge", "commit"]
-  No-root-port (root guard): ["set protocols rstp interface ge-0/0/1 no-root-port", "commit"]
+  Priority da bridge (Juniper usa notação "Nk" = N × 4096; padrão=32k):
+    ["set protocols rstp bridge-priority 4k", "commit"]   ← forçar root (4096)
+    ["set protocols rstp bridge-priority 8k", "commit"]   ← 8192
+    ["set protocols rstp bridge-priority 28k", "commit"]  ← root secundário (28672)
+    ["set protocols rstp bridge-priority 32k", "commit"]  ← padrão (32768)
+
+  Timers globais:
+    ["set protocols rstp hello-time 2", "commit"]
+    ["set protocols rstp forward-delay 15", "commit"]
+    ["set protocols rstp max-age 20", "commit"]
+
+  BPDU Guard global (bloqueia edge ports ao receber BPDU):
+    ["set protocols rstp bpdu-block-on-edge", "commit"]
+    ["delete protocols rstp bpdu-block-on-edge", "commit"]
+
+STP/RSTP — por porta:
+  Edge port (portfast — hosts/servidores):
+    ["set protocols rstp interface ge-0/0/1 edge", "commit"]
+    ["delete protocols rstp interface ge-0/0/1 edge", "commit"]
+
+  Proteções:
+    ["set protocols rstp interface ge-0/0/1 no-root-port", "commit"]  ← root guard
+    ["delete protocols rstp interface ge-0/0/1 no-root-port", "commit"]
+    ["set protocols rstp interface ge-0/0/1 mode point-to-point", "commit"]  ← transição rápida
+    ["set protocols rstp interface ge-0/0/1 mode shared", "commit"]
+
+  Custo e prioridade:
+    ["set protocols rstp interface ge-0/0/1 cost 20000", "commit"]
+    ["set protocols rstp interface ge-0/0/1 priority 128", "commit"]  ← múltiplos de 16
+
+STP/RSTP — MSTP (Juniper usa "set protocols mstp"):
+  Configurar região e instâncias:
+    ["set protocols mstp configuration-name NOME_REGIAO",
+     "set protocols mstp revision-level 1",
+     "set protocols mstp msti 1 vlan 10,20,30",
+     "set protocols mstp msti 2 vlan 40,50",
+     "commit"]
+
+  Priority por instância:
+    ["set protocols mstp msti 1 bridge-priority 4k", "commit"]
+    ["set protocols mstp bridge-priority 32k", "commit"]  ← instância 0 (CIST)
+
+  Por porta MSTP:
+    ["set protocols mstp interface ge-0/0/1 edge", "commit"]
+    ["set protocols mstp interface ge-0/0/1 msti 1 cost 20000", "commit"]
+
+STP — show commands (diagnóstico):
+  "show spanning-tree bridge"            ← estado da bridge e timers
+  "show spanning-tree interface"         ← estado de todas as interfaces
+  "show spanning-tree interface ge-0/0/1" ← interface específica
+  "show spanning-tree mstp"              ← estado MSTP
+  "show spanning-tree statistics"        ← contadores TCN e BPDU
 
 REGRAS IMPORTANTES PARA JUNIPER:
 - SEMPRE inclua "commit" ao final de cada lista de comandos
