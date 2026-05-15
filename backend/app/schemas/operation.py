@@ -6,16 +6,25 @@ from pydantic import BaseModel
 from app.models.operation import OperationStatus
 
 
+class AttachmentSchema(BaseModel):
+    type: str  # "image" | "text"
+    data: str  # base64 for images, raw text for text files
+    filename: str
+    mime_type: str = "application/octet-stream"
+
+
 class OperationCreate(BaseModel):
     device_id: UUID
     natural_language_input: str
     parent_operation_id: UUID | None = None
     use_bookstack_context: bool = True
+    attachment: AttachmentSchema | None = None
 
 
 class ChatMessage(BaseModel):
     role: str  # "user" | "assistant"
     content: str
+    attachment: AttachmentSchema | None = None
 
 
 class OperationRead(BaseModel):

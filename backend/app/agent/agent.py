@@ -93,19 +93,57 @@ class AgentSession:
         required = _REQUIRED_FIELDS_BY_INTENT.get(self.intent or "unknown", [])
         return [f for f in required if f not in self.collected_data]
 
-    async def process(self, user_message: str) -> str:
+    async def _describe_image(self, data: str, mime_type: str, user_message: str) -> str:
+        """Get a textual description of an attached image via Anthropic vision."""
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        try:
+            msg = await client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=1024,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": data}},
+                        {"type": "text", "text": (
+                            "Descreva o que está nesta imagem em relação a configurações de rede, firewall "
+                            f"ou infraestrutura de TI. Contexto do usuário: {user_message or 'sem contexto adicional'}"
+                        )},
+                    ],
+                }],
+            )
+            return msg.content[0].text if msg.content else ""
+        except Exception:
+            return "[Imagem anexada — não foi possível processar o conteúdo visual]"
+
+    async def process(self, user_message: str, attachment: dict | None = None) -> str:
         """Process a user message and return the agent response."""
-        self.conversation_history.append({"role": "user", "content": user_message})
+        # Build effective message from attachment
+        effective_message = user_message
+        if attachment:
+            att_type = attachment.get("type", "")
+            filename = attachment.get("filename", "arquivo")
+            if att_type == "text":
+                content = attachment.get("data", "")[:5000]
+                effective_message = f"[Arquivo: {filename}]\n```\n{content}\n```\n\n{user_message}"
+            elif att_type == "image":
+                description = await self._describe_image(
+                    attachment.get("data", ""),
+                    attachment.get("mime_type", "image/jpeg"),
+                    user_message,
+                )
+                effective_message = f"[Imagem: {filename}]\n{description}\n\n{user_message}"
+
+        self.conversation_history.append({"role": "user", "content": effective_message})
 
         # Analysis mode: LLM answers from already-collected device data — no SSH, no plan generation
         if self.analysis_mode:
-            response = await self._analyze_with_context(user_message)
+            response = await self._analyze_with_context(effective_message)
             self.conversation_history.append({"role": "assistant", "content": response})
             return response
 
         # First message: parse intent
         if self.intent is None:
-            result = await parse_intent(user_message, tenant_id=self.tenant_id, db=self.db)
+            result = await parse_intent(effective_message, tenant_id=self.tenant_id, db=self.db)
             self.intent = result.intent
             self.collected_data.update(result.extracted_data)
             self.missing_fields = self._compute_missing()
@@ -116,7 +154,7 @@ class AgentSession:
                 self.missing_fields = []
         else:
             # Subsequent messages: extract data from user reply
-            await self._extract_from_reply(user_message)
+            await self._extract_from_reply(effective_message)
             self.missing_fields = self._compute_missing()
 
         # Check if we can build the plan

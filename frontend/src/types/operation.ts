@@ -37,6 +37,13 @@ export interface ClarificationQuestion {
   options?: string[];
 }
 
+export interface Attachment {
+  type: "image" | "text";
+  data: string; // base64 for images, raw text for text files
+  filename: string;
+  mime_type: string;
+}
+
 export type DiagnosticSeverity = "critical" | "high" | "medium" | "low" | "info";
 
 export interface DiagnosticFinding {

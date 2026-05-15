@@ -1,21 +1,44 @@
-import type { ChatResponse, Operation } from "../types/operation";
+import type { Attachment, ChatResponse, Operation } from "../types/operation";
 import apiClient from "./client";
 
 export const operationsApi = {
-  startChat: (deviceId: string, message: string, parentOperationId?: string, useBookstackContext: boolean = true) =>
+  startChat: (
+    deviceId: string,
+    message: string,
+    parentOperationId?: string,
+    useBookstackContext: boolean = true,
+    attachment?: Attachment,
+  ) =>
     apiClient
       .post<ChatResponse>("/operations", {
         device_id: deviceId,
         natural_language_input: message,
         parent_operation_id: parentOperationId ?? null,
         use_bookstack_context: useBookstackContext,
+        attachment: attachment ?? null,
       })
       .then((r) => r.data),
 
-  continueChat: (operationId: string, content: string) =>
+  continueChat: (operationId: string, content: string, attachment?: Attachment) =>
     apiClient
-      .post<ChatResponse>(`/operations/${operationId}/chat`, { role: "user", content })
+      .post<ChatResponse>(`/operations/${operationId}/chat`, { role: "user", content, attachment: attachment ?? null })
       .then((r) => r.data),
+
+  transcribe: (audio: Blob): Promise<{ text: string }> => {
+    const form = new FormData();
+    form.append("audio", audio, "recording.webm");
+    return apiClient.post<{ text: string }>("/operations/transcribe", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+
+  parseFile: (file: File): Promise<{ text: string }> => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiClient.post<{ text: string }>("/operations/parse-file", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
 
   execute: (operationId: string) =>
     apiClient.post<Operation>(`/operations/${operationId}/execute`).then((r) => r.data),

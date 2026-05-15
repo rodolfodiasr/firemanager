@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -120,6 +120,7 @@ async def chat_with_agent(
         user_message=resolved_input,
         parent_operation_id=data.parent_operation_id,
         use_bookstack_context=data.use_bookstack_context,
+        attachment=data.attachment.model_dump() if data.attachment else None,
     )
     return await _chat_response(db, ctx, operation, agent_response)
 
@@ -152,6 +153,7 @@ async def continue_chat(
         operation_id=operation_id,
         device_id=operation.device_id,
         user_message=safe_content,
+        attachment=message.attachment.model_dump() if message.attachment else None,
     )
 
     result2 = await db.execute(select(Operation).where(Operation.id == operation_id))
@@ -287,6 +289,53 @@ async def submit_for_review(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return OperationRead.model_validate(operation)
+
+
+@router.post("/transcribe", response_model=dict)
+async def transcribe_audio(
+    audio: Annotated[UploadFile, File(...)],
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> dict:
+    """Transcribe audio using OpenAI Whisper."""
+    try:
+        import io
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI()
+        audio_bytes = await audio.read()
+        audio_io = io.BytesIO(audio_bytes)
+        audio_io.name = audio.filename or "recording.webm"
+        transcript = await client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_io,
+            language="pt",
+        )
+        return {"text": transcript.text}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro na transcrição: {exc}")
+
+
+@router.post("/parse-file", response_model=dict)
+async def parse_uploaded_file(
+    file: Annotated[UploadFile, File(...)],
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> dict:
+    """Extract text content from uploaded file (PDF, txt, conf, log, csv)."""
+    content = await file.read()
+    filename = file.filename or ""
+    if filename.lower().endswith(".pdf"):
+        try:
+            import io
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(content))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Erro ao processar PDF: {exc}")
+    else:
+        try:
+            text = content.decode("utf-8", errors="replace")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Não foi possível decodificar o arquivo")
+    return {"text": text[:10000]}
 
 
 @router.get("", response_model=list[OperationRead])

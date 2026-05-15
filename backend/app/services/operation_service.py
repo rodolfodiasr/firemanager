@@ -183,6 +183,7 @@ async def start_or_continue_operation(
     db: AsyncSession, user_id: UUID, operation_id: UUID | None, device_id: UUID, user_message: str,
     parent_operation_id: UUID | None = None,
     use_bookstack_context: bool = True,
+    attachment: dict | None = None,
 ) -> tuple[Operation, str]:
     device = await get_device(db, device_id)
 
@@ -227,7 +228,7 @@ async def start_or_continue_operation(
                     )
             _sessions[operation.id] = session
 
-    response = await session.process(user_message)
+    response = await session.process(user_message, attachment=attachment)
 
 # Clarification loop: se há campos faltando e a confiança é baixa, perguntar ao analista
     if not session.ready_to_execute and session.missing_fields and session.intent:

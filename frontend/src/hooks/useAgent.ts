@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import toast from "react-hot-toast";
 import { operationsApi } from "../api/operations";
 import { useAgentStore, type TableData } from "../store/agentStore";
-import type { DiagnosticAnalysis } from "../types/operation";
+import type { Attachment, DiagnosticAnalysis } from "../types/operation";
 
 export function useAgent(deviceId: string | null, parentOperationId?: string | null, useBookstackContext: boolean = true) {
   const {
@@ -32,22 +32,26 @@ export function useAgent(deviceId: string | null, parentOperationId?: string | n
   } = useAgentStore();
 
   const send = useCallback(
-    async (content: string) => {
+    async (content: string, attachment?: Attachment) => {
       if (!deviceId) {
         toast.error("Selecione um dispositivo primeiro");
         return;
       }
 
-      addMessage("user", content);
+      // Show attachment hint in the displayed message
+      const displayContent = attachment
+        ? `${content}${content ? "\n" : ""}📎 ${attachment.filename}`
+        : content;
+      addMessage("user", displayContent);
       setLoading(true);
 
       try {
         let response;
         if (!currentOperationId) {
-          response = await operationsApi.startChat(deviceId, content, parentOperationId ?? undefined, useBookstackContext);
+          response = await operationsApi.startChat(deviceId, content, parentOperationId ?? undefined, useBookstackContext, attachment);
           setOperationId(response.operation_id);
         } else {
-          response = await operationsApi.continueChat(currentOperationId, content);
+          response = await operationsApi.continueChat(currentOperationId, content, attachment);
         }
 
         const directModeDeviceId =
