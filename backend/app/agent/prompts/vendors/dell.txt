@@ -59,18 +59,80 @@ Port-channel / LAG:
    "channel-group 1 mode active",
    "exit"]
 
-STP — global:
-  Modo RSTP:          ["spanning-tree mode rstp"]
-  Modo MSTP:          ["spanning-tree mode mstp"]
-  BPDU Guard global:  ["spanning-tree bpduguard default"]
-  Ativar STP:         ["spanning-tree enable"]
-  Desativar STP:      ["no spanning-tree enable"]
+STP/RSTP — parâmetros globais:
+  Ativar/desativar:
+    ["spanning-tree enable"]
+    ["no spanning-tree enable"]
 
-STP — por porta (dentro do bloco de interface):
-  Edge port (portfast):   "spanning-tree port type edge"
-  BPDU Guard por porta:   "spanning-tree bpduguard enable"
-  Desativar BPDU Guard:   "no spanning-tree bpduguard enable"
-  Root Guard:             "spanning-tree guard root"
+  Modo de operação:
+    ["spanning-tree mode rstp"]       ← recomendado
+    ["spanning-tree mode mstp"]
+    ["spanning-tree mode stp"]        ← STP clássico (802.1D)
+
+  Priority da bridge (múltiplos de 4096; padrão=32768; menor=root):
+    ["spanning-tree priority 4096"]   ← para forçar root
+    ["spanning-tree priority 8192"]
+    ["spanning-tree priority 32768"]  ← padrão
+    ["spanning-tree priority 61440"]  ← para nunca ser root
+
+  Timers globais (alterar apenas se necessário — podem causar instabilidade):
+    ["spanning-tree hello-time 2"]          ← padrão: 2s (1-10)
+    ["spanning-tree forward-time 15"]       ← padrão: 15s (4-30)
+    ["spanning-tree max-age 20"]            ← padrão: 20s (6-40)
+    ["spanning-tree transmit hold-count 6"] ← padrão: 6 BPDUs/s (1-10)
+
+  Proteções globais:
+    ["spanning-tree bpduguard default"]   ← BPDU guard em todas as edge ports
+    ["spanning-tree loopguard default"]   ← loop guard em todas as portas normais
+
+STP/RSTP — por porta (dentro do bloco de interface):
+  Tipo de porta:
+    "spanning-tree port type edge"          ← portfast: host/server/AP
+    "spanning-tree port type normal"        ← porta normal (padrão)
+    "spanning-tree port type network"       ← uplink para outro switch (bridge assurance)
+    "no spanning-tree port type edge"       ← remover edge
+
+  Proteções por porta:
+    "spanning-tree bpduguard enable"        ← bloqueia porta se receber BPDU
+    "no spanning-tree bpduguard enable"
+    "spanning-tree bpdufilter enable"       ← não envia/recebe BPDUs (usar com cuidado)
+    "no spanning-tree bpdufilter enable"
+    "spanning-tree guard root"              ← impede a porta de se tornar root port
+    "no spanning-tree guard root"
+    "spanning-tree guard loop"              ← loop guard individual por porta
+    "no spanning-tree guard loop"
+
+  Custo e prioridade de porta (ajuste fino de topologia):
+    "spanning-tree cost 20000"              ← custo da porta (1-200000000; menor=preferido)
+    "spanning-tree port-priority 128"       ← prioridade (múltiplos de 16; padrão=128; menor=preferido)
+    "spanning-tree link-type point-to-point" ← força modo ponto-a-ponto (rápida transição)
+    "spanning-tree link-type shared"        ← modo compartilhado (hubs/meios half-duplex)
+
+STP/RSTP — MSTP (quando mode=mstp):
+  Configuração da região MST:
+    ["spanning-tree mst configuration",
+     "name NOME_REGIAO",
+     "revision 1",
+     "instance 1 vlan 10,20,30",
+     "instance 2 vlan 40,50",
+     "exit"]
+
+  Priority por instância MST:
+    ["spanning-tree mst 1 priority 4096"]
+    ["spanning-tree mst 0 priority 32768"]   ← instância 0 = IST (todas as VLANs não mapeadas)
+
+  Por porta — custo/prioridade MST:
+    "spanning-tree mst 1 cost 20000"
+    "spanning-tree mst 1 port-priority 128"
+
+STP — show commands (diagnóstico):
+  "show spanning-tree"                        ← resumo geral
+  "show spanning-tree summary"                ← contagem de TCNs e estado por modo
+  "show spanning-tree detail"                 ← timers, root, portas com estado
+  "show spanning-tree interface ethernet 1/1/1" ← estado STP de porta específica
+  "show spanning-tree mst"                    ← estado MSTP
+  "show spanning-tree mst configuration"      ← configuração da região MST
+  "show spanning-tree mst 1"                  ← instância MST específica
 
 REGRAS IMPORTANTES PARA DELL OS10:
 - Interface naming: ethernet 1/1/X (slot/sub-slot/porta) ou ethernet 1/1/X:Y (breakout)
