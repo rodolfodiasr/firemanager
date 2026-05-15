@@ -8,6 +8,8 @@ import anthropic
 from app.config import settings
 from app.policy_engine.schemas import ActionPlan
 
+_FALLBACK_MODEL = "claude-haiku-4-5-20251001"
+
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 _PLAN_BASE = (_PROMPTS_DIR / "plan_base.txt").read_text(encoding="utf-8")
 _SYSTEM_PROMPT = (_PROMPTS_DIR / "system.txt").read_text(encoding="utf-8")
@@ -55,12 +57,24 @@ async def generate_action_plan(
         )
         prompt = context_section + prompt
 
-    message = await client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=settings.anthropic_max_tokens,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    primary = settings.anthropic_model
+    try:
+        message = await client.messages.create(
+            model=primary,
+            max_tokens=settings.anthropic_max_tokens,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.InternalServerError as exc:
+        if exc.status_code == 529 and primary != _FALLBACK_MODEL:
+            message = await client.messages.create(
+                model=_FALLBACK_MODEL,
+                max_tokens=settings.anthropic_max_tokens,
+                system=_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        else:
+            raise
 
     content = message.content[0].text if message.content else "{}"
     content = content.strip()

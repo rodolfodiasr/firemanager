@@ -8,6 +8,7 @@ from app.config import settings
 
 _INTENT_PROMPT = (Path(__file__).parent / "prompts" / "intent.txt").read_text()
 _SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.txt").read_text()
+_FALLBACK_MODEL = "claude-haiku-4-5-20251001"
 
 
 class IntentParseResult:
@@ -23,12 +24,24 @@ async def parse_intent(user_input: str) -> IntentParseResult:
 
     prompt = _INTENT_PROMPT.replace("{user_input}", user_input)
 
-    message = await client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=1024,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    primary = settings.anthropic_model
+    try:
+        message = await client.messages.create(
+            model=primary,
+            max_tokens=1024,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.InternalServerError as exc:
+        if exc.status_code == 529 and primary != _FALLBACK_MODEL:
+            message = await client.messages.create(
+                model=_FALLBACK_MODEL,
+                max_tokens=1024,
+                system=_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        else:
+            raise
 
     content = message.content[0].text if message.content else "{}"
 
