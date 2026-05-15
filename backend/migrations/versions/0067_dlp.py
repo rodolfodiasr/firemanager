@@ -43,7 +43,7 @@ def upgrade() -> None:
             pattern TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            UNIQUE (tenant_id, rule_key)
+            CONSTRAINT uq_dlp_rules_tenant_key UNIQUE (tenant_id, rule_key)
         )
     """)
     op.execute("CREATE INDEX IF NOT EXISTS ix_dlp_rules_tenant_id ON dlp_rules(tenant_id)")
