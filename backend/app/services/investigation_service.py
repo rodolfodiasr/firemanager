@@ -117,7 +117,7 @@ async def plan_investigation(
 ) -> list[InvestigationPhase]:
     """Call Claude to generate phased investigation plan and persist phases."""
     from app.services.llm_provider import get_provider
-    provider = get_provider(session.tenant_id)
+    provider = get_provider(None)
 
     device_context = _build_device_context(session)
     user_prompt = (
@@ -365,7 +365,7 @@ async def analyze_phase(
 ) -> str:
     """Call Claude to analyze raw output and produce structured findings."""
     from app.services.llm_provider import get_provider
-    provider = get_provider(session.tenant_id)
+    provider = get_provider(None)
 
     history_text = _build_history_context(session)
     user_prompt = (
@@ -425,7 +425,7 @@ async def chat_in_investigation(
 ) -> str:
     """Continue a conversation within an active investigation."""
     from app.services.llm_provider import get_provider
-    provider = get_provider(session.tenant_id)
+    provider = get_provider(None)
 
     # Persist user message
     db.add(InvestigationMessage(
@@ -477,7 +477,7 @@ async def synthesize_investigation(
 ) -> str:
     """Generate final synthesis after all phases are done."""
     from app.services.llm_provider import get_provider
-    provider = get_provider(session.tenant_id)
+    provider = get_provider(None)
 
     phases_text = ""
     for phase in session.phases:
