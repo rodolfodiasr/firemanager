@@ -76,6 +76,8 @@ REGRAS IMPORTANTES PARA DELL OS10:
 - Interface naming: ethernet 1/1/X (slot/sub-slot/porta) ou ethernet 1/1/X:Y (breakout)
 - SVI criada com "interface vlan N" (diferente do NX-OS que usa "interface Vlan N")
 - BPDU guard e edge port se aplicam por porta (mais granular que global)
+- NÃO usar: show platform cpu-traffic (Cisco), show environment temperature sem verificar suporte,
+  show system resources (NX-OS), show tech-support (timeout), debug qualquer coisa
 
 ── LIST_VLANS (dell): ssh_show_commands: ["show vlan"]
 
@@ -93,6 +95,10 @@ REGRAS IMPORTANTES PARA DELL OS10:
   ssh_show_commands: ["show spanning-tree"]
   ssh_show_commands: ["show lldp neighbors"]
   ssh_show_commands: ["show ip route"]
+  ssh_show_commands: ["show logging"]
+  ssh_show_commands: ["show processes cpu"]
+  ssh_show_commands: ["show memory summary"]
+  ssh_show_commands: ["show interface counters"]
 
 ── GET_INFO DIAGNÓSTICO (dell OS10) — usuário descreve um PROBLEMA ─────────────
 
@@ -132,4 +138,33 @@ Diagnóstico geral / verificação completa de estado:
     "show interface status", "show spanning-tree summary",
     "show mac address-table count", "show ip route summary",
     "show vlan", "show lldp neighbors"
+  ]
+
+Erros / logs do sistema / eventos recentes:
+  ssh_show_commands: [
+    "show logging", "show logging onebox",
+    "show interface status", "show processes cpu",
+    "show memory summary", "show spanning-tree summary", "show version"
+  ]
+
+Erros de interface / contadores de erro:
+  ssh_show_commands: [
+    "show interface status", "show interface summary",
+    "show interface counters",
+    "show spanning-tree summary", "show lldp neighbors", "show version"
+  ]
+
+VLT (Virtual Link Trunking) / problemas de LAG:
+  ssh_show_commands: [
+    "show vlt statistics", "show vlt status",
+    "show interface port-channel summary",
+    "show interface status", "show spanning-tree summary",
+    "show mac address-table count", "show version"
+  ]
+
+SNMP / alto consumo de processos específicos:
+  ssh_show_commands: [
+    "show processes cpu", "show processes node-id 1",
+    "show memory summary", "show logging",
+    "show version"
   ]
