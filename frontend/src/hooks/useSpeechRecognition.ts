@@ -12,6 +12,9 @@ interface UseSpeechRecognitionReturn {
   clear: () => void;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyWindow = Window & Record<string, any>;
+
 const supportsWebSpeech =
   typeof window !== "undefined" &&
   ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
@@ -22,34 +25,32 @@ export function useSpeechRecognition(
   const [mode, setMode] = useState<SpeechMode>("idle");
   const [transcript, setTranscript] = useState("");
 
-  // Web Speech API path
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-
-  // MediaRecorder path (Whisper fallback)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       recognitionRef.current?.abort();
       mediaRecorderRef.current?.stop();
     };
   }, []);
 
   const startWebSpeech = useCallback(() => {
-    const SpeechRecognitionCtor =
-      (window as Window & { SpeechRecognition?: typeof SpeechRecognition; webkitSpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition ||
-      (window as Window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
+    const win = window as AnyWindow;
+    const Ctor = win.SpeechRecognition ?? win.webkitSpeechRecognition;
+    if (!Ctor) return false;
 
-    if (!SpeechRecognitionCtor) return false;
-
-    const rec = new SpeechRecognitionCtor();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec = new Ctor() as any;
     rec.lang = "pt-BR";
     rec.interimResults = true;
     rec.continuous = false;
 
-    rec.onresult = (e: SpeechRecognitionEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
       let interim = "";
       let final = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
