@@ -84,7 +84,7 @@ REGRAS IMPORTANTES PARA DELL OS10:
   Porta específica: ssh_show_commands: ["show interface ethernet 1/1/1", "show running-config interface ethernet 1/1/1"]
   Combinado:        ssh_show_commands: ["show vlan", "show interface status"]
 
-── GET_INFO exemplos (dell):
+── GET_INFO exemplos (dell) — comando específico do usuário:
   ssh_show_commands: ["show running-config"]
   ssh_show_commands: ["show ip interface brief"]
   ssh_show_commands: ["show version"]
@@ -93,3 +93,43 @@ REGRAS IMPORTANTES PARA DELL OS10:
   ssh_show_commands: ["show spanning-tree"]
   ssh_show_commands: ["show lldp neighbors"]
   ssh_show_commands: ["show ip route"]
+
+── GET_INFO DIAGNÓSTICO (dell OS10) — usuário descreve um PROBLEMA ─────────────
+
+CPU alta / processos travados / switch lento:
+  ssh_show_commands: [
+    "show processes cpu", "show processes node-id 1",
+    "show memory summary", "show spanning-tree summary",
+    "show mac address-table count", "show ip arp summary",
+    "show interface status", "show version"
+  ]
+
+Spanning-tree / instabilidade / flapping / TCN:
+  ssh_show_commands: [
+    "show spanning-tree summary", "show spanning-tree detail",
+    "show mac address-table count", "show interface status",
+    "show lldp neighbors", "show vlan", "show version"
+  ]
+
+Interfaces caindo / erros de link / port-flap:
+  ssh_show_commands: [
+    "show interface status", "show interface summary",
+    "show spanning-tree summary", "show lldp neighbors",
+    "show mac address-table count", "show vlan", "show version"
+  ]
+
+Lentidão de rede / tráfego lento / problemas de roteamento:
+  ssh_show_commands: [
+    "show interface status", "show processes cpu",
+    "show memory summary", "show spanning-tree summary",
+    "show mac address-table count", "show ip route summary",
+    "show ip arp summary", "show version"
+  ]
+
+Diagnóstico geral / verificação completa de estado:
+  ssh_show_commands: [
+    "show version", "show processes cpu", "show memory summary",
+    "show interface status", "show spanning-tree summary",
+    "show mac address-table count", "show ip route summary",
+    "show vlan", "show lldp neighbors"
+  ]

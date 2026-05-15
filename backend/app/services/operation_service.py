@@ -429,12 +429,29 @@ async def execute_operation(db: AsyncSession, operation_id: UUID, mark_direct: b
             try:
                 ssh_connector = get_ssh_connector(device)
                 ssh_result = await ssh_connector.execute_show_commands(ssh_show_cmds)
+                result: dict = {
+                    "commands": ssh_show_cmds,
+                    "output": ssh_result.output,
+                }
+                # For get_info with multiple commands, run LLM diagnostic analysis
+                if ssh_result.success and plan.intent == IntentType.get_info and len(ssh_show_cmds) >= 2:
+                    try:
+                        from app.agent.diagnostic_analyzer import analyze_diagnostic
+                        analysis = await analyze_diagnostic(
+                            vendor=device.vendor.value,
+                            firmware_version=device.firmware_version,
+                            problem_description=operation.natural_language_input or "",
+                            commands=ssh_show_cmds,
+                            output=ssh_result.output,
+                            tenant_id=getattr(device, "tenant_id", None),
+                            db=db,
+                        )
+                        result["analysis"] = analysis
+                    except Exception:
+                        pass  # analysis is best-effort; don't fail the operation
                 operation.action_plan = {
                     **(operation.action_plan or {}),
-                    "result": {
-                        "commands": ssh_show_cmds,
-                        "output": ssh_result.output,
-                    },
+                    "result": result,
                 }
                 operation.status = OperationStatus.completed if ssh_result.success else OperationStatus.failed
                 if not ssh_result.success:
