@@ -60,20 +60,10 @@ class AgentSession:
             self.collected_data.update(result.extracted_data)
             self.missing_fields = self._compute_missing()
 
-            # Diagnostic questions belong in the Investigar tab, not Operar
+            # Remap diagnose to get_info: execute read-only diagnostic commands directly
             if self.intent == "diagnose":
-                response = (
-                    "Esta parece ser uma solicitação de diagnóstico ou análise.\n\n"
-                    "O modo **Operar** é destinado a execução de configurações (criar regras, VLANs, rotas, etc.).\n\n"
-                    "Para diagnosticar problemas — CPU alta, latência, conectividade, análise de tráfego — "
-                    "utilize a aba **Investigar** (ícone de lupa no topo desta página). "
-                    "Lá o agente executa comandos de leitura em fases, analisa os resultados e "
-                    "guia você até a causa raiz de forma iterativa.\n\n"
-                    "Se quiser executar um comando específico de leitura agora (ex: `show processes cpu`), "
-                    "reformule como: *\"execute o comando show processes cpu\"* e usarei o intent **get_info**."
-                )
-                self.conversation_history.append({"role": "assistant", "content": response})
-                return response
+                self.intent = "get_info"
+                self.missing_fields = []
         else:
             # Subsequent messages: extract data from user reply
             await self._extract_from_reply(user_message)
