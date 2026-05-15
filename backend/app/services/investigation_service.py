@@ -6,6 +6,7 @@ reaching the device.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -275,22 +276,9 @@ async def execute_phase(
     return raw_output
 
 
-async def _execute_device_commands(
-    db: AsyncSession,
-    session: InvestigationSession,
-    commands: list[str],
-) -> str:
-    from app.models.device import Device
+async def _run_commands_on_device(device, commands: list[str]) -> str:
+    """Run SSH show commands on a single device and return labelled output."""
     from app.connectors.factory import get_ssh_connector
-
-    result = await db.execute(
-        select(Device).where(Device.id == session.device_id)
-    )
-    device = result.scalar_one_or_none()
-    if not device:
-        return "Dispositivo não encontrado."
-
-    # All investigation uses SSH — read-only show commands
     try:
         connector = get_ssh_connector(device)
         ssh_result = await connector.execute_show_commands(commands)
@@ -302,6 +290,47 @@ async def _execute_device_commands(
         )
     except Exception as exc:
         return f"Erro ao conectar via SSH: {exc}"
+
+
+async def _execute_device_commands(
+    db: AsyncSession,
+    session: InvestigationSession,
+    commands: list[str],
+) -> str:
+    from app.models.device import Device
+
+    # Collect target device IDs — multi-device takes priority over single
+    target_ids: list[UUID] = []
+    if session.device_ids:
+        for did_str in session.device_ids:
+            try:
+                target_ids.append(UUID(did_str))
+            except Exception:
+                pass
+    if not target_ids and session.device_id:
+        target_ids = [session.device_id]
+
+    if not target_ids:
+        return "Nenhum dispositivo configurado para esta investigação."
+
+    # Load all target devices
+    result = await db.execute(select(Device).where(Device.id.in_(target_ids)))
+    devices = result.scalars().all()
+    if not devices:
+        return "Dispositivo(s) não encontrado(s)."
+
+    if len(devices) == 1:
+        # Single device — keep original output format (no label header)
+        return await _run_commands_on_device(devices[0], commands)
+
+    # Multi-device — run in parallel, label each output block
+    outputs = await asyncio.gather(*[
+        _run_commands_on_device(dev, commands) for dev in devices
+    ])
+    parts: list[str] = []
+    for dev, out in zip(devices, outputs):
+        parts.append(f"=== {dev.name} ({dev.vendor.value}) ===\n{out}")
+    return "\n\n".join(parts)
 
 
 async def _execute_server_commands(
@@ -737,28 +766,54 @@ async def _build_device_context(db: AsyncSession, session: InvestigationSession)
 
     parts = [f"Tipo de agente: {session.agent_type}"]
 
-    if session.device_id:
-        result = await db.execute(select(Device).where(Device.id == session.device_id))
-        device = result.scalar_one_or_none()
-        if device:
-            parts.append(f"Device: {device.name}")
-            parts.append(f"Vendor: {device.vendor.value}")
-            parts.append(f"Categoria: {device.category.value}")
-            if device.firmware_version:
-                parts.append(f"Firmware/OS: {device.firmware_version}")
-            hint = _VENDOR_CLI_HINTS.get(device.vendor.value)
+    # Collect all target device IDs (multi-device list takes priority)
+    target_ids: list[UUID] = []
+    if session.device_ids:
+        for did_str in session.device_ids:
+            try:
+                target_ids.append(UUID(did_str))
+            except Exception:
+                pass
+    if not target_ids and session.device_id:
+        target_ids = [session.device_id]
+
+    if target_ids:
+        result = await db.execute(select(Device).where(Device.id.in_(target_ids)))
+        devices = result.scalars().all()
+
+        if len(devices) == 1:
+            dev = devices[0]
+            parts.append(f"Device: {dev.name}")
+            parts.append(f"Vendor: {dev.vendor.value}")
+            parts.append(f"Categoria: {dev.category.value}")
+            if dev.firmware_version:
+                parts.append(f"Firmware/OS: {dev.firmware_version}")
+            hint = _VENDOR_CLI_HINTS.get(dev.vendor.value)
             if hint:
                 parts.append(f"Sintaxe CLI correta para este vendor: {hint}")
         else:
-            parts.append(f"Device ID: {session.device_id}")
+            parts.append(f"Dispositivos investigados ({len(devices)}):")
+            vendors_seen: set[str] = set()
+            for dev in devices:
+                fw = f" | {dev.firmware_version}" if dev.firmware_version else ""
+                parts.append(f"  - {dev.name} | {dev.vendor.value}{fw}")
+                vendors_seen.add(dev.vendor.value)
+            # Add CLI hints for all unique vendors
+            for vendor in vendors_seen:
+                hint = _VENDOR_CLI_HINTS.get(vendor)
+                if hint:
+                    parts.append(f"Sintaxe CLI para {vendor}: {hint}")
+            parts.append(
+                "IMPORTANTE: Os comandos de cada fase serão executados em TODOS os dispositivos acima "
+                "em paralelo. O output será rotulado por dispositivo (=== Nome ===). "
+                "Planeje fases que façam sentido para TODA a topologia, não apenas um dispositivo."
+            )
 
     if session.server_id:
         result = await db.execute(select(Server).where(Server.id == session.server_id))
         server = result.scalar_one_or_none()
         if server:
             parts.append(f"Servidor: {server.name} ({server.os_type.value if hasattr(server.os_type, 'value') else server.os_type})")
-        else:
-            parts.append(f"Server ID: {session.server_id}")
 
     if session.integration_ids:
         parts.append(f"Integrações: {', '.join(session.integration_ids)}")

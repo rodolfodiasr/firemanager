@@ -20,6 +20,7 @@ class InvestigationSession(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
     device_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    device_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True, default=list)
     server_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     integration_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
 

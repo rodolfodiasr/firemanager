@@ -41,6 +41,7 @@ export interface InvestigationSession {
   cross_domain_detected: boolean;
   cross_domain_hint: string | null;
   device_id: string | null;
+  device_ids: string[] | null;
   server_id: string | null;
   phases: InvestigationPhase[];
   messages: InvestigationMessage[];
@@ -52,6 +53,7 @@ export interface StartInvestigationRequest {
   problem_description: string;
   agent_type: "network" | "firewall" | "n3" | "unified";
   device_id?: string;
+  device_ids?: string[];
   server_id?: string;
   integration_ids?: string[];
 }

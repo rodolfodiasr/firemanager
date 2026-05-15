@@ -294,17 +294,12 @@ export function NetworkAgent() {
               </div>
             ) : (
               <div className="flex-1 bg-white rounded-xl border border-gray-200 p-5 overflow-y-auto">
-                {!selectedDeviceId ? (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-sm text-gray-400">Selecione um dispositivo para investigar</p>
-                  </div>
-                ) : (
-                  <InvestigationPanel
-                    agentType="network"
-                    target={{ device_id: selectedDeviceId }}
-                    targetLabel={selectedDevice?.name}
-                  />
-                )}
+                <InvestigationPanel
+                  agentType="network"
+                  target={{ device_id: selectedDeviceId ?? undefined }}
+                  targetLabel={selectedDevice?.name}
+                  availableDevices={devices}
+                />
               </div>
             )}
           </div>

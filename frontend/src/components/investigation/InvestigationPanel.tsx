@@ -4,7 +4,7 @@ import {
   Search, Play, ChevronDown, ChevronRight, Loader2,
   CheckCircle2, AlertTriangle, Share2,
   MessageSquare, Terminal, Layers, ArrowRight, RefreshCw,
-  Check, X, Pencil, CheckSquare,
+  Check, X, Pencil, CheckSquare, Square,
 } from "lucide-react";
 import { investigationsApi, type InvestigationSession, type InvestigationPhase, type CommandState } from "../../api/investigations";
 import { MarkdownText } from "../shared/MarkdownText";
@@ -14,16 +14,25 @@ import { useNavigate } from "react-router-dom";
 
 export interface InvestigationTarget {
   device_id?: string;
+  device_ids?: string[];
   server_id?: string;
   integration_ids?: string[];
 }
 
 export type InvestigationAgentType = "network" | "firewall" | "n3";
 
+interface AvailableDevice {
+  id: string;
+  name: string;
+  vendor: string;
+  category: string;
+}
+
 interface InvestigationPanelProps {
   agentType: InvestigationAgentType;
   target: InvestigationTarget;
   targetLabel?: string;
+  availableDevices?: AvailableDevice[];
   sessionId?: string;
   onSessionCreated?: (sessionId: string) => void;
 }
@@ -297,6 +306,7 @@ export function InvestigationPanel({
   agentType,
   target,
   targetLabel,
+  availableDevices,
   sessionId: externalSessionId,
   onSessionCreated,
 }: InvestigationPanelProps) {
@@ -308,6 +318,21 @@ export function InvestigationPanel({
   const [problem, setProblem] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [tab, setTab] = useState<"phases" | "chat">("phases");
+
+  // Multi-device selection — starts with target.device_ids if provided, else target.device_id
+  const initialSelected = target.device_ids
+    ? new Set<string>(target.device_ids)
+    : target.device_id
+    ? new Set<string>([target.device_id])
+    : new Set<string>();
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<Set<string>>(initialSelected);
+
+  const toggleDevice = (id: string) =>
+    setSelectedDeviceIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   const { data: session, isLoading: loadingSession } = useQuery({
     queryKey: ["investigation", sessionId],
@@ -327,12 +352,18 @@ export function InvestigationPanel({
   }, [session?.messages?.length]);
 
   const startMut = useMutation({
-    mutationFn: () =>
-      investigationsApi.start({
+    mutationFn: () => {
+      const ids = Array.from(selectedDeviceIds);
+      const multiDevice = ids.length > 1;
+      return investigationsApi.start({
         problem_description: problem.trim(),
         agent_type: agentType,
-        ...target,
-      }),
+        ...(multiDevice
+          ? { device_ids: ids }
+          : { device_id: ids[0] ?? target.device_id, server_id: target.server_id }),
+        integration_ids: target.integration_ids,
+      });
+    },
     onSuccess: (s) => {
       setSessionId(s.id);
       onSessionCreated?.(s.id);
@@ -392,17 +423,77 @@ export function InvestigationPanel({
 
   // ── No session yet — start form ───────────────────────────────────────────
   if (!sessionId) {
+    const multiSelected = selectedDeviceIds.size > 1;
+    const selectedLabel = availableDevices
+      ? availableDevices
+          .filter((d) => selectedDeviceIds.has(d.id))
+          .map((d) => d.name)
+          .join(", ") || "Nenhum dispositivo selecionado"
+      : targetLabel;
+
     return (
-      <div className="flex flex-col gap-4 h-full">
+      <div className="flex flex-col gap-3 h-full">
         <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
           <Search size={16} className="text-brand-500" />
           Diagnóstico Iterativo
         </div>
-        {targetLabel && (
+
+        {/* Multi-device picker — shown when availableDevices is passed */}
+        {availableDevices && availableDevices.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-gray-600">
+                Dispositivos ({selectedDeviceIds.size} selecionado{selectedDeviceIds.size !== 1 ? "s" : ""})
+              </p>
+              <button
+                onClick={() =>
+                  setSelectedDeviceIds(
+                    selectedDeviceIds.size === availableDevices.length
+                      ? new Set()
+                      : new Set(availableDevices.map((d) => d.id))
+                  )
+                }
+                className="text-[11px] text-brand-600 hover:underline"
+              >
+                {selectedDeviceIds.size === availableDevices.length ? "Desmarcar" : "Todos"}
+              </button>
+            </div>
+            <div className="max-h-36 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-2">
+              {availableDevices.map((device) => {
+                const checked = selectedDeviceIds.has(device.id);
+                return (
+                  <button
+                    key={device.id}
+                    onClick={() => toggleDevice(device.id)}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+                      checked
+                        ? "bg-brand-50 border border-brand-200 text-brand-800"
+                        : "hover:bg-gray-50 text-gray-700 border border-transparent"
+                    }`}
+                  >
+                    {checked
+                      ? <CheckSquare size={13} className="text-brand-600 shrink-0" />
+                      : <Square size={13} className="text-gray-300 shrink-0" />}
+                    <span className="font-medium truncate">{device.name}</span>
+                    <span className="text-gray-400 shrink-0">{device.vendor}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {multiSelected && (
+              <p className="text-[11px] text-brand-600 font-medium">
+                Investigação multi-switch: comandos executados em paralelo em todos os dispositivos selecionados.
+              </p>
+            )}
+          </div>
+        )}
+
+        {!availableDevices && selectedLabel && (
           <p className="text-xs text-gray-500">
-            Alvo: <span className="font-medium text-gray-700">{targetLabel}</span>
+            Alvo: <span className="font-medium text-gray-700">{selectedLabel}</span>
           </p>
         )}
+
         <textarea
           value={problem}
           onChange={(e) => setProblem(e.target.value)}
@@ -423,12 +514,12 @@ export function InvestigationPanel({
         )}
         <button
           onClick={() => startMut.mutate()}
-          disabled={!problem.trim() || startMut.isPending}
+          disabled={!problem.trim() || startMut.isPending || selectedDeviceIds.size === 0}
           className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-xl hover:bg-brand-700 disabled:opacity-50"
         >
           {startMut.isPending
             ? <><Loader2 size={14} className="animate-spin" /> Planejando investigação...</>
-            : <><Search size={14} /> Iniciar Diagnóstico</>}
+            : <><Search size={14} /> Iniciar Diagnóstico{multiSelected ? ` (${selectedDeviceIds.size} switches)` : ""}</>}
         </button>
       </div>
     );
@@ -454,9 +545,17 @@ export function InvestigationPanel({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Investigação ativa</p>
-          {targetLabel && (
+          {/* Show device names from session if multi-device, else fall back to targetLabel */}
+          {session.device_ids && session.device_ids.length > 1 && availableDevices ? (
+            <p className="text-[11px] text-brand-600 font-medium truncate">
+              {availableDevices
+                .filter((d) => session.device_ids!.includes(d.id))
+                .map((d) => d.name)
+                .join(", ") || targetLabel}
+            </p>
+          ) : targetLabel ? (
             <p className="text-[11px] text-brand-600 font-medium truncate">{targetLabel}</p>
-          )}
+          ) : null}
           <p className="text-sm font-medium text-gray-800 truncate">{session.problem_description}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">

@@ -26,6 +26,7 @@ class InvestigationStart(BaseModel):
     problem_description: str
     agent_type: str  # network | firewall | n3 | unified
     device_id: UUID | None = None
+    device_ids: list[UUID] | None = None
     server_id: UUID | None = None
     integration_ids: list[str] | None = None
 
@@ -85,6 +86,7 @@ class InvestigationRead(BaseModel):
     cross_domain_detected: bool
     cross_domain_hint: str | None
     device_id: UUID | None = None
+    device_ids: list[str] | None = None
     server_id: UUID | None = None
     phases: list[PhaseRead]
     messages: list[MessageRead]
@@ -143,6 +145,7 @@ def _session_read(s: InvestigationSession) -> InvestigationRead:
         cross_domain_detected=s.cross_domain_detected,
         cross_domain_hint=s.cross_domain_hint,
         device_id=s.device_id,
+        device_ids=[str(did) for did in s.device_ids] if s.device_ids else None,
         server_id=s.server_id,
         phases=[_phase_read(p) for p in (s.phases or [])],
         messages=[_msg_read(m) for m in (s.messages or [])],
@@ -196,10 +199,15 @@ async def start_investigation(
     if not data.problem_description.strip():
         raise HTTPException(status_code=400, detail="Descreva o problema.")
 
+    device_ids_str = [str(did) for did in data.device_ids] if data.device_ids else None
+    # When device_ids provided but no single device_id, use first as primary for audit
+    primary_device_id = data.device_id or (data.device_ids[0] if data.device_ids else None)
+
     session = InvestigationSession(
         tenant_id=ctx.tenant.id,
         user_id=ctx.user.id,
-        device_id=data.device_id,
+        device_id=primary_device_id,
+        device_ids=device_ids_str,
         server_id=data.server_id,
         integration_ids=data.integration_ids,
         agent_type=data.agent_type,
