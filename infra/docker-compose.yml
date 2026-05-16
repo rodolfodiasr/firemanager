@@ -25,6 +25,19 @@ networks:
   internal-net:
     driver: bridge
     internal: true
+  # F34.cont — named isolation networks
+  frontend_net:
+    driver: bridge
+    internal: false      # nginx precisa de acesso externo
+  backend_net:
+    driver: bridge
+    internal: true       # api, celery, redis, postgres — SEM acesso externo direto
+  worker_net:
+    driver: bridge
+    internal: true       # celery_worker, celery_beat, redis
+  monitoring_net:
+    driver: bridge
+    internal: true       # prometheus, grafana
 
 services:
   postgres:
@@ -37,6 +50,7 @@ services:
     networks:
       - data-net
       - internal-net
+      - backend_net
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -51,6 +65,8 @@ services:
     networks:
       - data-net
       - internal-net
+      - backend_net
+      - worker_net
     volumes:
       - redis_data:/data
     healthcheck:
@@ -83,6 +99,7 @@ services:
       - api-net
       - data-net
       - internal-net
+      - backend_net
     volumes:
       - ../backend:/app
       - ../scripts:/app/scripts
@@ -91,6 +108,16 @@ services:
       - 8.8.8.8
       - 8.8.4.4
       - 1.1.1.1
+    # F34.cont — container hardening
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:./security/seccomp-default.json
+      # AppArmor: comentado por padrão (requer profile carregado no host)
+      # - apparmor:firemanager-api
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   celery_worker:
@@ -108,6 +135,8 @@ services:
       - api-net
       - data-net
       - internal-net
+      - backend_net
+      - worker_net
     volumes:
       - ../backend:/app
       - ../scripts:/app/scripts
@@ -116,6 +145,11 @@ services:
       - 8.8.8.8
       - 8.8.4.4
       - 1.1.1.1
+    # F34.cont — container hardening
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: celery -A app.workers.celery_app worker --loglevel=info
 
   celery_beat:
@@ -131,8 +165,14 @@ services:
       - api
     networks:
       - internal-net
+      - worker_net
     volumes:
       - ../backend:/app
+    # F34.cont — container hardening
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: celery -A app.workers.celery_app beat --loglevel=info
 
   frontend:
@@ -143,6 +183,7 @@ services:
       - "3000:80"
     networks:
       - public-net
+      - frontend_net
     depends_on:
       - api
 
@@ -156,6 +197,7 @@ services:
       - "3002:80"
     networks:
       - public-net
+      - frontend_net
     depends_on:
       - api
     profiles:
@@ -169,6 +211,8 @@ services:
       - "4000:4000"   # Plataforma RH
     networks:
       - public-net
+      - frontend_net
+      - backend_net
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
@@ -179,6 +223,8 @@ services:
     image: prom/prometheus:latest
     networks:
       - internal-net
+      - monitoring_net
+      - backend_net
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
@@ -190,6 +236,8 @@ services:
       - "3001:3000"
     networks:
       - internal-net
+      - monitoring_net
+      - frontend_net
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
