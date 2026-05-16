@@ -33,6 +33,7 @@ import {
   Cpu,
   Store,
   Sparkles,
+  HelpCircle,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -283,8 +284,16 @@ export function Sidebar() {
         )}
       </nav>
 
+      {/* Central de Ajuda */}
+      <div className="px-3 pb-2 border-t border-gray-700 pt-2">
+        <NavLink to="/help" className={navLinkClass}>
+          <HelpCircle size={18} aria-hidden="true" />
+          <span className="flex-1">Central de Ajuda</span>
+        </NavLink>
+      </div>
+
       {/* Footer */}
-      <div className="px-6 py-4 border-t border-gray-700 text-xs text-gray-500">
+      <div className="px-6 py-3 border-t border-gray-700 text-xs text-gray-500">
         Eternity SecOps v0.1.0
       </div>
     </aside>
