@@ -283,7 +283,7 @@ def _normalize_tactical(raw: dict) -> dict:
         ip = ips.split(",")[0].strip() if ips else None
 
     return {
-        "external_id": str(raw.get("agent_id") or raw.get("id", "")),
+        "external_id": str(raw.get("id") or raw.get("agent_id", "")),
         "hostname": raw.get("hostname") or raw.get("computername", ""),
         "os_name": raw.get("operating_system") or raw.get("os_name", ""),
         "ip_address": ip,
