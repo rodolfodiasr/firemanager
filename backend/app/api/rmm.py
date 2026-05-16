@@ -234,10 +234,18 @@ async def run_on_agent(
     agent = next((a for a in agents if a.external_id == agent_external_id), None)
     hostname = agent.hostname if agent else agent_external_id
 
+    # Tactical RMM: REST endpoints use numeric 'id', not the alphanumeric agent_id slug.
+    # Prefer raw_data["id"] (numeric) over the stored external_id which may be the slug.
+    api_agent_id = agent_external_id
+    if integration.rmm_type == "tactical_rmm" and agent and agent.raw_data:
+        numeric_id = agent.raw_data.get("id")
+        if numeric_id is not None:
+            api_agent_id = str(numeric_id)
+
     run = await rmm_service.execute_on_agent(
         db=db,
         integration=integration,
-        agent_external_id=agent_external_id,
+        agent_external_id=api_agent_id,
         agent_hostname=hostname,
         run_type=data.run_type,
         shell=data.shell,
