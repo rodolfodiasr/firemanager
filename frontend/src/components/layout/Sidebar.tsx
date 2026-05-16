@@ -27,6 +27,7 @@ import {
   BarChart2,
   Package2,
   Monitor,
+  Laptop,
   Lock,
   ShieldHalf,
   Coins,
@@ -101,6 +102,7 @@ const navSections: NavSection[] = [
       { to: "/database-connectors", icon: DatabaseZap, label: "Bancos de Dados"     },
       { to: "/vm-migration",        icon: Monitor,     label: "Migração de VMs"     },
       { to: "/rmm",                 icon: Server,      label: "RMM",                 beta: true }, // Onda 1: movido de Segurança
+      { to: "/rmm-agent",           icon: Laptop,      label: "Agente · Estações",   beta: true },
       { to: "/cloud-posture",       icon: Globe,       label: "Cloud Posture"        },             // Onda 1: movido de Segurança
     ],
   },

@@ -23,6 +23,8 @@ class InvestigationSession(Base):
     device_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True, default=list)
     server_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     integration_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    rmm_integration_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    rmm_agent_external_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     agent_type: Mapped[str] = mapped_column(String(20), nullable=False)
     problem_description: Mapped[str] = mapped_column(Text, nullable=False)

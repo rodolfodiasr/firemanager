@@ -91,6 +91,46 @@ export const rmmApi = {
       .then((r) => r.data),
 };
 
+export type TemplateCategory = "monitoring" | "security" | "maintenance" | "network" | "general" | "incident_response" | "identity" | "compliance" | "forensics";
+export type TemplateShell = "powershell" | "cmd" | "python" | "bash";
+
+export interface RmmScriptTemplate {
+  id: string;
+  tenant_id: string | null;
+  name: string;
+  description: string | null;
+  category: TemplateCategory;
+  shell: TemplateShell;
+  run_type: "command" | "script";
+  body: string;
+  is_builtin: boolean;
+  created_at: string;
+}
+
+export const rmmTemplatesApi = {
+  list: (category?: string) =>
+    apiClient
+      .get<RmmScriptTemplate[]>("/rmm/templates", { params: category ? { category } : undefined })
+      .then((r) => r.data),
+
+  seed: () =>
+    apiClient.post<{ added: number; message: string }>("/rmm/templates/seed").then((r) => r.data),
+
+  create: (data: {
+    name: string;
+    body: string;
+    shell: string;
+    run_type: string;
+    category: string;
+    description?: string;
+  }) => apiClient.post<RmmScriptTemplate>("/rmm/templates", data).then((r) => r.data),
+
+  update: (id: string, data: Partial<Omit<RmmScriptTemplate, "id" | "tenant_id" | "is_builtin" | "created_at">>) =>
+    apiClient.patch<RmmScriptTemplate>(`/rmm/templates/${id}`, data).then((r) => r.data),
+
+  delete: (id: string) => apiClient.delete(`/rmm/templates/${id}`),
+};
+
 export const ssoMappingsApi = {
   list: () => apiClient.get("/sso-mappings").then((r) => r.data),
   create: (data: { external_group: string; platform_role: string }) =>

@@ -33,7 +33,7 @@ export interface InvestigationMessage {
 export interface InvestigationSession {
   id: string;
   tenant_id: string;
-  agent_type: "network" | "firewall" | "n3" | "unified";
+  agent_type: "network" | "firewall" | "n3" | "unified" | "rmm";
   problem_description: string;
   status: "planning" | "active" | "done" | "escalated";
   current_phase: number;
@@ -43,6 +43,8 @@ export interface InvestigationSession {
   device_id: string | null;
   device_ids: string[] | null;
   server_id: string | null;
+  rmm_integration_id: string | null;
+  rmm_agent_external_id: string | null;
   phases: InvestigationPhase[];
   messages: InvestigationMessage[];
   created_at: string;
@@ -51,11 +53,13 @@ export interface InvestigationSession {
 
 export interface StartInvestigationRequest {
   problem_description: string;
-  agent_type: "network" | "firewall" | "n3" | "unified";
+  agent_type: "network" | "firewall" | "n3" | "unified" | "rmm";
   device_id?: string;
   device_ids?: string[];
   server_id?: string;
   integration_ids?: string[];
+  rmm_integration_id?: string;
+  rmm_agent_external_id?: string;
 }
 
 export const investigationsApi = {

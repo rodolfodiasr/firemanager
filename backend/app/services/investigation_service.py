@@ -75,6 +75,8 @@ _VENDOR_CLI_HINTS: dict[str, str] = {
     "hp_comware": "HP Comware CLI — exemplos: display cpu-usage, display memory, display version, display interface brief, display ip routing-table",
     "palo_alto":  "PAN-OS CLI — exemplos: show system resources, show system info, show interface all, show routing route, show system statistics",
     "checkpoint": "Check Point Gaia CLI — exemplos: show routed, show interfaces all, show route, cpview, fw stat",
+    "rmm_windows": "PowerShell (Windows endpoint via RMM) — exemplos: Get-Process | Sort-Object CPU -Descending | Select-Object -First 20, Get-Service | Where-Object {$_.Status -eq 'Stopped'}, Get-NetTCPConnection -State Established | Select-Object -First 30, Get-EventLog -LogName System -Newest 30, Get-Disk, Get-Volume, Test-NetConnection -ComputerName 8.8.8.8 -Port 443, Get-WmiObject Win32_OperatingSystem | Select-Object Caption,Version,FreePhysicalMemory,TotalVisibleMemorySize",
+    "rmm_linux":   "bash (Linux endpoint via RMM) — exemplos: ps aux --sort=-%cpu | head -20, df -h, free -m, ss -tlnp, journalctl -n 50 --no-pager, systemctl list-units --failed, cat /proc/loadavg, netstat -rn, top -bn1 | head -30",
 }
 
 _PLAN_SYSTEM = """Você é um especialista em diagnóstico de infraestrutura de redes e segurança.
@@ -265,6 +267,8 @@ async def execute_phase(
         raw_output = await _execute_device_commands(db, session, commands_to_run)
     elif session.agent_type == "n3":
         raw_output = await _execute_server_commands(db, session, commands_to_run)
+    elif session.agent_type == "rmm":
+        raw_output = await _execute_rmm_commands(db, session, commands_to_run)
     else:
         raw_output = "(Agente unificado — execute cada sub-agente individualmente)"
 
@@ -385,6 +389,69 @@ async def _execute_server_commands(
             outputs.append(f"\n--- Dados de Monitoramento ---\n{mon}")
 
     return "\n\n".join(outputs)
+
+
+async def _execute_rmm_commands(
+    db: AsyncSession,
+    session: InvestigationSession,
+    commands: list[str],
+) -> str:
+    """Execute read-only diagnostic commands on an RMM-managed endpoint."""
+    from app.models.rmm import RmmIntegration, RmmAgent
+    from app.services import rmm_service
+
+    if not session.rmm_integration_id or not session.rmm_agent_external_id:
+        return "Integração RMM ou ID do agente não configurados para esta investigação."
+
+    result = await db.execute(
+        select(RmmIntegration).where(
+            RmmIntegration.id == session.rmm_integration_id,
+            RmmIntegration.is_active.is_(True),
+        )
+    )
+    integration = result.scalar_one_or_none()
+    if not integration:
+        return "Integração RMM não encontrada ou inativa."
+
+    result = await db.execute(
+        select(RmmAgent).where(
+            RmmAgent.integration_id == session.rmm_integration_id,
+            RmmAgent.external_id == session.rmm_agent_external_id,
+        )
+    )
+    agent = result.scalar_one_or_none()
+    hostname = agent.hostname if agent else session.rmm_agent_external_id
+
+    is_windows = agent and agent.os_name and "windows" in agent.os_name.lower()
+    shell = "powershell" if (is_windows or not agent) else "bash"
+
+    if shell == "powershell":
+        parts = [
+            f'Write-Host "--- {cmd} ---"\ntry {{ {cmd} }} catch {{ Write-Host "ERRO: $_" }}\nWrite-Host ""'
+            for cmd in commands
+        ]
+    else:
+        parts = [
+            f'echo "--- {cmd} ---"\n{cmd} 2>&1\necho ""'
+            for cmd in commands
+        ]
+    body = "\n".join(parts)
+
+    run = await rmm_service.execute_on_agent(
+        db=db,
+        integration=integration,
+        agent_external_id=session.rmm_agent_external_id,
+        agent_hostname=hostname,
+        run_type="script",
+        shell=shell,
+        body=body,
+        timeout=120,
+        executed_by=session.user_id,
+    )
+
+    if run.status == "error" and not run.output:
+        return f"Erro ao executar via RMM (exit_code={run.exit_code})."
+    return run.output or "(sem saída)"
 
 
 async def _collect_monitoring_data(db: AsyncSession, session: InvestigationSession) -> str:
@@ -727,6 +794,17 @@ async def export_to_assistant(
         srv = res.scalar_one_or_none()
         if srv:
             target_label = f" [{srv.name}]"
+    elif session.rmm_agent_external_id:
+        from app.models.rmm import RmmAgent
+        res = await db.execute(
+            select(RmmAgent).where(
+                RmmAgent.integration_id == session.rmm_integration_id,
+                RmmAgent.external_id == session.rmm_agent_external_id,
+            )
+        )
+        rmm_agent = res.scalar_one_or_none()
+        if rmm_agent:
+            target_label = f" [{rmm_agent.hostname}]"
 
     title = f"Runbook{target_label}: {session.problem_description[:55]}"
 
@@ -817,6 +895,35 @@ async def _build_device_context(db: AsyncSession, session: InvestigationSession)
 
     if session.integration_ids:
         parts.append(f"Integrações: {', '.join(session.integration_ids)}")
+
+    if session.rmm_integration_id:
+        from app.models.rmm import RmmIntegration, RmmAgent
+        rmm_result = await db.execute(
+            select(RmmIntegration).where(RmmIntegration.id == session.rmm_integration_id)
+        )
+        rmm_integration = rmm_result.scalar_one_or_none()
+        if rmm_integration:
+            parts.append(f"Integração RMM: {rmm_integration.name} ({rmm_integration.rmm_type})")
+        if session.rmm_agent_external_id:
+            agent_result = await db.execute(
+                select(RmmAgent).where(
+                    RmmAgent.integration_id == session.rmm_integration_id,
+                    RmmAgent.external_id == session.rmm_agent_external_id,
+                )
+            )
+            rmm_agent = agent_result.scalar_one_or_none()
+            if rmm_agent:
+                parts.append(f"Estação/Servidor: {rmm_agent.hostname}")
+                if rmm_agent.os_name:
+                    parts.append(f"Sistema Operacional: {rmm_agent.os_name}")
+                if rmm_agent.ip_address:
+                    parts.append(f"IP: {rmm_agent.ip_address}")
+                is_windows = "windows" in (rmm_agent.os_name or "").lower()
+                hint_key = "rmm_windows" if is_windows else "rmm_linux"
+                parts.append(f"Sintaxe CLI correta para este endpoint: {_VENDOR_CLI_HINTS.get(hint_key, '')}")
+            else:
+                parts.append(f"Agente RMM: {session.rmm_agent_external_id}")
+                parts.append(f"Sintaxe CLI correta para este endpoint: {_VENDOR_CLI_HINTS['rmm_windows']}")
 
     return "\n".join(parts)
 

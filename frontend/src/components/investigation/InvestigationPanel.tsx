@@ -17,9 +17,11 @@ export interface InvestigationTarget {
   device_ids?: string[];
   server_id?: string;
   integration_ids?: string[];
+  rmm_integration_id?: string;
+  rmm_agent_external_id?: string;
 }
 
-export type InvestigationAgentType = "network" | "firewall" | "n3";
+export type InvestigationAgentType = "network" | "firewall" | "n3" | "rmm";
 
 interface AvailableDevice {
   id: string;
@@ -351,6 +353,10 @@ export function InvestigationPanel({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [session?.messages?.length]);
 
+  const hasTarget = agentType === "rmm"
+    ? !!target.rmm_agent_external_id
+    : selectedDeviceIds.size > 0;
+
   const startMut = useMutation({
     mutationFn: () => {
       const ids = Array.from(selectedDeviceIds);
@@ -358,7 +364,12 @@ export function InvestigationPanel({
       return investigationsApi.start({
         problem_description: problem.trim(),
         agent_type: agentType,
-        ...(multiDevice
+        ...(agentType === "rmm"
+          ? {
+              rmm_integration_id: target.rmm_integration_id,
+              rmm_agent_external_id: target.rmm_agent_external_id,
+            }
+          : multiDevice
           ? { device_ids: ids }
           : { device_id: ids[0] ?? target.device_id, server_id: target.server_id }),
         integration_ids: target.integration_ids,
@@ -499,7 +510,9 @@ export function InvestigationPanel({
           onChange={(e) => setProblem(e.target.value)}
           rows={5}
           placeholder={
-            agentType === "n3"
+            agentType === "rmm"
+              ? "Descreva o problema na estação: ex. CPU alta, processo suspeito, aplicativo falhando, lentidão..."
+              : agentType === "n3"
               ? "Descreva o problema no servidor: ex. CPU alta nos últimos 30 min, processo consumindo 90% de um core..."
               : agentType === "firewall"
               ? "Descreva o problema: ex. Usuários sem acesso à internet desde 14h, regras parecem corretas..."
@@ -514,7 +527,7 @@ export function InvestigationPanel({
         )}
         <button
           onClick={() => startMut.mutate()}
-          disabled={!problem.trim() || startMut.isPending || selectedDeviceIds.size === 0}
+          disabled={!problem.trim() || startMut.isPending || !hasTarget}
           className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-xl hover:bg-brand-700 disabled:opacity-50"
         >
           {startMut.isPending

@@ -24,11 +24,13 @@ router = APIRouter()
 
 class InvestigationStart(BaseModel):
     problem_description: str
-    agent_type: str  # network | firewall | n3 | unified
+    agent_type: str  # network | firewall | n3 | unified | rmm
     device_id: UUID | None = None
     device_ids: list[UUID] | None = None
     server_id: UUID | None = None
     integration_ids: list[str] | None = None
+    rmm_integration_id: UUID | None = None
+    rmm_agent_external_id: str | None = None
 
 
 class ChatRequest(BaseModel):
@@ -88,6 +90,8 @@ class InvestigationRead(BaseModel):
     device_id: UUID | None = None
     device_ids: list[str] | None = None
     server_id: UUID | None = None
+    rmm_integration_id: UUID | None = None
+    rmm_agent_external_id: str | None = None
     phases: list[PhaseRead]
     messages: list[MessageRead]
     created_at: str
@@ -147,6 +151,8 @@ def _session_read(s: InvestigationSession) -> InvestigationRead:
         device_id=s.device_id,
         device_ids=[str(did) for did in s.device_ids] if s.device_ids else None,
         server_id=s.server_id,
+        rmm_integration_id=s.rmm_integration_id,
+        rmm_agent_external_id=s.rmm_agent_external_id,
         phases=[_phase_read(p) for p in (s.phases or [])],
         messages=[_msg_read(m) for m in (s.messages or [])],
         created_at=s.created_at.isoformat(),
@@ -194,7 +200,7 @@ async def start_investigation(
     db:   Annotated[AsyncSession, Depends(get_db)],
 ) -> InvestigationRead:
     """Start a new investigation session. Claude plans the investigation phases."""
-    if data.agent_type not in ("network", "firewall", "n3", "unified"):
+    if data.agent_type not in ("network", "firewall", "n3", "unified", "rmm"):
         raise HTTPException(status_code=400, detail="agent_type inválido.")
     if not data.problem_description.strip():
         raise HTTPException(status_code=400, detail="Descreva o problema.")
@@ -210,6 +216,8 @@ async def start_investigation(
         device_ids=device_ids_str,
         server_id=data.server_id,
         integration_ids=data.integration_ids,
+        rmm_integration_id=data.rmm_integration_id,
+        rmm_agent_external_id=data.rmm_agent_external_id,
         agent_type=data.agent_type,
         problem_description=data.problem_description,
         status="planning",
