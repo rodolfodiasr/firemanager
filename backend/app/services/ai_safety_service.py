@@ -1,4 +1,4 @@
-"""Service — F33 IA Safety & Governança: dual-approval, maintenance windows, erasure."""
+"""Service — F33 IA Safety & Governança: dual-approval, maintenance windows, erasure, SIRP."""
 from __future__ import annotations
 
 import uuid
@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ai_safety import ApprovalRequest, ErasureRequest, MaintenanceWindow
+from app.models.ai_safety import ApprovalRequest, ErasureRequest, MaintenanceWindow, SecurityIncident
 
 
 # ── Maintenance Windows ────────────────────────────────────────────────────────
@@ -304,3 +304,122 @@ async def reject_erasure(
     await db.refresh(req)
     await db.commit()
     return req
+
+
+# ── Security Incidents (SIRP) ─────────────────────────────────────────────────
+
+async def list_incidents(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    status: str | None = None,
+    severity: str | None = None,
+    limit: int = 100,
+) -> list[SecurityIncident]:
+    q = select(SecurityIncident).where(SecurityIncident.tenant_id == tenant_id)
+    if status:
+        q = q.where(SecurityIncident.status == status)
+    if severity:
+        q = q.where(SecurityIncident.severity == severity)
+    q = q.order_by(SecurityIncident.created_at.desc()).limit(limit)
+    result = await db.execute(q)
+    return list(result.scalars().all())
+
+
+async def get_incident(
+    db: AsyncSession, tenant_id: uuid.UUID, incident_id: uuid.UUID
+) -> SecurityIncident | None:
+    result = await db.execute(
+        select(SecurityIncident).where(
+            SecurityIncident.id == incident_id,
+            SecurityIncident.tenant_id == tenant_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_incident(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    title: str,
+    description: str | None,
+    severity: str,
+    category: str,
+    affected_systems: list[str] | None,
+    reported_by: uuid.UUID | None,
+) -> SecurityIncident:
+    now = datetime.now(timezone.utc)
+    obj = SecurityIncident(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        title=title,
+        description=description,
+        severity=severity,
+        category=category,
+        affected_systems=affected_systems,
+        reported_by=reported_by,
+        status="open",
+        timeline=[{
+            "at": now.isoformat(),
+            "action": "Incidente criado",
+            "user_id": str(reported_by) if reported_by else None,
+            "details": f"Incidente registrado com severidade {severity}.",
+        }],
+    )
+    db.add(obj)
+    await db.flush()
+    await db.refresh(obj)
+    await db.commit()
+    return obj
+
+
+async def update_incident(
+    db: AsyncSession, incident: SecurityIncident, data: dict, user_id: uuid.UUID | None = None
+) -> SecurityIncident:
+    changed_fields = []
+    for k, v in data.items():
+        if v is not None or k in ("root_cause", "remediation", "assigned_to"):
+            old = getattr(incident, k, None)
+            if old != v:
+                setattr(incident, k, v)
+                changed_fields.append(k)
+
+    if changed_fields:
+        timeline = list(incident.timeline or [])
+        timeline.append({
+            "at": datetime.now(timezone.utc).isoformat(),
+            "action": "Incidente atualizado",
+            "user_id": str(user_id) if user_id else None,
+            "details": f"Campos atualizados: {', '.join(changed_fields)}.",
+        })
+        incident.timeline = timeline
+        incident.updated_at = datetime.now(timezone.utc)
+
+    if data.get("status") == "resolved" and not incident.resolved_at:
+        incident.resolved_at = datetime.now(timezone.utc)
+
+    await db.flush()
+    await db.refresh(incident)
+    await db.commit()
+    return incident
+
+
+async def add_timeline_entry(
+    db: AsyncSession,
+    incident: SecurityIncident,
+    action: str,
+    user_id: uuid.UUID | None,
+    details: str = "",
+) -> SecurityIncident:
+    timeline = list(incident.timeline or [])
+    timeline.append({
+        "at": datetime.now(timezone.utc).isoformat(),
+        "action": action,
+        "user_id": str(user_id) if user_id else None,
+        "details": details,
+    })
+    incident.timeline = timeline
+    incident.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+    await db.refresh(incident)
+    await db.commit()
+    return incident

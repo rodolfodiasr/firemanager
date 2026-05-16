@@ -1,6 +1,7 @@
-"""API F33 — IA Safety & Governança: dual-approval, maintenance windows, erasure."""
+"""API F33 — IA Safety & Governança: dual-approval, maintenance windows, erasure, SIRP."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -298,3 +299,105 @@ async def reject_erasure(
         raise HTTPException(404, "Solicitação não encontrada")
     obj = await svc.reject_erasure(db, obj, ctx.user.id, body.reason)
     return ErasureRead.model_validate(obj)
+
+
+# ── Security Incidents (SIRP) ─────────────────────────────────────────────────
+
+class IncidentCreate(BaseModel):
+    title: str
+    description: str | None = None
+    severity: str = "medium"  # critical / high / medium / low
+    category: str = "other"   # unauthorized_access / data_breach / malware / availability / policy_violation / other
+    affected_systems: list[str] = []
+
+
+class IncidentUpdate(BaseModel):
+    status: str | None = None        # open / investigating / contained / resolved / closed
+    assigned_to: UUID | None = None
+    root_cause: str | None = None
+    remediation: str | None = None
+    resolved_at: datetime | None = None
+
+
+class IncidentTimelineEntry(BaseModel):
+    action: str
+    details: str = ""
+
+
+class IncidentRead(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    title: str
+    description: str | None
+    severity: str
+    category: str
+    status: str
+    reported_by: UUID | None
+    assigned_to: UUID | None
+    affected_systems: list[str] | None
+    timeline: list
+    root_cause: str | None
+    remediation: str | None
+    resolved_at: object | None
+    created_at: object
+    updated_at: object
+    model_config = {"from_attributes": True}
+
+
+@router.get("/incidents", response_model=list[IncidentRead])
+async def list_incidents(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    status: str | None = Query(default=None),
+    severity: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[IncidentRead]:
+    items = await svc.list_incidents(db, ctx.tenant.id, status=status, severity=severity, limit=limit)
+    return [IncidentRead.model_validate(i) for i in items]
+
+
+@router.post("/incidents", response_model=IncidentRead, status_code=201)
+async def create_incident(
+    body: IncidentCreate,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> IncidentRead:
+    obj = await svc.create_incident(
+        db,
+        tenant_id=ctx.tenant.id,
+        title=body.title,
+        description=body.description,
+        severity=body.severity,
+        category=body.category,
+        affected_systems=body.affected_systems or None,
+        reported_by=ctx.user.id,
+    )
+    return IncidentRead.model_validate(obj)
+
+
+@router.patch("/incidents/{incident_id}", response_model=IncidentRead)
+async def update_incident(
+    incident_id: UUID,
+    body: IncidentUpdate,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> IncidentRead:
+    obj = await svc.get_incident(db, ctx.tenant.id, incident_id)
+    if not obj:
+        raise HTTPException(404, "Incidente não encontrado")
+    obj = await svc.update_incident(db, obj, body.model_dump(exclude_none=True), user_id=ctx.user.id)
+    return IncidentRead.model_validate(obj)
+
+
+@router.post("/incidents/{incident_id}/timeline", response_model=IncidentRead)
+async def add_timeline(
+    incident_id: UUID,
+    body: IncidentTimelineEntry,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> IncidentRead:
+    obj = await svc.get_incident(db, ctx.tenant.id, incident_id)
+    if not obj:
+        raise HTTPException(404, "Incidente não encontrado")
+    obj = await svc.add_timeline_entry(db, obj, action=body.action, user_id=ctx.user.id, details=body.details)
+    return IncidentRead.model_validate(obj)

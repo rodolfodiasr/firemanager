@@ -23,7 +23,6 @@ import {
   Database,
   DatabaseZap,
   Users,
-  UserPlus,
   Bell,
   BarChart2,
   Package2,
@@ -110,7 +109,6 @@ const navSections: NavSection[] = [
     title: "Identidade & Acesso",
     items: [
       { to: "/identity",           icon: Users,    label: "Identidade"           },
-      { to: "/onboarding",         icon: UserPlus, label: "Onboarding"           },
       { to: "/selfservice-portal", icon: Store,    label: "Self-Service Portal",  beta: true },
       { to: "/edge-agents",        icon: Cpu,      label: "Edge Agents & SSO",    beta: true },
     ],

@@ -1,5 +1,35 @@
 import apiClient from "./client";
 
+export interface SecurityIncident {
+  id: string;
+  tenant_id: string;
+  title: string;
+  description: string | null;
+  severity: "critical" | "high" | "medium" | "low";
+  category:
+    | "unauthorized_access"
+    | "data_breach"
+    | "malware"
+    | "availability"
+    | "policy_violation"
+    | "other";
+  status: "open" | "investigating" | "contained" | "resolved" | "closed";
+  reported_by: string | null;
+  assigned_to: string | null;
+  affected_systems: string[] | null;
+  timeline: Array<{
+    at: string;
+    action: string;
+    user_id: string | null;
+    details: string;
+  }>;
+  root_cause: string | null;
+  remediation: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface MaintenanceWindow {
   id: string;
   name: string;
@@ -86,4 +116,32 @@ export const aiSafetyApi = {
   executeErasure: (id: string) => apiClient.post<ErasureRequest>(`${BASE}/erasure/${id}/execute`).then(r => r.data),
   rejectErasure: (id: string, reason: string) =>
     apiClient.post<ErasureRequest>(`${BASE}/erasure/${id}/reject`, { reason }).then(r => r.data),
+
+  // Security Incidents (SIRP)
+  listIncidents: (params?: { status?: string; severity?: string }) =>
+    apiClient
+      .get<SecurityIncident[]>(`${BASE}/incidents`, { params })
+      .then((r) => r.data),
+  createIncident: (data: {
+    title: string;
+    description?: string;
+    severity: string;
+    category: string;
+    affected_systems?: string[];
+  }) => apiClient.post<SecurityIncident>(`${BASE}/incidents`, data).then((r) => r.data),
+  updateIncident: (
+    id: string,
+    data: {
+      status?: string;
+      assigned_to?: string;
+      root_cause?: string;
+      remediation?: string;
+      resolved_at?: string;
+    }
+  ) =>
+    apiClient.patch<SecurityIncident>(`${BASE}/incidents/${id}`, data).then((r) => r.data),
+  addTimeline: (id: string, action: string, details = "") =>
+    apiClient
+      .post<SecurityIncident>(`${BASE}/incidents/${id}/timeline`, { action, details })
+      .then((r) => r.data),
 };
