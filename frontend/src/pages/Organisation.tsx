@@ -20,6 +20,8 @@ import { permissionsApi, type DeviceCategory, type FunctionalModule } from "../a
 import { integrationsApi } from "../api/integrations";
 import { glpiApi } from "../api/glpi";
 import { rmmApi, type RmmIntegration, type RmmType } from "../api/rmm";
+import { identityApi } from "../api/identity";
+import type { IdentityProvider, ProviderType } from "../types/identity";
 import { auditApi } from "../api/audit";
 import { AUDIT_INTENTS, type AuditPolicy, type UserForPolicy } from "../types/audit";
 import type { Integration, IntegrationType } from "../types/integration";
@@ -1850,9 +1852,13 @@ function RmmIntegrationsSection() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<{
     name: string; rmm_type: RmmType; base_url: string; credentials: Record<string, string>; site_filter: string;
   }>({ name: "", rmm_type: "tactical_rmm", base_url: "", credentials: {}, site_filter: "" });
+  const [editForm, setEditForm] = useState<{
+    name: string; base_url: string; credentials: Record<string, string>; site_filter: string;
+  }>({ name: "", base_url: "", credentials: {}, site_filter: "" });
 
   const { data: integrations = [], isLoading } = useQuery<RmmIntegration[]>({
     queryKey: ["rmm-integrations"],
@@ -1869,6 +1875,27 @@ function RmmIntegrationsSection() {
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao criar.";
+      toast.error(msg);
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (id: string) => {
+      const hasCredentials = Object.values(editForm.credentials).some((v) => v.trim() !== "");
+      return rmmApi.update(id, {
+        name: editForm.name,
+        base_url: editForm.base_url,
+        site_filter: editForm.site_filter || null,
+        ...(hasCredentials ? { credentials: editForm.credentials } : {}),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rmm-integrations"] });
+      setEditingId(null);
+      toast.success("Integração atualizada.");
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao salvar.";
       toast.error(msg);
     },
   });
@@ -1898,6 +1925,11 @@ function RmmIntegrationsSection() {
     } finally { setSyncing(null); }
   };
 
+  const handleStartEdit = (intg: RmmIntegration) => {
+    setEditingId(intg.id);
+    setEditForm({ name: intg.name, base_url: intg.base_url, credentials: {}, site_filter: intg.site_filter ?? "" });
+  };
+
   const selectedTypeMeta = RMM_TYPE_META.find((t) => t.value === form.rmm_type);
 
   return (
@@ -1908,7 +1940,7 @@ function RmmIntegrationsSection() {
           <p className="text-xs text-gray-400 mt-0.5">Tactical RMM · NinjaRMM · Atera · ConnectWise Automate</p>
         </div>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => { setShowForm((v) => !v); setEditingId(null); }}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs hover:bg-brand-700"
         >
           <Plus size={13} /> Nova Integração RMM
@@ -1961,6 +1993,42 @@ function RmmIntegrationsSection() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {integrations.map((intg) => {
           const meta = RMM_TYPE_META.find((t) => t.value === intg.rmm_type);
+          const isEditing = editingId === intg.id;
+
+          if (isEditing) {
+            return (
+              <div key={intg.id} className="border border-brand-300 rounded-xl p-4 bg-brand-50 col-span-1 sm:col-span-2">
+                <p className="text-xs font-semibold text-brand-700 mb-3">Editar — {intg.name}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Nome</label>
+                    <input className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">URL Base da API</label>
+                    <input className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={editForm.base_url} onChange={(e) => setEditForm({ ...editForm, base_url: e.target.value })} />
+                  </div>
+                  {meta?.authFields.map((field) => (
+                    <div key={field.key}>
+                      <label className="text-xs font-medium text-gray-600">{field.label} <span className="text-gray-400 font-normal">(deixe vazio para manter)</span></label>
+                      <input type={field.type || "text"} className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" placeholder="••••••••" value={editForm.credentials[field.key] || ""} onChange={(e) => setEditForm({ ...editForm, credentials: { ...editForm.credentials, [field.key]: e.target.value } })} />
+                    </div>
+                  ))}
+                  <div className="col-span-2">
+                    <label className="text-xs font-medium text-gray-600">Filtro de Site/Cliente <span className="text-gray-400 font-normal">(opcional)</span></label>
+                    <input className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={editForm.site_filter} onChange={(e) => setEditForm({ ...editForm, site_filter: e.target.value })} placeholder="Ex: Clínica São Lucas, Hospital ABC" />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => updateMut.mutate(intg.id)} disabled={updateMut.isPending || !editForm.name || !editForm.base_url} className="px-4 py-1.5 bg-brand-600 text-white rounded-lg text-xs hover:bg-brand-700 disabled:opacity-50">
+                    {updateMut.isPending ? "Salvando..." : "Salvar"}
+                  </button>
+                  <button onClick={() => setEditingId(null)} className="px-4 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+                </div>
+              </div>
+            );
+          }
+
           return (
             <div key={intg.id} className="border border-gray-200 rounded-xl p-4 bg-white">
               <div className="flex items-start justify-between">
@@ -1992,7 +2060,201 @@ function RmmIntegrationsSection() {
                 <button onClick={() => handleSync(intg.id)} disabled={syncing === intg.id} title="Sincronizar agentes" className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50">
                   {syncing === intg.id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Sincronizar
                 </button>
+                <button onClick={() => handleStartEdit(intg)} title="Editar integração" className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors">
+                  <Edit2 size={11} /> Editar
+                </button>
                 <button onClick={() => { if (confirm(`Remover "${intg.name}" e todos os seus agentes?`)) deleteMut.mutate(intg.id); }} className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-auto">
+                  <Trash2 size={11} /> Remover
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Identity Providers Section ────────────────────────────────────────────────
+
+const IDENTITY_PROVIDER_META: { value: ProviderType; label: string; color: string; fields: { key: string; label: string; type?: string; placeholder?: string }[] }[] = [
+  {
+    value: "local_ad",
+    label: "Active Directory (LDAP)",
+    color: "bg-purple-100 text-purple-700",
+    fields: [
+      { key: "host",     label: "Host / IP",   placeholder: "192.168.1.10" },
+      { key: "port",     label: "Porta",        placeholder: "389" },
+      { key: "base_dn",  label: "Base DN",      placeholder: "DC=empresa,DC=local" },
+      { key: "username", label: "Bind DN",      placeholder: "CN=svc_eternity,CN=Users,DC=empresa,DC=local" },
+      { key: "password", label: "Senha Bind",   type: "password" },
+    ],
+  },
+  {
+    value: "azure_ad",
+    label: "Azure AD / Entra ID",
+    color: "bg-blue-100 text-blue-700",
+    fields: [
+      { key: "tenant_id",     label: "Tenant ID (Directory ID)", placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" },
+      { key: "client_id",     label: "Client ID (App ID)",       placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" },
+      { key: "client_secret", label: "Client Secret",            type: "password" },
+    ],
+  },
+  {
+    value: "google_workspace",
+    label: "Google Workspace",
+    color: "bg-red-100 text-red-700",
+    fields: [
+      { key: "domain",           label: "Domínio",                  placeholder: "minhaempresa.com" },
+      { key: "credentials_json", label: "JSON da Service Account",  placeholder: '{"type": "service_account", ...}' },
+    ],
+  },
+];
+
+function IdentityProvidersSection() {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [providerType, setProviderType] = useState<ProviderType>("local_ad");
+  const [providerName, setProviderName] = useState("");
+  const [fields, setFields] = useState<Record<string, string>>({});
+
+  const { data: providers = [], isLoading } = useQuery<IdentityProvider[]>({
+    queryKey: ["identity-providers"],
+    queryFn: identityApi.listProviders,
+  });
+
+  const createMut = useMutation({
+    mutationFn: () => {
+      const config: Record<string, unknown> = { ...fields };
+      if (providerType === "local_ad") config.port = parseInt(fields.port || "389", 10);
+      return identityApi.createProvider({ name: providerName, provider_type: providerType, config });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["identity-providers"] });
+      setShowForm(false);
+      setProviderName(""); setFields({});
+      toast.success("Provedor adicionado.");
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao adicionar.";
+      toast.error(msg);
+    },
+  });
+
+  const syncMut = useMutation({
+    mutationFn: identityApi.syncProvider,
+    onSuccess: (p) => {
+      toast.success(`${(p as IdentityProvider).last_sync_count ?? 0} usuários sincronizados`);
+      qc.invalidateQueries({ queryKey: ["identity-providers"] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro na sincronização.";
+      toast.error(msg);
+    },
+  });
+
+  const testMut = useMutation({
+    mutationFn: identityApi.testProvider,
+    onSuccess: (r) => {
+      const res = r as { success: boolean; message: string };
+      res.success ? toast.success(res.message) : toast.error(res.message);
+    },
+    onError: () => toast.error("Erro ao testar conexão."),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: identityApi.deleteProvider,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["identity-providers"] });
+      toast.success("Provedor removido.");
+    },
+    onError: () => toast.error("Erro ao remover."),
+  });
+
+  const selectedMeta = IDENTITY_PROVIDER_META.find((m) => m.value === providerType);
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700">Gestão de Identidade / Diretórios</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Active Directory (LDAP) · Azure AD / Entra ID · Google Workspace</p>
+        </div>
+        <button
+          onClick={() => { setShowForm((v) => !v); setFields({}); }}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs hover:bg-brand-700"
+        >
+          <Plus size={13} /> Adicionar Provedor
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="border border-gray-200 rounded-xl p-4 mb-4 bg-gray-50">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600">Nome</label>
+              <input className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={providerName} onChange={(e) => setProviderName(e.target.value)} placeholder="Ex: AD Corporativo" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Tipo</label>
+              <select className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={providerType} onChange={(e) => { setProviderType(e.target.value as ProviderType); setFields({}); }}>
+                {IDENTITY_PROVIDER_META.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            </div>
+            {selectedMeta?.fields.map((field) => (
+              <div key={field.key} className={field.key === "credentials_json" ? "col-span-2" : ""}>
+                <label className="text-xs font-medium text-gray-600">{field.label}</label>
+                {field.key === "credentials_json" ? (
+                  <textarea rows={3} className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white font-mono" value={fields[field.key] || ""} onChange={(e) => setFields({ ...fields, [field.key]: e.target.value })} placeholder={field.placeholder} />
+                ) : (
+                  <input type={field.type || "text"} className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={fields[field.key] || ""} onChange={(e) => setFields({ ...fields, [field.key]: e.target.value })} placeholder={field.placeholder} />
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={() => createMut.mutate()} disabled={createMut.isPending || !providerName} className="px-4 py-1.5 bg-brand-600 text-white rounded-lg text-xs hover:bg-brand-700 disabled:opacity-50">
+              {createMut.isPending ? "Adicionando..." : "Adicionar"}
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {isLoading && <p className="text-xs text-gray-400">Carregando...</p>}
+      {!isLoading && providers.length === 0 && !showForm && (
+        <p className="text-xs text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-xl">Nenhum provedor de identidade configurado.</p>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {providers.map((p) => {
+          const meta = IDENTITY_PROVIDER_META.find((m) => m.value === p.provider_type);
+          return (
+            <div key={p.id} className="border border-gray-200 rounded-xl p-4 bg-white">
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta?.color ?? "bg-gray-100 text-gray-600"}`}>{meta?.label ?? p.provider_type}</span>
+                    {p.is_active
+                      ? <span className="text-[10px] text-green-600 font-medium">● Ativo</span>
+                      : <span className="text-[10px] text-gray-400">○ Inativo</span>}
+                  </div>
+                  <p className="font-semibold text-sm text-gray-800 mt-1.5">{p.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {p.last_sync_at
+                      ? `Última sync: ${new Date(p.last_sync_at).toLocaleDateString("pt-BR")} · ${p.last_sync_count ?? 0} usuários`
+                      : "Nunca sincronizado"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 mt-3 pt-3 border-t border-gray-100">
+                <button onClick={() => testMut.mutate(p.id)} disabled={testMut.isPending} title="Testar conexão" className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors">
+                  <Play size={11} /> Testar
+                </button>
+                <button onClick={() => syncMut.mutate(p.id)} disabled={syncMut.isPending && syncMut.variables === p.id} title="Sincronizar usuários" className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50">
+                  {syncMut.isPending && syncMut.variables === p.id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Sincronizar
+                </button>
+                <button onClick={() => { if (confirm(`Remover "${p.name}" e todos os usuários sincronizados?`)) deleteMut.mutate(p.id); }} className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-auto">
                   <Trash2 size={11} /> Remover
                 </button>
               </div>
@@ -2041,6 +2303,7 @@ function IntegracoesTab() {
           <GlpiIntegrationCard />
         </div>
       )}
+      <IdentityProvidersSection />
       <RmmIntegrationsSection />
       <LLMProvidersSection isSuperAdmin={isSuperAdmin} />
     </div>
