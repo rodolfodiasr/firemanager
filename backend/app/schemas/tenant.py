@@ -33,6 +33,7 @@ class TenantMemberRead(BaseModel):
     email: str
     name: str
     is_active: bool
+    auth_source: str = "local"
 
     model_config = {"from_attributes": True}
 

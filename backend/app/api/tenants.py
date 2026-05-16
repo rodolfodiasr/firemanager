@@ -117,6 +117,7 @@ async def list_members(
             email=user.email,
             name=user.name,
             is_active=user.is_active,
+            auth_source=user.auth_source or "local",
         )
         for utr, user in rows
     ]
@@ -155,6 +156,7 @@ async def invite_member(
         email=user.email,
         name=user.name,
         is_active=user.is_active,
+        auth_source=user.auth_source or "local",
     )
 
 
@@ -199,6 +201,7 @@ async def invite_member_by_email(
             email=user.email,
             name=user.name,
             is_active=user.is_active,
+            auth_source=user.auth_source or "local",
         )
         return MemberInviteResponse(member=member, temp_password=None)
 
@@ -213,6 +216,7 @@ async def invite_member_by_email(
         email=user.email,
         name=user.name,
         is_active=user.is_active,
+        auth_source=user.auth_source or "local",
     )
     return MemberInviteResponse(member=member, temp_password=temp_password)
 

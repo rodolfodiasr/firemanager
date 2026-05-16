@@ -36,6 +36,7 @@ class SsoConfig(Base):
     discovery_url: Mapped[str] = mapped_column(String(500), nullable=False)
     group_claim: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, server_default="groups")
     group_mapping: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
+    extra_config: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
     sso_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

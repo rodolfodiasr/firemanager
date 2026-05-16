@@ -19,9 +19,14 @@ export function AcceptInvite() {
   });
 
   const accept = useMutation({
-    mutationFn: () => inviteApi.accept(token, { name, password }),
+    mutationFn: () => inviteApi.accept(token, {
+      name,
+      ...(needsPassword ? { password } : {}),
+    }),
     onSuccess: () => setDone(true),
   });
+
+  const needsPassword = !invite || (invite.auth_source ?? "local") in { local: 1, break_glass: 1 };
 
   if (isLoading) {
     return <CenteredCard><Loader2 className="animate-spin text-brand-400 mx-auto" size={32} /></CenteredCard>;
@@ -60,8 +65,8 @@ export function AcceptInvite() {
     );
   }
 
-  const passwordMismatch = confirm.length > 0 && password !== confirm;
-  const canSubmit = name.trim().length > 0 && password.length >= 8 && !passwordMismatch;
+  const passwordMismatch = needsPassword && confirm.length > 0 && password !== confirm;
+  const canSubmit = name.trim().length > 0 && (!needsPassword || (password.length >= 8 && !passwordMismatch));
 
   return (
     <CenteredCard>
@@ -73,11 +78,18 @@ export function AcceptInvite() {
       <h2 className="text-white font-semibold text-lg text-center mb-1">
         Aceitar convite
       </h2>
-      <p className="text-gray-400 text-sm text-center mb-6">
+      <p className="text-gray-400 text-sm text-center mb-1">
         Você foi convidado para{" "}
         <span className="text-white font-medium">{invite.tenant_name}</span>{" "}
         como <span className="capitalize text-brand-400">{invite.role}</span>.
       </p>
+      {!needsPassword && (
+        <p className="text-xs text-center text-amber-400 bg-amber-900/30 border border-amber-700 rounded-lg px-3 py-2 mb-4">
+          Sua conta usa autenticação{" "}
+          <strong>{invite.auth_source === "ldap" ? "Active Directory (LDAP)" : invite.auth_source.toUpperCase()}</strong>.
+          {invite.auth_source === "ldap" && " Use seu login e senha do AD para entrar."}
+        </p>
+      )}
 
       <div className="space-y-4">
         <div>
@@ -97,31 +109,35 @@ export function AcceptInvite() {
             className="w-full bg-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Senha</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Mínimo 8 caracteres"
-            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Confirmar senha</label>
-          <input
-            type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            placeholder="Repita a senha"
-            className={`w-full bg-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
-              passwordMismatch ? "focus:ring-red-500 ring-2 ring-red-500" : "focus:ring-brand-500"
-            }`}
-          />
-          {passwordMismatch && (
-            <p className="text-red-400 text-xs mt-1">As senhas não coincidem</p>
-          )}
-        </div>
+        {needsPassword && (
+          <>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Senha</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Mínimo 8 caracteres"
+                className="w-full bg-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Confirmar senha</label>
+              <input
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder="Repita a senha"
+                className={`w-full bg-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  passwordMismatch ? "focus:ring-red-500 ring-2 ring-red-500" : "focus:ring-brand-500"
+                }`}
+              />
+              {passwordMismatch && (
+                <p className="text-red-400 text-xs mt-1">As senhas não coincidem</p>
+              )}
+            </div>
+          </>
+        )}
 
         {accept.isError && (
           <p className="text-red-400 text-sm">

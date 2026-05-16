@@ -305,8 +305,41 @@ async def login(data: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)]
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
 
-    if not user or not _verify_password(data.password, user.hashed_password):
+    if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    auth_source = user.auth_source or "local"
+
+    if auth_source == "oidc":
+        raise HTTPException(
+            status_code=400,
+            detail="Este usuário deve autenticar via SSO (OIDC). Use o fluxo de login SSO do seu tenant.",
+        )
+
+    if auth_source == "ldap":
+        # Find the user's tenant to locate the LDAP config
+        from app.services.ldap_auth_service import authenticate_ldap
+
+        utr_result = await db.execute(
+            select(UserTenantRole).where(UserTenantRole.user_id == user.id)
+        )
+        utr_rows = utr_result.scalars().all()
+        ldap_ok = False
+        for utr in utr_rows:
+            info = await authenticate_ldap(db, utr.tenant_id, data.email, data.password)
+            if info:
+                ldap_ok = True
+                # Sync DN if it changed
+                if info.get("dn") and user.ldap_dn != info["dn"]:
+                    user.ldap_dn = info["dn"]
+                break
+        if not ldap_ok:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    else:
+        # local or break_glass — bcrypt verification
+        if not user.hashed_password or not _verify_password(data.password, user.hashed_password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if user.mfa_enabled:
         if not data.totp_code:
@@ -455,7 +488,9 @@ async def change_password(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    if not _verify_password(data.current_password, current_user.hashed_password):
+    if (current_user.auth_source or "local") not in ("local", "break_glass"):
+        raise HTTPException(status_code=400, detail="Troca de senha não disponível para este método de autenticação")
+    if not current_user.hashed_password or not _verify_password(data.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Senha atual incorreta")
     current_user.hashed_password = _hash_password(data.new_password)
     await db.flush()

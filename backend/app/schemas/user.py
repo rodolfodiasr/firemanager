@@ -20,6 +20,7 @@ class UserRead(BaseModel):
     is_active: bool
     mfa_enabled: bool
     is_super_admin: bool = False
+    auth_source: str = "local"
 
     model_config = {"from_attributes": True}
 

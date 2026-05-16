@@ -6,6 +6,7 @@ export interface InviteInfo {
   tenant_id: string;
   tenant_name: string;
   role: string;
+  auth_source: string;
   expires_at: string;
 }
 
@@ -13,12 +14,13 @@ export interface InviteCreate {
   email: string;
   tenant_id: string;
   role?: string;
+  auth_source?: string;
   frontend_url?: string;
 }
 
 export interface AcceptInvitePayload {
   name: string;
-  password: string;
+  password?: string;
 }
 
 export const inviteApi = {

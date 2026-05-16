@@ -50,6 +50,29 @@ function RoleBadge({ role }: { role: TenantRole }) {
   );
 }
 
+const AUTH_SOURCE_LABELS: Record<string, string> = {
+  local: "Local",
+  ldap: "AD/LDAP",
+  oidc: "SSO",
+  break_glass: "Break-glass",
+};
+const AUTH_SOURCE_COLORS: Record<string, string> = {
+  local: "bg-gray-100 text-gray-500",
+  ldap: "bg-blue-100 text-blue-700",
+  oidc: "bg-purple-100 text-purple-700",
+  break_glass: "bg-red-100 text-red-700",
+};
+
+function AuthSourceBadge({ source }: { source?: string }) {
+  const s = source ?? "local";
+  if (s === "local") return null;
+  return (
+    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${AUTH_SOURCE_COLORS[s] ?? AUTH_SOURCE_COLORS.local}`}>
+      {AUTH_SOURCE_LABELS[s] ?? s}
+    </span>
+  );
+}
+
 // ── Permission Matrix Drawer ──────────────────────────────────────────────────
 
 const DEVICE_CATS: { key: DeviceCategory; label: string }[] = [
@@ -240,6 +263,7 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<TenantRole>("analyst_n2");
+  const [inviteAuthSource, setInviteAuthSource] = useState("local");
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -257,7 +281,7 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
       if (inviteMode === "direct") {
         return tenantsApi.inviteByEmail(tenantId, { email: inviteEmail, name: inviteName || undefined, role: inviteRole });
       }
-      await inviteApi.create({ email: inviteEmail, tenant_id: tenantId, role: inviteRole, frontend_url: window.location.origin });
+      await inviteApi.create({ email: inviteEmail, tenant_id: tenantId, role: inviteRole, auth_source: inviteAuthSource, frontend_url: window.location.origin });
       setEmailSent(true);
       return { member: null as unknown as TenantMember, temp_password: null as string | null };
     },
@@ -266,7 +290,7 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
       if (res?.temp_password) setTempPassword(res.temp_password);
       if (inviteMode === "direct") {
         setShowInvite(false);
-        setInviteEmail(""); setInviteName(""); setInviteRole("analyst_n2");
+        setInviteEmail(""); setInviteName(""); setInviteRole("analyst_n2"); setInviteAuthSource("local");
       }
     },
   });
@@ -362,6 +386,17 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
           >
             {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
           </select>
+          {inviteMode === "email" && (
+            <select
+              value={inviteAuthSource} onChange={(e) => setInviteAuthSource(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="local">Conta local (senha na plataforma)</option>
+              <option value="ldap">Active Directory / LDAP</option>
+              <option value="oidc">SSO — OIDC (Azure AD / Okta)</option>
+              <option value="break_glass">Break-glass (emergência)</option>
+            </select>
+          )}
           {inviteMut.isError && (
             <p className="text-xs text-red-600">
               {(inviteMut.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao convidar"}
@@ -416,6 +451,7 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
                 ) : (
                   <>
                     <RoleBadge role={m.role} />
+                    <AuthSourceBadge source={m.auth_source} />
                     <button
                       onClick={() => { setPermUserId(m.user_id); setPermUserName(m.name); }}
                       className="text-gray-400 hover:text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity"

@@ -19,6 +19,7 @@ class InviteToken(Base):
         PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     role: Mapped[str] = mapped_column(String(50), nullable=False, default="analyst")
+    auth_source: Mapped[str] = mapped_column(String(20), nullable=False, server_default="local")
     invited_by: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

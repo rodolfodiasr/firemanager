@@ -18,4 +18,5 @@ export interface TenantMember {
   email: string;
   name: string;
   is_active: boolean;
+  auth_source?: string;
 }

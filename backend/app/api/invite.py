@@ -12,7 +12,7 @@ from app.api.auth import _hash_password, get_current_user, oauth2_scheme, resolv
 from app.database import get_db
 from app.models.invite_token import InviteToken
 from app.models.tenant import Tenant
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, AuthSource
 from app.models.user_tenant_role import TenantRole, UserTenantRole
 from app.utils.email import send_invite_email
 
@@ -25,6 +25,7 @@ class InviteCreate(BaseModel):
     email: EmailStr
     tenant_id: UUID
     role: TenantRole = TenantRole.analyst_n2
+    auth_source: str = "local"
     frontend_url: str = "http://localhost:5173"
 
 
@@ -34,6 +35,7 @@ class InviteInfo(BaseModel):
     tenant_id: str
     tenant_name: str
     role: str
+    auth_source: str = "local"
     expires_at: str
 
 
@@ -68,12 +70,17 @@ async def create_invite(
     if existing_r.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Já existe um convite pendente para este email neste tenant")
 
+    # Validate auth_source value
+    valid_sources = ("local", "ldap", "oidc", "break_glass")
+    auth_source = data.auth_source if data.auth_source in valid_sources else "local"
+
     raw_token = secrets.token_urlsafe(32)
     invite = InviteToken(
         token=raw_token,
         email=str(data.email),
         tenant_id=data.tenant_id,
         role=data.role.value,
+        auth_source=auth_source,
         invited_by=current_user.id,
         expires_at=datetime.now(timezone.utc) + INVITE_TTL,
     )
@@ -94,6 +101,7 @@ async def create_invite(
         tenant_id=str(data.tenant_id),
         tenant_name=ctx.tenant.name,
         role=data.role.value,
+        auth_source=auth_source,
         expires_at=invite.expires_at.isoformat(),
     )
 
@@ -109,6 +117,7 @@ async def get_invite(token: str, db: Annotated[AsyncSession, Depends(get_db)]) -
         tenant_id=str(invite.tenant_id),
         tenant_name=tenant.name if tenant else "",
         role=invite.role,
+        auth_source=getattr(invite, "auth_source", "local"),
         expires_at=invite.expires_at.isoformat(),
     )
 
@@ -125,20 +134,25 @@ async def accept_invite(
     user_r = await db.execute(select(User).where(User.email == invite.email))
     user = user_r.scalar_one_or_none()
 
+    invite_auth_source = getattr(invite, "auth_source", "local")
+    needs_password = invite_auth_source in ("local", "break_glass")
+
     if not user:
         if not data.name:
             raise HTTPException(status_code=422, detail="Nome obrigatório para novos usuários")
-        if not data.password:
-            raise HTTPException(status_code=422, detail="Senha obrigatória para novos usuários")
+        if needs_password and not data.password:
+            raise HTTPException(status_code=422, detail="Senha obrigatória para este método de autenticação")
         user = User(
             email=invite.email,
             name=data.name,
-            hashed_password=_hash_password(data.password),
+            hashed_password=_hash_password(data.password) if needs_password and data.password else None,
             role=UserRole.operator,
+            auth_source=invite_auth_source,
+            break_glass=(invite_auth_source == "break_glass"),
         )
         db.add(user)
         await db.flush()
-    # Existing user — no changes to their password or profile
+    # Existing user — no changes to their profile or auth_source
 
     # Add to tenant (idempotent)
     utr_r = await db.execute(
