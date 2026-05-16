@@ -1,19 +1,20 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  Server, Plus, Trash2, RefreshCw, CheckCircle, AlertCircle,
-  ChevronRight, Loader2, Settings, FlaskConical, Terminal,
+  Server, RefreshCw, CheckCircle, AlertCircle,
+  ChevronRight, Loader2, FlaskConical, Terminal,
   Code2, Clock, X, Play, Wifi, WifiOff, AlertTriangle,
-  Monitor, History,
+  Monitor, History, Settings,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { rmmApi, type RmmIntegration, type RmmAgent, type RmmScriptRun, type RmmType } from "../api/rmm";
+import { rmmApi, type RmmIntegration, type RmmAgent, type RmmScriptRun } from "../api/rmm";
 
-const RMM_TYPES: { value: RmmType; label: string; authFields: { key: string; label: string; type?: string }[] }[] = [
-  { value: "tactical_rmm", label: "Tactical RMM", authFields: [{ key: "api_key", label: "API Key" }] },
-  { value: "ninja_rmm", label: "NinjaRMM (NinjaOne)", authFields: [{ key: "client_id", label: "Client ID" }, { key: "client_secret", label: "Client Secret", type: "password" }] },
-  { value: "atera", label: "Atera", authFields: [{ key: "api_key", label: "API Key" }] },
-  { value: "connectwise_automate", label: "ConnectWise Automate", authFields: [{ key: "username", label: "Usuário" }, { key: "password", label: "Senha", type: "password" }] },
-];
+const RMM_TYPE_LABELS: Record<string, string> = {
+  tactical_rmm: "Tactical RMM",
+  ninja_rmm: "NinjaRMM",
+  atera: "Atera",
+  connectwise_automate: "ConnectWise Automate",
+};
 
 const SHELLS = [
   { value: "powershell", label: "PowerShell" },
@@ -308,6 +309,7 @@ function AgentDetail({ agent, integration, onRun, onClose, runs, loadingRuns }: 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function RmmPage() {
+  const navigate = useNavigate();
   const [integrations, setIntegrations] = useState<RmmIntegration[]>([]);
   const [selected, setSelected] = useState<RmmIntegration | null>(null);
   const [agents, setAgents] = useState<RmmAgent[]>([]);
@@ -318,8 +320,6 @@ export default function RmmPage() {
   const [runModal, setRunModal] = useState<RmmAgent | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", rmm_type: "tactical_rmm" as RmmType, base_url: "", credentials: {} as Record<string, string> });
 
   useEffect(() => { load(); }, []);
 
@@ -370,33 +370,6 @@ export default function RmmPage() {
     } catch { toast.error("Erro ao testar conexão."); }
   };
 
-  const handleCreate = async () => {
-    const typeInfo = RMM_TYPES.find((t) => t.value === form.rmm_type);
-    if (!typeInfo) return;
-    const missing = typeInfo.authFields.filter((f) => !form.credentials[f.key]);
-    if (missing.length > 0) { toast.error(`Preencha: ${missing.map((f) => f.label).join(", ")}`); return; }
-    try {
-      await rmmApi.create({ name: form.name, rmm_type: form.rmm_type, base_url: form.base_url, credentials: form.credentials });
-      toast.success("Integração criada.");
-      setShowForm(false);
-      setForm({ name: "", rmm_type: "tactical_rmm", base_url: "", credentials: {} });
-      await load();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao criar.";
-      toast.error(msg);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Remover integração e todos os seus agentes?")) return;
-    try {
-      await rmmApi.delete(id);
-      toast.success("Integração removida.");
-      if (selected?.id === id) { setSelected(null); setAgents([]); setSelectedAgent(null); }
-      await load();
-    } catch { toast.error("Erro ao remover."); }
-  };
-
   const handleRunSuccess = (run: RmmScriptRun) => {
     setRuns((prev) => [run, ...prev]);
   };
@@ -404,7 +377,6 @@ export default function RmmPage() {
   const filtered = agents.filter((a) => statusFilter === "all" || a.status === statusFilter);
   const onlineCount = agents.filter((a) => a.status === "online").length;
   const offlineCount = agents.filter((a) => a.status === "offline").length;
-  const selectedType = RMM_TYPES.find((t) => t.value === form.rmm_type);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -413,61 +385,32 @@ export default function RmmPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Server size={24} className="text-brand-600" />
-            Integrações RMM
+            RMM — Agentes Gerenciados
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Tactical RMM · NinjaRMM · Atera · ConnectWise Automate</p>
+          <p className="text-sm text-gray-500 mt-1">Visualize e gerencie endpoints via integrações RMM.</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 text-sm">
-          <Plus size={15} /> Nova Integração
+        <button
+          onClick={() => navigate("/organization?tab=integracoes")}
+          className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm"
+        >
+          <Settings size={15} /> Gerenciar Integrações
         </button>
       </div>
 
-      {/* Form */}
-      {showForm && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6 shadow-sm">
-          <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2"><Settings size={16} />Nova Integração RMM</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-medium text-gray-600">Nome</label>
-              <input className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: RMM Quality" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-600">Tipo de RMM</label>
-              <select className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.rmm_type} onChange={(e) => setForm({ ...form, rmm_type: e.target.value as RmmType, credentials: {} })}>
-                {RMM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-            <div className="col-span-2">
-              <label className="text-xs font-medium text-gray-600">URL Base da API</label>
-              <input className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://api.seudominio.com" />
-            </div>
-            {selectedType?.authFields.map((field) => (
-              <div key={field.key}>
-                <label className="text-xs font-medium text-gray-600">{field.label}</label>
-                <input
-                  type={field.type || "text"}
-                  className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                  value={form.credentials[field.key] || ""}
-                  onChange={(e) => setForm({ ...form, credentials: { ...form.credentials, [field.key]: e.target.value } })}
-                />
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2 mt-4">
-            <button onClick={handleCreate} className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm hover:bg-brand-700">Criar</button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200">Cancelar</button>
-          </div>
-        </div>
-      )}
-
       <div className={`grid gap-6 ${selectedAgent ? "grid-cols-[240px_1fr_300px]" : "grid-cols-[240px_1fr]"}`}>
-        {/* Integrations list */}
+        {/* Integrations sidebar */}
         <div className="space-y-3">
           {loading && <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-gray-400" /></div>}
           {!loading && integrations.length === 0 && (
-            <div className="text-center py-10 text-gray-400">
-              <Server size={36} className="mx-auto mb-2 opacity-20" />
-              <p className="text-sm">Nenhuma integração configurada.</p>
+            <div className="text-center py-10 text-gray-400 border border-dashed border-gray-200 rounded-xl">
+              <Server size={32} className="mx-auto mb-2 opacity-20" />
+              <p className="text-xs">Nenhuma integração configurada.</p>
+              <button
+                onClick={() => navigate("/organization?tab=integracoes")}
+                className="mt-2 text-xs text-brand-600 hover:underline"
+              >
+                Configurar em Organização →
+              </button>
             </div>
           )}
           {integrations.map((intg) => (
@@ -479,7 +422,7 @@ export default function RmmPage() {
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm text-gray-900 truncate">{intg.name}</p>
-                  <p className="text-xs text-gray-500">{RMM_TYPES.find((t) => t.value === intg.rmm_type)?.label}</p>
+                  <p className="text-xs text-gray-500">{RMM_TYPE_LABELS[intg.rmm_type] ?? intg.rmm_type}</p>
                 </div>
                 <ChevronRight size={14} className="text-gray-400 shrink-0 mt-0.5" />
               </div>
@@ -494,12 +437,17 @@ export default function RmmPage() {
                 <button onClick={(e) => { e.stopPropagation(); handleSync(intg.id); }} disabled={syncing === intg.id} title="Sincronizar" className="p-1 text-gray-400 hover:text-green-600 transition-colors disabled:opacity-50">
                   {syncing === intg.id ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                 </button>
-                <button onClick={(e) => { e.stopPropagation(); handleDelete(intg.id); }} title="Remover" className="p-1 text-gray-400 hover:text-red-500 transition-colors ml-auto">
-                  <Trash2 size={13} />
-                </button>
               </div>
             </div>
           ))}
+          {integrations.length > 0 && (
+            <button
+              onClick={() => navigate("/organization?tab=integracoes")}
+              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-brand-600 border border-dashed border-gray-200 rounded-xl hover:border-brand-300 transition-colors"
+            >
+              <Settings size={11} /> Gerenciar integrações
+            </button>
+          )}
         </div>
 
         {/* Agent table */}

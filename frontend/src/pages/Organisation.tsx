@@ -19,6 +19,7 @@ import { adminLlmConfigsApi, tenantLlmConfigsApi, llmProvidersApi, type LLMConfi
 import { permissionsApi, type DeviceCategory, type FunctionalModule } from "../api/permissions";
 import { integrationsApi } from "../api/integrations";
 import { glpiApi } from "../api/glpi";
+import { rmmApi, type RmmIntegration, type RmmType } from "../api/rmm";
 import { auditApi } from "../api/audit";
 import { AUDIT_INTENTS, type AuditPolicy, type UserForPolicy } from "../types/audit";
 import type { Integration, IntegrationType } from "../types/integration";
@@ -1836,6 +1837,163 @@ function LLMProviderForm({
   );
 }
 
+// ── RMM Integrations Section ─────────────────────────────────────────────────
+
+const RMM_TYPE_META: { value: RmmType; label: string; color: string; authFields: { key: string; label: string; type?: string }[] }[] = [
+  { value: "tactical_rmm",        label: "Tactical RMM",          color: "bg-indigo-100 text-indigo-700",  authFields: [{ key: "api_key", label: "API Key", type: "password" }] },
+  { value: "ninja_rmm",           label: "NinjaRMM (NinjaOne)",   color: "bg-sky-100 text-sky-700",        authFields: [{ key: "client_id", label: "Client ID" }, { key: "client_secret", label: "Client Secret", type: "password" }] },
+  { value: "atera",               label: "Atera",                  color: "bg-teal-100 text-teal-700",      authFields: [{ key: "api_key", label: "API Key", type: "password" }] },
+  { value: "connectwise_automate",label: "ConnectWise Automate",   color: "bg-orange-100 text-orange-700",  authFields: [{ key: "username", label: "Usuário" }, { key: "password", label: "Senha", type: "password" }] },
+];
+
+function RmmIntegrationsSection() {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [form, setForm] = useState<{
+    name: string; rmm_type: RmmType; base_url: string; credentials: Record<string, string>;
+  }>({ name: "", rmm_type: "tactical_rmm", base_url: "", credentials: {} });
+
+  const { data: integrations = [], isLoading } = useQuery<RmmIntegration[]>({
+    queryKey: ["rmm-integrations"],
+    queryFn: rmmApi.list,
+  });
+
+  const createMut = useMutation({
+    mutationFn: () => rmmApi.create({ name: form.name, rmm_type: form.rmm_type, base_url: form.base_url, credentials: form.credentials }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rmm-integrations"] });
+      setShowForm(false);
+      setForm({ name: "", rmm_type: "tactical_rmm", base_url: "", credentials: {} });
+      toast.success("Integração RMM criada.");
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao criar.";
+      toast.error(msg);
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => rmmApi.delete(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["rmm-integrations"] }); toast.success("Integração removida."); },
+    onError: () => toast.error("Erro ao remover."),
+  });
+
+  const handleTest = async (id: string) => {
+    try {
+      const r = await rmmApi.test(id);
+      r.ok ? toast.success(r.message) : toast.error(r.message);
+    } catch { toast.error("Erro ao testar conexão."); }
+  };
+
+  const handleSync = async (id: string) => {
+    setSyncing(id);
+    try {
+      const r = await rmmApi.sync(id);
+      toast.success(r.message);
+      qc.invalidateQueries({ queryKey: ["rmm-integrations"] });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao sincronizar.";
+      toast.error(msg);
+    } finally { setSyncing(null); }
+  };
+
+  const selectedTypeMeta = RMM_TYPE_META.find((t) => t.value === form.rmm_type);
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700">RMM (Remote Monitoring & Management)</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Tactical RMM · NinjaRMM · Atera · ConnectWise Automate</p>
+        </div>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs hover:bg-brand-700"
+        >
+          <Plus size={13} /> Nova Integração RMM
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="border border-gray-200 rounded-xl p-4 mb-4 bg-gray-50">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-600">Nome</label>
+              <input className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: RMM Produção" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Tipo</label>
+              <select className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={form.rmm_type} onChange={(e) => setForm({ ...form, rmm_type: e.target.value as RmmType, credentials: {} })}>
+                {RMM_TYPE_META.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-medium text-gray-600">URL Base da API</label>
+              <input className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} placeholder="https://api.seurmm.com" />
+            </div>
+            {selectedTypeMeta?.authFields.map((field) => (
+              <div key={field.key}>
+                <label className="text-xs font-medium text-gray-600">{field.label}</label>
+                <input type={field.type || "text"} className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={form.credentials[field.key] || ""} onChange={(e) => setForm({ ...form, credentials: { ...form.credentials, [field.key]: e.target.value } })} />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={() => createMut.mutate()} disabled={createMut.isPending || !form.name || !form.base_url} className="px-4 py-1.5 bg-brand-600 text-white rounded-lg text-xs hover:bg-brand-700 disabled:opacity-50">
+              {createMut.isPending ? "Criando..." : "Criar"}
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {isLoading && <p className="text-xs text-gray-400">Carregando...</p>}
+      {!isLoading && integrations.length === 0 && !showForm && (
+        <p className="text-xs text-gray-400 py-3 text-center border border-dashed border-gray-200 rounded-xl">Nenhuma integração RMM configurada.</p>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {integrations.map((intg) => {
+          const meta = RMM_TYPE_META.find((t) => t.value === intg.rmm_type);
+          return (
+            <div key={intg.id} className="border border-gray-200 rounded-xl p-4 bg-white">
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta?.color ?? "bg-gray-100 text-gray-600"}`}>{meta?.label ?? intg.rmm_type}</span>
+                    {intg.is_active
+                      ? <span className="text-[10px] text-green-600 font-medium">● Ativa</span>
+                      : <span className="text-[10px] text-gray-400">○ Inativa</span>}
+                  </div>
+                  <p className="font-semibold text-sm text-gray-800 mt-1.5">{intg.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{intg.base_url}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
+                <span><strong className="text-gray-800">{intg.agent_count}</strong> agentes</span>
+                {intg.last_sync_status === "ok" && <span className="flex items-center gap-1 text-green-600"><CheckCircle2 size={11} />Sync OK</span>}
+                {intg.last_sync_status === "error" && <span className="flex items-center gap-1 text-red-500"><XCircle size={11} />Erro</span>}
+              </div>
+              <div className="flex items-center gap-1 mt-3 pt-3 border-t border-gray-100">
+                <button onClick={() => handleTest(intg.id)} title="Testar conexão" className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors">
+                  <Play size={11} /> Testar
+                </button>
+                <button onClick={() => handleSync(intg.id)} disabled={syncing === intg.id} title="Sincronizar agentes" className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50">
+                  {syncing === intg.id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Sincronizar
+                </button>
+                <button onClick={() => { if (confirm(`Remover "${intg.name}" e todos os seus agentes?`)) deleteMut.mutate(intg.id); }} className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-auto">
+                  <Trash2 size={11} /> Remover
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function IntegracoesTab() {
   const { user, tenant } = useAuth();
   const isSuperAdmin = user?.is_super_admin ?? false;
@@ -1873,6 +2031,7 @@ function IntegracoesTab() {
           <GlpiIntegrationCard />
         </div>
       )}
+      <RmmIntegrationsSection />
       <LLMProvidersSection isSuperAdmin={isSuperAdmin} />
     </div>
   );
@@ -2516,7 +2675,9 @@ export function Organisation() {
   const isSuperAdmin = user?.is_super_admin ?? false;
   const isAdmin = isSuperAdmin || tenantRole === "admin";
 
-  const [tab, setTab] = useState<Tab>(isSuperAdmin ? "tenants" : "equipe");
+  const [searchParams] = useState(() => new URLSearchParams(window.location.search));
+  const initialTab = (searchParams.get("tab") as Tab | null) ?? (isSuperAdmin ? "tenants" : "equipe");
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   if (!isAdmin) {
     return (
