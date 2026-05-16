@@ -23,6 +23,7 @@ from app.api.auth import (
 )
 from app.config import settings
 from app.models.user import User, UserRole
+from app.models.user_tenant_role import TenantRole
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -251,3 +252,89 @@ class TestLoginBehavior:
                 "KNOWN GAP: /auth/register leaks email existence via 'Email already registered' message. "
                 "Consider returning 201 with a generic message regardless."
             )
+
+
+# ── POST /auth/refresh ────────────────────────────────────────────────────────
+
+class TestRefreshEndpoint:
+    async def test_valid_refresh_with_tenant_returns_new_tokens(
+        self, client, db_session
+    ):
+        """Valid refresh token + tenant_id returns new access + refresh tokens."""
+        from tests.conftest import assign_role, make_tenant, make_user
+
+        tenant = await make_tenant(db_session)
+        user, _ = await make_user(db_session)
+        await assign_role(db_session, user, tenant, TenantRole.admin)
+
+        refresh = _create_refresh_token(user.id)
+        resp = await client.post("/auth/refresh", json={
+            "refresh_token": refresh,
+            "tenant_id": str(tenant.id),
+        })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["access_token"] is not None
+        assert body["refresh_token"] is not None
+
+    async def test_super_admin_refresh_no_tenant_needed(self, client, db_session):
+        """Super admin refresh returns new tokens without requiring tenant_id."""
+        from tests.conftest import make_user
+
+        admin, _ = await make_user(db_session, is_super_admin=True)
+        refresh = _create_refresh_token(admin.id)
+        resp = await client.post("/auth/refresh", json={"refresh_token": refresh})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["access_token"] is not None
+        assert body["refresh_token"] is not None
+
+    async def test_access_token_cannot_be_used_as_refresh(self, client, active_user):
+        """Token without type='refresh' must be rejected with 401."""
+        access = _create_token(
+            {"sub": str(active_user.id), "tenant_id": str(uuid4())},
+            timedelta(minutes=15),
+        )
+        resp = await client.post("/auth/refresh", json={"refresh_token": access})
+        assert resp.status_code == 401
+
+    async def test_expired_refresh_token_rejected(self, client, active_user):
+        """Expired refresh token must return 401."""
+        expired = _create_token(
+            {"sub": str(active_user.id), "type": "refresh"},
+            timedelta(seconds=-1),
+        )
+        resp = await client.post("/auth/refresh", json={"refresh_token": expired})
+        assert resp.status_code == 401
+
+    async def test_refresh_for_inactive_user_rejected(self, client, inactive_user):
+        """Refresh token for deactivated user must return 401."""
+        refresh = _create_refresh_token(inactive_user.id)
+        resp = await client.post("/auth/refresh", json={"refresh_token": refresh})
+        assert resp.status_code == 401
+
+    async def test_refresh_with_wrong_tenant_returns_403(self, client, active_user):
+        """Refresh token with a tenant the user doesn't belong to must return 403."""
+        refresh = _create_refresh_token(active_user.id)
+        resp = await client.post("/auth/refresh", json={
+            "refresh_token": refresh,
+            "tenant_id": str(uuid4()),
+        })
+        assert resp.status_code == 403
+
+    async def test_single_tenant_user_refresh_without_tenant_id(
+        self, client, db_session
+    ):
+        """Single-tenant user with no tenant_id in body gets auto-scoped token."""
+        from tests.conftest import assign_role, make_tenant, make_user
+
+        tenant = await make_tenant(db_session)
+        user, _ = await make_user(db_session)
+        await assign_role(db_session, user, tenant, TenantRole.analyst)
+
+        refresh = _create_refresh_token(user.id)
+        resp = await client.post("/auth/refresh", json={"refresh_token": refresh})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["access_token"] is not None
+        assert body["refresh_token"] is not None

@@ -57,3 +57,8 @@ class MFAVerifyRequest(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+    tenant_id: str | None = None

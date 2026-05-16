@@ -20,6 +20,7 @@ from app.schemas.user import (
     MFASetupResponse,
     MFAVerifyRequest,
     PasswordChange,
+    RefreshRequest,
     TenantInfo,
     TokenResponse,
     UserCreate,
@@ -494,6 +495,74 @@ async def change_password(
         raise HTTPException(status_code=400, detail="Senha atual incorreta")
     current_user.hashed_password = _hash_password(data.new_password)
     await db.flush()
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_access_token(
+    data: RefreshRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TokenResponse:
+    payload = _decode_token(data.refresh_token)
+    if payload.get("type") != "refresh":
+        raise HTTPException(status_code=401, detail="Token inválido para renovação")
+
+    user_id = payload.get("sub")
+    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+
+    # Super admin — no tenant context needed
+    if user.is_super_admin:
+        return TokenResponse(
+            access_token=_create_access_token(user, tenant_id=None, role="super_admin"),
+            refresh_token=_create_refresh_token(user.id),
+        )
+
+    # Tenant_id provided — verify membership and issue scoped token
+    if data.tenant_id:
+        tid = UUID(data.tenant_id)
+        utr_result = await db.execute(
+            select(UserTenantRole, Tenant)
+            .join(Tenant, UserTenantRole.tenant_id == Tenant.id)
+            .where(
+                UserTenantRole.user_id == user.id,
+                UserTenantRole.tenant_id == tid,
+                Tenant.is_active == True,
+            )
+        )
+        row = utr_result.first()
+        if not row:
+            raise HTTPException(status_code=403, detail="Sem acesso a este tenant")
+        utr, tenant = row
+        return TokenResponse(
+            access_token=_create_access_token(user, tenant_id=tenant.id, role=utr.role.value),
+            refresh_token=_create_refresh_token(user.id),
+        )
+
+    # No tenant_id — derive from user's memberships (same logic as login)
+    utr_result = await db.execute(
+        select(UserTenantRole, Tenant)
+        .join(Tenant, UserTenantRole.tenant_id == Tenant.id)
+        .where(UserTenantRole.user_id == user.id, Tenant.is_active == True)
+    )
+    rows = utr_result.all()
+
+    if not rows:
+        raise HTTPException(status_code=403, detail="Usuário não associado a nenhum tenant ativo")
+
+    if len(rows) == 1:
+        utr, tenant = rows[0]
+        return TokenResponse(
+            access_token=_create_access_token(user, tenant_id=tenant.id, role=utr.role.value),
+            refresh_token=_create_refresh_token(user.id),
+        )
+
+    # Multiple tenants — force re-selection
+    return TokenResponse(
+        pre_token=_create_pre_token(user.id),
+        tenants=[TenantInfo(id=str(t.id), name=t.name, slug=t.slug) for _, t in rows],
+    )
 
 
 @router.get("/me", response_model=UserRead)
