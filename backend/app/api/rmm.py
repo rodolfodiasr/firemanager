@@ -25,6 +25,7 @@ class RmmIntegrationCreate(BaseModel):
     base_url: str
     credentials: dict
     verify_ssl: bool = True
+    site_filter: str | None = None
 
 
 class RmmIntegrationUpdate(BaseModel):
@@ -33,6 +34,7 @@ class RmmIntegrationUpdate(BaseModel):
     credentials: dict | None = None
     verify_ssl: bool | None = None
     is_active: bool | None = None
+    site_filter: str | None = None
 
 
 class RmmIntegrationRead(BaseModel):
@@ -46,6 +48,7 @@ class RmmIntegrationRead(BaseModel):
     last_sync_status: str | None
     last_sync_message: str | None
     agent_count: int
+    site_filter: str | None
     created_at: datetime
     model_config = {"from_attributes": True}
 
@@ -115,6 +118,7 @@ async def create_integration(
             base_url=data.base_url,
             credentials=data.credentials,
             verify_ssl=data.verify_ssl,
+            site_filter=data.site_filter,
         )
         await db.commit()
         return RmmIntegrationRead.model_validate(integration)
@@ -139,6 +143,7 @@ async def update_integration(
         credentials=data.credentials,
         verify_ssl=data.verify_ssl,
         is_active=data.is_active,
+        site_filter=data.site_filter,
     )
     await db.commit()
     return RmmIntegrationRead.model_validate(integration)

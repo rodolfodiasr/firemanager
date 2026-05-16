@@ -13,6 +13,7 @@ export interface RmmIntegration {
   last_sync_status: string | null;
   last_sync_message: string | null;
   agent_count: number;
+  site_filter: string | null;
   created_at: string;
 }
 
@@ -55,6 +56,7 @@ export const rmmApi = {
     base_url: string;
     credentials: Record<string, string>;
     verify_ssl?: boolean;
+    site_filter?: string | null;
   }) => apiClient.post<RmmIntegration>("/rmm", data).then((r) => r.data),
 
   update: (id: string, data: Partial<RmmIntegration & { credentials: Record<string, string> }>) =>

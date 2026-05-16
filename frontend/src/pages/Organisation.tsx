@@ -1851,8 +1851,8 @@ function RmmIntegrationsSection() {
   const [showForm, setShowForm] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [form, setForm] = useState<{
-    name: string; rmm_type: RmmType; base_url: string; credentials: Record<string, string>;
-  }>({ name: "", rmm_type: "tactical_rmm", base_url: "", credentials: {} });
+    name: string; rmm_type: RmmType; base_url: string; credentials: Record<string, string>; site_filter: string;
+  }>({ name: "", rmm_type: "tactical_rmm", base_url: "", credentials: {}, site_filter: "" });
 
   const { data: integrations = [], isLoading } = useQuery<RmmIntegration[]>({
     queryKey: ["rmm-integrations"],
@@ -1860,11 +1860,11 @@ function RmmIntegrationsSection() {
   });
 
   const createMut = useMutation({
-    mutationFn: () => rmmApi.create({ name: form.name, rmm_type: form.rmm_type, base_url: form.base_url, credentials: form.credentials }),
+    mutationFn: () => rmmApi.create({ name: form.name, rmm_type: form.rmm_type, base_url: form.base_url, credentials: form.credentials, site_filter: form.site_filter || null }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["rmm-integrations"] });
       setShowForm(false);
-      setForm({ name: "", rmm_type: "tactical_rmm", base_url: "", credentials: {} });
+      setForm({ name: "", rmm_type: "tactical_rmm", base_url: "", credentials: {}, site_filter: "" });
       toast.success("Integração RMM criada.");
     },
     onError: (err: unknown) => {
@@ -1938,6 +1938,11 @@ function RmmIntegrationsSection() {
                 <input type={field.type || "text"} className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={form.credentials[field.key] || ""} onChange={(e) => setForm({ ...form, credentials: { ...form.credentials, [field.key]: e.target.value } })} />
               </div>
             ))}
+            <div className="col-span-2">
+              <label className="text-xs font-medium text-gray-600">Filtro de Site/Cliente <span className="text-gray-400 font-normal">(opcional)</span></label>
+              <input className="w-full mt-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white" value={form.site_filter} onChange={(e) => setForm({ ...form, site_filter: e.target.value })} placeholder="Ex: Clínica São Lucas, Hospital ABC (separe por vírgula)" />
+              <p className="text-[10px] text-gray-400 mt-1">Filtra agentes pelo site_name ou client_name no RMM. Deixe vazio para sincronizar todos.</p>
+            </div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={() => createMut.mutate()} disabled={createMut.isPending || !form.name || !form.base_url} className="px-4 py-1.5 bg-brand-600 text-white rounded-lg text-xs hover:bg-brand-700 disabled:opacity-50">
@@ -1975,6 +1980,11 @@ function RmmIntegrationsSection() {
                 {intg.last_sync_status === "ok" && <span className="flex items-center gap-1 text-green-600"><CheckCircle2 size={11} />Sync OK</span>}
                 {intg.last_sync_status === "error" && <span className="flex items-center gap-1 text-red-500"><XCircle size={11} />Erro</span>}
               </div>
+              {intg.site_filter && (
+                <p className="text-[10px] text-gray-400 mt-1.5 truncate">
+                  <span className="font-medium">Filtro:</span> {intg.site_filter}
+                </p>
+              )}
               <div className="flex items-center gap-1 mt-3 pt-3 border-t border-gray-100">
                 <button onClick={() => handleTest(intg.id)} title="Testar conexão" className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors">
                   <Play size={11} /> Testar

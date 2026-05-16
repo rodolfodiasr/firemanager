@@ -41,6 +41,7 @@ async def create_integration(
     base_url: str,
     credentials: dict,
     verify_ssl: bool = True,
+    site_filter: str | None = None,
 ) -> RmmIntegration:
     if rmm_type not in RMM_TYPES:
         raise ValueError(f"Tipo RMM inválido: {rmm_type}. Aceitos: {RMM_TYPES}")
@@ -52,6 +53,7 @@ async def create_integration(
         base_url=base_url.rstrip("/"),
         config_encrypted=config_encrypted,
         verify_ssl=verify_ssl,
+        site_filter=site_filter.strip() if site_filter else None,
     )
     db.add(integration)
     await db.flush()
@@ -67,6 +69,7 @@ async def update_integration(
     credentials: dict | None,
     verify_ssl: bool | None,
     is_active: bool | None,
+    site_filter: str | None = None,
 ) -> RmmIntegration:
     if name is not None:
         integration.name = name
@@ -78,6 +81,8 @@ async def update_integration(
         integration.verify_ssl = verify_ssl
     if is_active is not None:
         integration.is_active = is_active
+    if site_filter is not None:
+        integration.site_filter = site_filter.strip() or None
     await db.flush()
     await db.refresh(integration)
     return integration
@@ -115,6 +120,16 @@ async def sync_agents(db: AsyncSession, integration: RmmIntegration) -> int:
     if integration.rmm_type == "tactical_rmm":
         from app.services.tactical_rmm_service import list_users
         raw_items = await list_users(config)
+        if integration.site_filter:
+            filters = [f.strip().lower() for f in integration.site_filter.split(",") if f.strip()]
+            raw_items = [
+                r for r in raw_items
+                if any(
+                    f in (r.get("site_name") or "").lower() or
+                    f in (r.get("client_name") or "").lower()
+                    for f in filters
+                )
+            ]
         normalized = [_normalize_tactical(r) for r in raw_items]
     elif integration.rmm_type == "ninja_rmm":
         from app.services.ninja_rmm_service import list_devices, normalize_device

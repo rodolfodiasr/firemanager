@@ -237,6 +237,8 @@ function AgentDetail({ agent, integration, onRun, onClose, runs, loadingRuns }: 
         {tab === "info" && (
           <div className="space-y-3">
             {[
+              ["Cliente", (agent.raw_data as Record<string, string> | null)?.client_name],
+              ["Site", (agent.raw_data as Record<string, string> | null)?.site_name],
               ["Sistema Operacional", agent.os_name],
               ["Endereço IP", agent.ip_address],
               ["Última Vez Visto", formatDate(agent.last_seen)],
@@ -501,6 +503,7 @@ export default function RmmPage() {
                       <tr className="text-left text-gray-400 border-b border-gray-100">
                         <th className="pb-2 px-5 pt-3 font-medium">Status</th>
                         <th className="pb-2 pt-3 font-medium">Hostname</th>
+                        <th className="pb-2 pt-3 font-medium">Site / Cliente</th>
                         <th className="pb-2 pt-3 font-medium">IP</th>
                         <th className="pb-2 pt-3 font-medium">SO</th>
                         <th className="pb-2 pt-3 font-medium text-center">Patches</th>
@@ -517,6 +520,16 @@ export default function RmmPage() {
                         >
                           <td className="py-2 px-5"><AgentDot status={a.status} /></td>
                           <td className="py-2 font-medium text-gray-800">{a.hostname}</td>
+                          <td className="py-2 text-gray-500 text-xs">
+                            {(a.raw_data as Record<string, string> | null)?.client_name
+                              ? <span className="flex flex-col leading-tight">
+                                  <span className="font-medium text-gray-700">{(a.raw_data as Record<string, string>).client_name}</span>
+                                  {(a.raw_data as Record<string, string>).site_name && (
+                                    <span className="text-[10px] text-gray-400">{(a.raw_data as Record<string, string>).site_name}</span>
+                                  )}
+                                </span>
+                              : <span className="text-gray-300">—</span>}
+                          </td>
                           <td className="py-2 text-gray-500">{a.ip_address || "—"}</td>
                           <td className="py-2 text-gray-500 max-w-[130px] truncate">{a.os_name || "—"}</td>
                           <td className="py-2 text-center">

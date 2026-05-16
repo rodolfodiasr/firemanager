@@ -28,6 +28,7 @@ class RmmIntegration(Base):
     last_sync_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     last_sync_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     agent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    site_filter: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
