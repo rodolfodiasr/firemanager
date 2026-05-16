@@ -25,7 +25,29 @@
     "actions": "Actions",
     "createdAt": "Created at",
     "updatedAt": "Updated at",
-    "lastSync": "Last sync"
+    "lastSync": "Last sync",
+    "export": "Export",
+    "import": "Import",
+    "refresh": "Refresh",
+    "add": "Add",
+    "remove": "Remove",
+    "view": "View",
+    "approve": "Approve",
+    "reject": "Reject",
+    "pending": "Pending",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "all": "All",
+    "none": "None",
+    "yes": "Yes",
+    "no": "No",
+    "severity": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low",
+      "info": "Info"
+    }
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -40,7 +62,70 @@
     "glpi": "GLPI",
     "settings": "Settings",
     "assistant": "AI Assistant",
-    "audit": "Audit"
+    "audit": "Audit",
+    "executive": "Executive",
+    "cloud": "Cloud CSPM",
+    "webAudit": "Web Audit",
+    "aiSafety": "AI Safety",
+    "selfService": "Self-Service"
+  },
+  "auth": {
+    "login": "Sign In",
+    "logout": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "mfa_code": "MFA Code",
+    "forgot_password": "Forgot password",
+    "signIn": "Sign in to your account",
+    "invalidCredentials": "Invalid credentials",
+    "sessionExpired": "Session expired. Please log in again.",
+    "refreshToken": "Refreshing session…"
+  },
+  "devices": {
+    "title": "Devices",
+    "add": "Add Device",
+    "vendor": "Vendor",
+    "ip": "IP Address",
+    "status": "Status",
+    "last_seen": "Last seen",
+    "connection_mode": "Connection mode",
+    "direct": "Direct",
+    "edge": "Via Edge Agent",
+    "health": {
+      "healthy": "Healthy",
+      "unreachable": "Unreachable",
+      "degraded": "Degraded"
+    },
+    "snapshot": "Take Snapshot",
+    "operations": "Operations",
+    "inspect": "Inspect"
+  },
+  "billing": {
+    "title": "Billing & Plans",
+    "currentPlan": "Current plan",
+    "current_plan": "Current Plan",
+    "invoices": "Invoices",
+    "upgradePrompt": "Upgrade to unlock more features.",
+    "upgrade": "Upgrade",
+    "stripePortal": "Payment Portal",
+    "subscription": "Subscription",
+    "checkout": "Checkout",
+    "cancel_subscription": "Cancel Subscription",
+    "download_pdf": "Download PDF",
+    "status": {
+      "active": "Active",
+      "trialing": "Trial",
+      "past_due": "Payment pending",
+      "canceled": "Canceled"
+    },
+    "plans": {
+      "starter": "Starter",
+      "pro": "Pro",
+      "enterprise": "Enterprise"
+    },
+    "invoice_date": "Date",
+    "invoice_amount": "Amount",
+    "invoice_status": "Status"
   },
   "rmm": {
     "title": "RMM Integrations",
@@ -93,39 +178,307 @@
     "eventsForwarded": "Events forwarded",
     "testSend": "Send test event"
   },
-  "billing": {
-    "title": "Billing & Plans",
-    "currentPlan": "Current plan",
-    "current_plan": "Current Plan",
-    "invoices": "Invoices",
-    "upgradePrompt": "Upgrade to unlock more features.",
-    "upgrade": "Upgrade",
-    "stripePortal": "Payment Portal",
-    "subscription": "Subscription",
-    "checkout": "Checkout",
-    "cancel_subscription": "Cancel Subscription",
-    "download_pdf": "Download PDF",
-    "status": {
-      "active": "Active",
-      "trialing": "Trial",
-      "past_due": "Payment pending",
-      "canceled": "Canceled"
+  "aiSafety": {
+    "title": "AI Safety & Governance",
+    "tabs": {
+      "fourEyes": "Four-Eyes",
+      "maintenance": "Maintenance Windows",
+      "incidents": "SIRP / Incidents",
+      "erasure": "Right to Erasure"
+    },
+    "fourEyes": {
+      "title": "Pending Approvals",
+      "noRequests": "No pending approvals.",
+      "requestedBy": "Requested by",
+      "approveBtn": "Approve",
+      "rejectBtn": "Reject",
+      "selfApprovalBlocked": "Self-approval blocked"
+    },
+    "maintenance": {
+      "title": "Maintenance Windows",
+      "add": "New Window",
+      "active": "In maintenance window now",
+      "days": {
+        "0": "Sun", "1": "Mon", "2": "Tue",
+        "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat"
+      }
+    },
+    "incidents": {
+      "title": "Security Incidents",
+      "add": "New Incident",
+      "timeline": "Timeline",
+      "addEntry": "Add Entry",
+      "status": {
+        "open": "Open",
+        "investigating": "Investigating",
+        "resolved": "Resolved",
+        "closed": "Closed"
+      }
+    },
+    "erasure": {
+      "title": "Right to Erasure (LGPD Art. 18)",
+      "newRequest": "New Request",
+      "dataSubject": "Data Subject",
+      "reason": "Reason"
     }
   },
-  "devices": {
-    "title": "Devices",
-    "add": "Add Device",
-    "vendor": "Vendor",
-    "ip": "IP Address",
-    "status": "Status",
-    "last_seen": "Last seen"
+  "compliance": {
+    "title": "Compliance",
+    "score": "Score",
+    "checks": "Checks",
+    "passed": "Passed",
+    "failed": "Failed",
+    "warning": "Warning",
+    "notApplicable": "N/A",
+    "lastChecked": "Last checked",
+    "frameworks": {
+      "cis": "CIS Controls",
+      "pci_dss": "PCI-DSS",
+      "bacen": "BACEN 4658",
+      "lgpd": "LGPD",
+      "iso27001": "ISO 27001"
+    },
+    "report": {
+      "generate": "Generate Report",
+      "download": "Download PDF",
+      "period": "Period"
+    },
+    "sla": {
+      "title": "SLA",
+      "target": "Target",
+      "achieved": "Achieved",
+      "credits": "Credits"
+    },
+    "bcdr": {
+      "title": "BC/DR",
+      "rto": "RTO",
+      "rpo": "RPO",
+      "lastTest": "Last test"
+    }
   },
-  "auth": {
-    "login": "Sign In",
-    "logout": "Sign Out",
-    "email": "Email",
-    "password": "Password",
-    "mfa_code": "MFA Code",
-    "forgot_password": "Forgot password"
+  "webAudit": {
+    "title": "Web Audit",
+    "subtitle": "Web browsing audit for Active Directory workstations",
+    "tabs": {
+      "dashboard": "Dashboard",
+      "history": "History",
+      "findings": "Findings",
+      "config": "Configuration"
+    },
+    "categories": {
+      "malicious": "Malicious",
+      "exfiltration": "Exfiltration",
+      "shadow_it": "Shadow IT",
+      "compliance": "Compliance",
+      "productivity": "Productivity",
+      "social": "Social Media",
+      "normal": "Normal"
+    },
+    "upload": "Import CSV",
+    "analyze": "Analyze with AI",
+    "findings": "Findings",
+    "users": "Users",
+    "domains": "Domains",
+    "riskScore": "Risk Score",
+    "status": {
+      "open": "Open",
+      "dismissed": "Dismissed",
+      "escalated": "Escalated"
+    }
+  },
+  "selfServicePortal": {
+    "title": "Identity Self-Service",
+    "subtitle": "Visual access catalog, requests and pre-built AD reports.",
+    "tabs": {
+      "catalog": "Access Catalog",
+      "requests": "Requests",
+      "reports": "AD Reports"
+    },
+    "catalog": {
+      "newItem": "New Item",
+      "requestAccess": "Request access",
+      "approvalRequired": "Approval",
+      "autoApproved": "Auto",
+      "empty": "Catalog is empty. Add items so users can request access.",
+      "categories": {
+        "network": "Network",
+        "server": "Server",
+        "database": "Database",
+        "application": "Application",
+        "security": "Security",
+        "general": "General"
+      }
+    },
+    "requests": {
+      "all": "All",
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "approveAndProvision": "Approve & Provision",
+      "reject": "Reject",
+      "noRequests": "No requests found."
+    },
+    "reports": {
+      "expiredPasswords": "Expired Passwords",
+      "inactiveAccounts": "Inactive Accounts",
+      "adminsWithoutMfa": "Admins without MFA",
+      "groupMembers": "Group Members",
+      "daysWithoutChange": "days without change",
+      "daysInactive": "days inactive",
+      "groupName": "Group name"
+    }
+  },
+  "executive": {
+    "title": "Executive Dashboard",
+    "riskScore": "Risk Score",
+    "devices": "Devices",
+    "incidents": "Incidents",
+    "compliance": "Compliance",
+    "sla": "SLA",
+    "trends": "Trends",
+    "downloadReport": "Download Report",
+    "period": {
+      "7d": "7 days",
+      "30d": "30 days",
+      "90d": "90 days"
+    }
+  },
+  "siem": {
+    "title": "SIEM",
+    "connectors": "Connectors",
+    "alerts": "Alerts",
+    "addConnector": "New Connector",
+    "testConnector": "Test",
+    "types": {
+      "wazuh": "Wazuh",
+      "splunk": "Splunk",
+      "sentinel": "Microsoft Sentinel",
+      "log360": "Log360",
+      "qradar": "QRadar"
+    },
+    "severity": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low",
+      "info": "Info"
+    },
+    "status": {
+      "new": "New",
+      "triaging": "Triaging",
+      "actioned": "Actioned",
+      "closed": "Closed"
+    }
+  },
+  "identity": {
+    "title": "Identity Governance",
+    "tabs": {
+      "users": "AD Users",
+      "groups": "Groups",
+      "sod": "Segregation (SoD)",
+      "campaigns": "Campaigns",
+      "jit": "JIT Access"
+    },
+    "sync": "Sync",
+    "connector": "Connector",
+    "sodViolations": "SoD Violations",
+    "acceptRisk": "Accept Risk",
+    "jit": {
+      "request": "Request JIT",
+      "approve": "Approve",
+      "active": "Active",
+      "expired": "Expired",
+      "duration": "Duration"
+    },
+    "campaign": {
+      "create": "Create Campaign",
+      "deadline": "Deadline",
+      "confirm": "Confirm",
+      "revoke": "Revoke",
+      "escalate": "Escalate"
+    }
+  },
+  "alerts": {
+    "title": "Alerts",
+    "addRule": "New Rule",
+    "channels": "Channels",
+    "rules": "Rules",
+    "history": "History",
+    "test": "Send Test",
+    "severity": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "channel": {
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "email": "Email",
+      "webhook": "Webhook",
+      "jira": "Jira"
+    }
+  },
+  "edgeAgents": {
+    "title": "Edge Agents & Platform",
+    "tabs": {
+      "agents": "Edge Agents",
+      "sso": "SSO / OIDC",
+      "marketplace": "Marketplace",
+      "rbac": "Granular RBAC"
+    },
+    "agents": {
+      "add": "New Agent",
+      "token": "Token",
+      "tokenHint": "Token shown only once.",
+      "status": {
+        "online": "Online",
+        "offline": "Offline",
+        "stale": "Stale"
+      }
+    },
+    "sso": {
+      "provider": "Provider",
+      "configure": "Configure SSO",
+      "required": "SSO required"
+    },
+    "marketplace": {
+      "install": "Install",
+      "uninstall": "Uninstall",
+      "installed": "Installed",
+      "builtin": "Built-in"
+    }
+  },
+  "playbooks": {
+    "title": "SOAR Playbooks",
+    "add": "New Playbook",
+    "trigger": "Trigger",
+    "templates": "Templates",
+    "executions": "Executions",
+    "mttr": "MTTR",
+    "status": {
+      "running": "Running",
+      "success": "Success",
+      "partial": "Partial",
+      "failed": "Failed"
+    }
+  },
+  "assistant": {
+    "title": "AI Assistant",
+    "newSession": "New Session",
+    "send": "Send",
+    "placeholder": "Ask a question about your infrastructure…",
+    "modes": {
+      "infrastructure": "Infrastructure",
+      "general": "General",
+      "platform": "Platform Guide"
+    },
+    "docTypes": {
+      "knowledge": "Article",
+      "action_plan": "Action Plan",
+      "remediation": "Remediation"
+    },
+    "generate": "Generate",
+    "publish": "Publish"
   }
 }

@@ -34,11 +34,24 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        {/* WCAG 2.1 AA — skip navigation link */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:bg-brand-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-lg focus:text-sm focus:font-medium focus:outline-none focus:ring-2 focus:ring-white"
+        >
+          Pular para o conteúdo
+        </a>
         <StagingBanner />
         <AuthInit />
         <AppRouter />
         <AgentDrawer />
-        <Toaster position="top-right" />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            success: { "aria-live": "polite" } as React.HTMLAttributes<HTMLDivElement>,
+            error: { role: "alert" } as React.HTMLAttributes<HTMLDivElement>,
+          }}
+        />
       </BrowserRouter>
     </QueryClientProvider>
   );

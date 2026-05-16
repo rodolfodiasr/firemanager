@@ -25,7 +25,29 @@
     "actions": "Ações",
     "createdAt": "Criado em",
     "updatedAt": "Atualizado em",
-    "lastSync": "Última sincronização"
+    "lastSync": "Última sincronização",
+    "export": "Exportar",
+    "import": "Importar",
+    "refresh": "Atualizar",
+    "add": "Adicionar",
+    "remove": "Remover",
+    "view": "Visualizar",
+    "approve": "Aprovar",
+    "reject": "Rejeitar",
+    "pending": "Pendente",
+    "approved": "Aprovado",
+    "rejected": "Rejeitado",
+    "all": "Todos",
+    "none": "Nenhum",
+    "yes": "Sim",
+    "no": "Não",
+    "severity": {
+      "critical": "Crítico",
+      "high": "Alto",
+      "medium": "Médio",
+      "low": "Baixo",
+      "info": "Informação"
+    }
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -40,7 +62,70 @@
     "glpi": "GLPI",
     "settings": "Configurações",
     "assistant": "Assistente IA",
-    "audit": "Auditoria"
+    "audit": "Auditoria",
+    "executive": "Executivo",
+    "cloud": "Cloud CSPM",
+    "webAudit": "Web Audit",
+    "aiSafety": "IA Safety",
+    "selfService": "Self-Service"
+  },
+  "auth": {
+    "login": "Entrar",
+    "logout": "Sair",
+    "email": "E-mail",
+    "password": "Senha",
+    "mfa_code": "Código MFA",
+    "forgot_password": "Esqueci minha senha",
+    "signIn": "Entrar na plataforma",
+    "invalidCredentials": "Credenciais inválidas",
+    "sessionExpired": "Sessão expirada. Faça login novamente.",
+    "refreshToken": "Renovando sessão…"
+  },
+  "devices": {
+    "title": "Dispositivos",
+    "add": "Adicionar Dispositivo",
+    "vendor": "Vendor",
+    "ip": "Endereço IP",
+    "status": "Status",
+    "last_seen": "Último contato",
+    "connection_mode": "Modo de conexão",
+    "direct": "Direto",
+    "edge": "Via Edge Agent",
+    "health": {
+      "healthy": "Saudável",
+      "unreachable": "Inacessível",
+      "degraded": "Degradado"
+    },
+    "snapshot": "Tirar Snapshot",
+    "operations": "Operações",
+    "inspect": "Inspecionar"
+  },
+  "billing": {
+    "title": "Billing & Planos",
+    "currentPlan": "Plano atual",
+    "current_plan": "Plano Atual",
+    "invoices": "Faturas",
+    "upgradePrompt": "Faça upgrade para desbloquear mais recursos.",
+    "upgrade": "Fazer Upgrade",
+    "stripePortal": "Portal de Pagamento",
+    "subscription": "Assinatura",
+    "checkout": "Checkout",
+    "cancel_subscription": "Cancelar Assinatura",
+    "download_pdf": "Baixar PDF",
+    "status": {
+      "active": "Ativo",
+      "trialing": "Trial",
+      "past_due": "Pagamento pendente",
+      "canceled": "Cancelado"
+    },
+    "plans": {
+      "starter": "Starter",
+      "pro": "Pro",
+      "enterprise": "Enterprise"
+    },
+    "invoice_date": "Data",
+    "invoice_amount": "Valor",
+    "invoice_status": "Status"
   },
   "rmm": {
     "title": "Integrações RMM",
@@ -107,39 +192,307 @@
     "eventsForwarded": "Eventos encaminhados",
     "testSend": "Enviar evento de teste"
   },
-  "billing": {
-    "title": "Billing & Planos",
-    "currentPlan": "Plano atual",
-    "current_plan": "Plano Atual",
-    "invoices": "Faturas",
-    "upgradePrompt": "Faça upgrade para desbloquear mais recursos.",
-    "upgrade": "Fazer Upgrade",
-    "stripePortal": "Portal de Pagamento",
-    "subscription": "Assinatura",
-    "checkout": "Checkout",
-    "cancel_subscription": "Cancelar Assinatura",
-    "download_pdf": "Baixar PDF",
-    "status": {
-      "active": "Ativo",
-      "trialing": "Trial",
-      "past_due": "Pagamento pendente",
-      "canceled": "Cancelado"
+  "aiSafety": {
+    "title": "IA Safety & Governança",
+    "tabs": {
+      "fourEyes": "Four-Eyes",
+      "maintenance": "Janelas de Manutenção",
+      "incidents": "SIRP / Incidentes",
+      "erasure": "Direito ao Esquecimento"
+    },
+    "fourEyes": {
+      "title": "Aprovações Pendentes",
+      "noRequests": "Nenhuma aprovação pendente.",
+      "requestedBy": "Solicitado por",
+      "approveBtn": "Aprovar",
+      "rejectBtn": "Rejeitar",
+      "selfApprovalBlocked": "Auto-aprovação bloqueada"
+    },
+    "maintenance": {
+      "title": "Janelas de Manutenção",
+      "add": "Nova Janela",
+      "active": "Em janela agora",
+      "days": {
+        "0": "Dom", "1": "Seg", "2": "Ter",
+        "3": "Qua", "4": "Qui", "5": "Sex", "6": "Sáb"
+      }
+    },
+    "incidents": {
+      "title": "Incidentes de Segurança",
+      "add": "Novo Incidente",
+      "timeline": "Linha do Tempo",
+      "addEntry": "Adicionar Entrada",
+      "status": {
+        "open": "Aberto",
+        "investigating": "Investigando",
+        "resolved": "Resolvido",
+        "closed": "Fechado"
+      }
+    },
+    "erasure": {
+      "title": "Direito ao Esquecimento (LGPD Art. 18)",
+      "newRequest": "Nova Solicitação",
+      "dataSubject": "Titular dos Dados",
+      "reason": "Justificativa"
     }
   },
-  "devices": {
-    "title": "Dispositivos",
-    "add": "Adicionar Dispositivo",
-    "vendor": "Vendor",
-    "ip": "Endereço IP",
-    "status": "Status",
-    "last_seen": "Último contato"
+  "compliance": {
+    "title": "Compliance",
+    "score": "Score",
+    "checks": "Verificações",
+    "passed": "Aprovado",
+    "failed": "Reprovado",
+    "warning": "Atenção",
+    "notApplicable": "N/A",
+    "lastChecked": "Última verificação",
+    "frameworks": {
+      "cis": "CIS Controls",
+      "pci_dss": "PCI-DSS",
+      "bacen": "BACEN 4658",
+      "lgpd": "LGPD",
+      "iso27001": "ISO 27001"
+    },
+    "report": {
+      "generate": "Gerar Relatório",
+      "download": "Baixar PDF",
+      "period": "Período"
+    },
+    "sla": {
+      "title": "SLA",
+      "target": "Meta",
+      "achieved": "Atingido",
+      "credits": "Créditos"
+    },
+    "bcdr": {
+      "title": "BC/DR",
+      "rto": "RTO",
+      "rpo": "RPO",
+      "lastTest": "Último teste"
+    }
   },
-  "auth": {
-    "login": "Entrar",
-    "logout": "Sair",
-    "email": "E-mail",
-    "password": "Senha",
-    "mfa_code": "Código MFA",
-    "forgot_password": "Esqueci minha senha"
+  "webAudit": {
+    "title": "Web Audit",
+    "subtitle": "Auditoria de navegação web das estações do Active Directory",
+    "tabs": {
+      "dashboard": "Dashboard",
+      "history": "Histórico",
+      "findings": "Findings",
+      "config": "Configuração"
+    },
+    "categories": {
+      "malicious": "Malicioso",
+      "exfiltration": "Exfiltração",
+      "shadow_it": "Shadow IT",
+      "compliance": "Compliance",
+      "productivity": "Produtividade",
+      "social": "Redes Sociais",
+      "normal": "Normal"
+    },
+    "upload": "Importar CSV",
+    "analyze": "Analisar com IA",
+    "findings": "Findings",
+    "users": "Usuários",
+    "domains": "Domínios",
+    "riskScore": "Score de Risco",
+    "status": {
+      "open": "Aberto",
+      "dismissed": "Dispensado",
+      "escalated": "Escalado"
+    }
+  },
+  "selfServicePortal": {
+    "title": "Self-Service de Identidade",
+    "subtitle": "Catálogo de acesso visual, solicitações e relatórios AD pré-prontos.",
+    "tabs": {
+      "catalog": "Catálogo de Acesso",
+      "requests": "Solicitações",
+      "reports": "Relatórios AD"
+    },
+    "catalog": {
+      "newItem": "Novo Item",
+      "requestAccess": "Solicitar acesso",
+      "approvalRequired": "Aprovação",
+      "autoApproved": "Auto",
+      "empty": "Catálogo vazio. Adicione itens para que os usuários solicitem acesso.",
+      "categories": {
+        "network": "Rede",
+        "server": "Servidor",
+        "database": "Banco de Dados",
+        "application": "Aplicação",
+        "security": "Segurança",
+        "general": "Geral"
+      }
+    },
+    "requests": {
+      "all": "Todas",
+      "pending": "Pendentes",
+      "approved": "Aprovadas",
+      "rejected": "Rejeitadas",
+      "approveAndProvision": "Aprovar e Provisionar",
+      "reject": "Rejeitar",
+      "noRequests": "Nenhuma solicitação encontrada."
+    },
+    "reports": {
+      "expiredPasswords": "Senhas Expiradas",
+      "inactiveAccounts": "Contas Inativas",
+      "adminsWithoutMfa": "Admins sem MFA",
+      "groupMembers": "Membros de Grupo",
+      "daysWithoutChange": "dias sem alterar",
+      "daysInactive": "dias inativo",
+      "groupName": "Nome do grupo"
+    }
+  },
+  "executive": {
+    "title": "Dashboard Executivo",
+    "riskScore": "Score de Risco",
+    "devices": "Dispositivos",
+    "incidents": "Incidentes",
+    "compliance": "Compliance",
+    "sla": "SLA",
+    "trends": "Tendências",
+    "downloadReport": "Baixar Relatório",
+    "period": {
+      "7d": "7 dias",
+      "30d": "30 dias",
+      "90d": "90 dias"
+    }
+  },
+  "siem": {
+    "title": "SIEM",
+    "connectors": "Conectores",
+    "alerts": "Alertas",
+    "addConnector": "Novo Conector",
+    "testConnector": "Testar",
+    "types": {
+      "wazuh": "Wazuh",
+      "splunk": "Splunk",
+      "sentinel": "Microsoft Sentinel",
+      "log360": "Log360",
+      "qradar": "QRadar"
+    },
+    "severity": {
+      "critical": "Crítico",
+      "high": "Alto",
+      "medium": "Médio",
+      "low": "Baixo",
+      "info": "Informação"
+    },
+    "status": {
+      "new": "Novo",
+      "triaging": "Triagem",
+      "actioned": "Tratado",
+      "closed": "Fechado"
+    }
+  },
+  "identity": {
+    "title": "Governança de Identidade",
+    "tabs": {
+      "users": "Usuários AD",
+      "groups": "Grupos",
+      "sod": "Segregação (SoD)",
+      "campaigns": "Campanhas",
+      "jit": "Acesso JIT"
+    },
+    "sync": "Sincronizar",
+    "connector": "Conector",
+    "sodViolations": "Violações SoD",
+    "acceptRisk": "Aceitar Risco",
+    "jit": {
+      "request": "Solicitar JIT",
+      "approve": "Aprovar",
+      "active": "Ativo",
+      "expired": "Expirado",
+      "duration": "Duração"
+    },
+    "campaign": {
+      "create": "Criar Campanha",
+      "deadline": "Prazo",
+      "confirm": "Confirmar",
+      "revoke": "Revogar",
+      "escalate": "Escalar"
+    }
+  },
+  "alerts": {
+    "title": "Alertas",
+    "addRule": "Nova Regra",
+    "channels": "Canais",
+    "rules": "Regras",
+    "history": "Histórico",
+    "test": "Enviar Teste",
+    "severity": {
+      "critical": "Crítico",
+      "high": "Alto",
+      "medium": "Médio",
+      "low": "Baixo"
+    },
+    "channel": {
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "email": "E-mail",
+      "webhook": "Webhook",
+      "jira": "Jira"
+    }
+  },
+  "edgeAgents": {
+    "title": "Edge Agents & Plataforma",
+    "tabs": {
+      "agents": "Edge Agents",
+      "sso": "SSO / OIDC",
+      "marketplace": "Marketplace",
+      "rbac": "RBAC Granular"
+    },
+    "agents": {
+      "add": "Novo Agente",
+      "token": "Token",
+      "tokenHint": "Token exibido apenas uma vez.",
+      "status": {
+        "online": "Online",
+        "offline": "Offline",
+        "stale": "Desatualizado"
+      }
+    },
+    "sso": {
+      "provider": "Provedor",
+      "configure": "Configurar SSO",
+      "required": "SSO obrigatório"
+    },
+    "marketplace": {
+      "install": "Instalar",
+      "uninstall": "Desinstalar",
+      "installed": "Instalado",
+      "builtin": "Nativo"
+    }
+  },
+  "playbooks": {
+    "title": "Playbooks SOAR",
+    "add": "Novo Playbook",
+    "trigger": "Disparar",
+    "templates": "Templates",
+    "executions": "Execuções",
+    "mttr": "MTTR",
+    "status": {
+      "running": "Executando",
+      "success": "Sucesso",
+      "partial": "Parcial",
+      "failed": "Falhou"
+    }
+  },
+  "assistant": {
+    "title": "Assistente IA",
+    "newSession": "Nova Conversa",
+    "send": "Enviar",
+    "placeholder": "Faça uma pergunta sobre sua infraestrutura…",
+    "modes": {
+      "infrastructure": "Infraestrutura",
+      "general": "Geral",
+      "platform": "Guia da Plataforma"
+    },
+    "docTypes": {
+      "knowledge": "Artigo",
+      "action_plan": "Pl. Ação",
+      "remediation": "Remediação"
+    },
+    "generate": "Gerar",
+    "publish": "Publicar"
   }
 }

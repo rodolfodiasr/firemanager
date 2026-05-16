@@ -215,7 +215,7 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-2 overflow-y-auto">
+      <nav aria-label="Navegação principal" className="flex-1 px-3 py-2 overflow-y-auto">
         {navSections.map((section) => (
           <div key={section.title || "__root__"}>
             <SectionLabel title={section.title} />
@@ -225,19 +225,27 @@ export function Sidebar() {
                   // Item bloqueado — fase futura
                   <div
                     key={label}
+                    aria-label={`${label} — Disponível na ${upcoming}`}
+                    aria-disabled="true"
                     title={`Disponível na ${upcoming}`}
                     className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 opacity-45 cursor-not-allowed select-none"
                   >
-                    <Icon size={18} />
+                    <Icon size={18} aria-hidden="true" />
                     <span className="flex-1">{label}</span>
-                    <Lock size={11} />
+                    <Lock size={11} aria-hidden="true" />
                     <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded font-mono">
                       {upcoming}
                     </span>
                   </div>
                 ) : (
-                  <NavLink key={to} to={to} end={to === "/"} className={navLinkClass}>
-                    <Icon size={18} />
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={to === "/"}
+                    className={navLinkClass}
+                    aria-label={badge && isAdmin && pendingCount > 0 ? `${label} — ${pendingCount} pendentes` : label}
+                  >
+                    <Icon size={18} aria-hidden="true" />
                     <span className="flex-1">{label}</span>
                     {beta && (
                       <span className="text-[9px] font-bold bg-indigo-600/70 text-indigo-100 px-1.5 py-0.5 rounded uppercase tracking-wide">
@@ -245,7 +253,7 @@ export function Sidebar() {
                       </span>
                     )}
                     {badge && isAdmin && pendingCount > 0 && (
-                      <span className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center leading-none">
+                      <span aria-hidden="true" className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center leading-none">
                         {pendingCount > 99 ? "99+" : pendingCount}
                       </span>
                     )}
