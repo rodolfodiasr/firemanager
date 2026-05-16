@@ -1,11 +1,7 @@
 """Fase 22B — Tactical RMM REST API integration."""
 from __future__ import annotations
 
-import logging
-
 import httpx
-
-logger = logging.getLogger(__name__)
 
 
 def _headers(config: dict) -> dict:
@@ -24,6 +20,21 @@ def _parse_response(r: httpx.Response) -> list | dict:
     except Exception:
         preview = r.text[:300]
         raise ValueError(f"Resposta não é JSON (HTTP {r.status_code}): {preview}")
+
+
+def _normalize_run_response(r: httpx.Response) -> dict:
+    """Normaliza a resposta de execução para sempre retornar dict com output/retcode."""
+    if not r.text.strip():
+        return {"output": "(sem saída)", "retcode": 0}
+    try:
+        data = r.json()
+        if isinstance(data, str):
+            return {"output": data, "retcode": 0}
+        if isinstance(data, dict):
+            return data
+        return {"output": str(data), "retcode": 0}
+    except Exception:
+        return {"output": r.text, "retcode": 0}
 
 
 async def test_connection(config: dict) -> tuple[bool, str]:
@@ -47,29 +58,6 @@ async def list_users(config: dict) -> list[dict]:
         return _parse_response(r)  # type: ignore[return-value]
 
 
-async def _resolve_agent_pk(
-    client: httpx.AsyncClient,
-    base: str,
-    headers: dict,
-    agent_id: str,
-) -> str:
-    """Tenta obter o pk numérico do agente; retorna o slug se não encontrar."""
-    url = f"{base}/agents/{agent_id}/"
-    try:
-        r = await client.get(url, headers=headers, timeout=10)
-        logger.warning("[TRMM] GET %s → status=%s body=%s", url, r.status_code, r.text[:300])
-        if r.status_code == 200 and r.text.strip():
-            data = r.json()
-            pk = data.get("id") or data.get("pk")
-            id_keys = [k for k in data.keys() if "id" in k.lower() or "pk" in k.lower()]
-            logger.warning("[TRMM] agent detail ALL_KEYS=%s ID_KEYS=%s pk=%s", list(data.keys()), id_keys, pk)
-            if isinstance(pk, int):
-                return str(pk)
-    except Exception as exc:
-        logger.warning("[TRMM] GET %s → exception: %s", url, exc)
-    return agent_id
-
-
 async def run_script(
     config: dict,
     agent_id: str,
@@ -79,7 +67,6 @@ async def run_script(
 ) -> dict:
     """Executa um script no agente via Tactical RMM."""
     base = _base_url(config)
-    headers = _headers(config)
     payload = {
         "code": script_body,
         "interpreter": shell,
@@ -88,14 +75,9 @@ async def run_script(
         "env_vars": [],
     }
     async with httpx.AsyncClient(verify=config.get("verify_ssl", True), timeout=timeout + 20) as client:
-        r = await client.post(f"{base}/agents/{agent_id}/runscript/", json=payload, headers=headers)
+        r = await client.post(f"{base}/agents/{agent_id}/runscript/", json=payload, headers=_headers(config))
         r.raise_for_status()
-        if not r.text.strip():
-            return {"output": "(sem saída)", "retcode": 0}
-        try:
-            return r.json()
-        except Exception:
-            return {"output": r.text, "retcode": 0}
+        return _normalize_run_response(r)
 
 
 async def run_command(
@@ -107,7 +89,6 @@ async def run_command(
 ) -> dict:
     """Executa um comando rápido no agente via Tactical RMM."""
     base = _base_url(config)
-    headers = _headers(config)
     payload = {
         "cmd": command,
         "shell": shell,
@@ -115,11 +96,6 @@ async def run_command(
         "run_as_user": False,
     }
     async with httpx.AsyncClient(verify=config.get("verify_ssl", True), timeout=timeout + 20) as client:
-        r = await client.post(f"{base}/agents/{agent_id}/cmd/", json=payload, headers=headers)
+        r = await client.post(f"{base}/agents/{agent_id}/cmd/", json=payload, headers=_headers(config))
         r.raise_for_status()
-        if not r.text.strip():
-            return {"output": "(sem saída)", "retcode": 0}
-        try:
-            return r.json()
-        except Exception:
-            return {"output": r.text, "retcode": 0}
+        return _normalize_run_response(r)
