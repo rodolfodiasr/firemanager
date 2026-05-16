@@ -43,6 +43,25 @@ async def list_users(config: dict) -> list[dict]:
         return _parse_response(r)  # type: ignore[return-value]
 
 
+async def _resolve_agent_pk(
+    client: httpx.AsyncClient,
+    base: str,
+    headers: dict,
+    agent_id: str,
+) -> str:
+    """Tenta obter o pk numérico do agente; retorna o slug se não encontrar."""
+    try:
+        r = await client.get(f"{base}/agents/{agent_id}/", headers=headers, timeout=10)
+        if r.status_code == 200 and r.text.strip():
+            data = r.json()
+            pk = data.get("id") or data.get("pk")
+            if isinstance(pk, int):
+                return str(pk)
+    except Exception:
+        pass
+    return agent_id
+
+
 async def run_script(
     config: dict,
     agent_id: str,
@@ -52,6 +71,7 @@ async def run_script(
 ) -> dict:
     """Executa um script no agente via Tactical RMM."""
     base = _base_url(config)
+    headers = _headers(config)
     payload = {
         "code": script_body,
         "interpreter": shell,
@@ -60,7 +80,8 @@ async def run_script(
         "env_vars": [],
     }
     async with httpx.AsyncClient(verify=config.get("verify_ssl", True), timeout=timeout + 20) as client:
-        r = await client.post(f"{base}/api/v3/agents/{agent_id}/runscript/", json=payload, headers=_headers(config))
+        pk = await _resolve_agent_pk(client, base, headers, agent_id)
+        r = await client.post(f"{base}/agents/{pk}/runscript/", json=payload, headers=headers)
         r.raise_for_status()
         if not r.text.strip():
             return {"output": "(sem saída)", "retcode": 0}
@@ -79,6 +100,7 @@ async def run_command(
 ) -> dict:
     """Executa um comando rápido no agente via Tactical RMM."""
     base = _base_url(config)
+    headers = _headers(config)
     payload = {
         "shell": shell,
         "command": command,
@@ -86,7 +108,8 @@ async def run_command(
         "run_as_user": False,
     }
     async with httpx.AsyncClient(verify=config.get("verify_ssl", True), timeout=timeout + 20) as client:
-        r = await client.post(f"{base}/api/v3/agents/{agent_id}/runcommand/", json=payload, headers=_headers(config))
+        pk = await _resolve_agent_pk(client, base, headers, agent_id)
+        r = await client.post(f"{base}/agents/{pk}/runcommand/", json=payload, headers=headers)
         r.raise_for_status()
         if not r.text.strip():
             return {"output": "(sem saída)", "retcode": 0}
