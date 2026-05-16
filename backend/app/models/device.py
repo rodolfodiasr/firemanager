@@ -1,5 +1,6 @@
 import enum
 from datetime import datetime
+from typing import Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, TIMESTAMP, Text
@@ -92,6 +93,11 @@ class Device(Base):
     bookstack_snapshot_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Safety: prevents ALL write operations via AI agent (for OT/ICS/healthcare environments)
     read_only_agent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Edge Agent support — 'direct' = cloud connects directly; 'edge' = via Edge Agent on LAN
+    connection_mode: Mapped[str] = mapped_column(String(20), nullable=False, server_default="direct")
+    edge_agent_id: Mapped[Optional[UUID]] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("edge_agents.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

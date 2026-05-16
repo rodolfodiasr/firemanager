@@ -1,0 +1,4 @@
+websockets>=12.0
+paramiko>=3.4.0
+aiohttp>=3.9.0
+cryptography>=42.0.0
