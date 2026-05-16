@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import TenantContext, get_tenant_context, require_module_reviewer
 from app.database import get_db
 from app.services import compliance_packs_service as svc
+from app.services import compliance_pack_service as pack_svc
 
 router = APIRouter()
 _require_admin = require_module_reviewer("compliance")
@@ -147,6 +148,33 @@ class SlaConfigUpdate(BaseModel):
     is_active: bool | None = None
 
 
+# ── Extended F30 schemas (defined early to avoid forward-ref issues) ───────────
+
+class PackSeedResponse(BaseModel):
+    id: UUID
+    name: str
+    framework: str
+    version: str | None
+    description: str | None
+    is_builtin: bool
+    control_count: int
+    model_config = {"from_attributes": True}
+
+
+class PackSummaryItem(BaseModel):
+    assessment_id: str
+    pack_id: str | None
+    pack_name: str
+    status: str
+    score: int
+    total_controls: int
+    compliant_count: int
+    non_compliant_count: int
+    not_evaluated_count: int
+    started_at: str | None
+    completed_at: str | None
+
+
 # ── Packs ─────────────────────────────────────────────────────────────────────
 
 @router.get("/packs", response_model=list[PackSummary])
@@ -156,6 +184,17 @@ async def list_packs(
 ) -> list[PackSummary]:
     packs = await svc.list_packs(db)
     return [PackSummary.from_pack(p) for p in packs]
+
+
+# NOTE: /packs/summary must be registered BEFORE /packs/{pack_id} to avoid UUID conflict
+@router.get("/packs/summary", response_model=list[PackSummaryItem])
+async def get_tenant_pack_summary_inline(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[PackSummaryItem]:
+    """Return all compliance assessments for the tenant with score and counts."""
+    items = await pack_svc.get_pack_summary(db, ctx.tenant.id)
+    return [PackSummaryItem(**item) for item in items]
 
 
 @router.get("/packs/{pack_id}", response_model=PackRead)
@@ -347,3 +386,54 @@ async def upsert_sla(
     data = {k: v for k, v in body.model_dump().items() if v is not None}
     obj = await svc.upsert_sla_config(db, ctx.tenant.id, tier_name, data)
     return SlaConfigRead.model_validate(obj)
+
+
+# ── F30 Extended: seed by pack_type, report, SLA report ──────────────────────
+
+@router.post("/packs/seed/{pack_type}", response_model=PackSeedResponse, status_code=201)
+async def seed_pack_by_type(
+    pack_type: str,
+    ctx: Annotated[TenantContext, Depends(_require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> PackSeedResponse:
+    """Create or return the global compliance pack for the given pack_type.
+
+    Valid pack_type values: cis_benchmark, pci_dss, bacen_4658, lgpd
+    """
+    try:
+        pack = await pack_svc.seed_pack_by_type(db, pack_type)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return PackSeedResponse(
+        id=pack.id,
+        name=pack.name,
+        framework=pack.framework,
+        version=pack.version,
+        description=pack.description,
+        is_builtin=pack.is_builtin,
+        control_count=len(pack.controls),
+    )
+
+
+@router.get("/assessments/{assessment_id}/report")
+async def get_assessment_report(
+    assessment_id: UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Generate a structured compliance report from an existing assessment."""
+    try:
+        report = await pack_svc.generate_compliance_report(db, ctx.tenant.id, assessment_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return report
+
+
+@router.get("/sla/report")
+async def get_sla_report(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    days: int = Query(default=30, ge=1, le=365),
+) -> dict:
+    """Return SLA metrics for the last N days, compared against SLA targets."""
+    return await pack_svc.get_sla_report(db, ctx.tenant.id, days=days)

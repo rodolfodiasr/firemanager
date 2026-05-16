@@ -10,6 +10,62 @@ export interface CompliancePack {
   control_count: number;
 }
 
+export interface PackSummaryItem {
+  assessment_id: string;
+  pack_id: string | null;
+  pack_name: string;
+  status: string;
+  score: number;
+  total_controls: number;
+  compliant_count: number;
+  non_compliant_count: number;
+  not_evaluated_count: number;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface ComplianceReport {
+  assessment_id: string;
+  pack_name: string;
+  status: string;
+  score: number;
+  total_controls: number;
+  compliant_count: number;
+  non_compliant_count: number;
+  not_evaluated_count: number;
+  breakdown_by_category: Record<string, {
+    compliant: number;
+    non_compliant: number;
+    partial: number;
+    not_evaluated: number;
+    not_applicable: number;
+    total: number;
+  }>;
+  gaps: { control_id: string; title: string; category: string; severity: string; evidence: string }[];
+  recommendations: { priority: number; control_id: string; title: string; severity: string; category: string }[];
+  generated_at: string;
+}
+
+export interface SlaReport {
+  period_days: number;
+  period_start: string;
+  period_end: string;
+  total_operations: number;
+  completed_operations: number;
+  uptime_pct: number;
+  uptime_target_pct: number;
+  mttr_minutes: number;
+  mttr_target_minutes: number;
+  sla_met: boolean;
+  sla_configs: {
+    tier: string;
+    response_minutes: number;
+    resolution_hours: number;
+    escalation_hours: number | null;
+    is_active: boolean;
+  }[];
+}
+
 export interface PackControl {
   id: string;
   control_id: string;
@@ -111,4 +167,14 @@ export const complianceEnterpriseApi = {
   seedSla: () => apiClient.post(`${BASE}/sla/seed`).then(r => r.data),
   upsertSla: (tier: string, data: Partial<SlaConfig>) =>
     apiClient.put<SlaConfig>(`${BASE}/sla/${tier}`, data).then(r => r.data),
+  getSlaReport: (days = 30) =>
+    apiClient.get<SlaReport>(`${BASE}/sla/report`, { params: { days } }).then(r => r.data),
+
+  // Extended F30
+  seedPackByType: (packType: string) =>
+    apiClient.post<CompliancePack>(`${BASE}/packs/seed/${packType}`).then(r => r.data),
+  getPackSummary: () =>
+    apiClient.get<PackSummaryItem[]>(`${BASE}/packs/summary`).then(r => r.data),
+  getAssessmentReport: (assessmentId: string) =>
+    apiClient.get<ComplianceReport>(`${BASE}/assessments/${assessmentId}/report`).then(r => r.data),
 };
