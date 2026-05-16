@@ -186,15 +186,22 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 
 def _normalize_tactical(raw: dict) -> dict:
+    # Extrai primeiro IP da lista local_ips ou ip_addresses
+    ips = raw.get("local_ips") or raw.get("ip_addresses") or ""
+    if isinstance(ips, list):
+        ip = ips[0] if ips else None
+    else:
+        ip = ips.split(",")[0].strip() if ips else None
+
     return {
-        "external_id": str(raw.get("id", raw.get("username", ""))),
-        "hostname": raw.get("username") or raw.get("email", ""),
-        "os_name": "",
-        "ip_address": None,
-        "status": "online" if raw.get("is_active") else "offline",
-        "last_seen": _parse_dt(raw.get("last_login")),
-        "patches_pending": None,
-        "alerts_count": 0,
+        "external_id": str(raw.get("agent_id") or raw.get("id", "")),
+        "hostname": raw.get("hostname") or raw.get("computername", ""),
+        "os_name": raw.get("operating_system") or raw.get("os_name", ""),
+        "ip_address": ip,
+        "status": "online" if raw.get("status") == "online" else "offline",
+        "last_seen": _parse_dt(raw.get("last_seen")),
+        "patches_pending": raw.get("patches_pending") or raw.get("pending_actions_count"),
+        "alerts_count": raw.get("alerts_count", 0),
         "raw_data": raw,
     }
 

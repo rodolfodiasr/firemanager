@@ -25,9 +25,10 @@ async def test_connection(config: dict) -> tuple[bool, str]:
 
 
 async def list_users(config: dict) -> list[dict]:
+    """Retorna agentes gerenciados pelo Tactical RMM (endpoints/computadores)."""
     base = _base_url(config)
-    async with httpx.AsyncClient(verify=config.get("verify_ssl", True), timeout=15) as client:
-        r = await client.get(f"{base}/accounts/users/", headers=_headers(config))
+    async with httpx.AsyncClient(verify=config.get("verify_ssl", True), timeout=30) as client:
+        r = await client.get(f"{base}/agents/", headers=_headers(config))
         r.raise_for_status()
         if not r.text.strip():
             raise ValueError(f"Resposta vazia do servidor (HTTP {r.status_code}). Verifique a URL base e a API key.")
