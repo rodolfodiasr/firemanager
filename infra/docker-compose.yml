@@ -108,9 +108,10 @@ services:
       - 8.8.8.8
       - 8.8.4.4
       - 1.1.1.1
-    # F34.cont — container hardening (seccomp customizado desativado: muito restritivo para runc neste kernel)
+    # F34.cont — container hardening (seccomp blocklist: SCMP_ACT_ALLOW default, bloqueia apenas syscalls perigosas)
     security_opt:
       - no-new-privileges:true
+      - seccomp:./security/seccomp-default.json
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   celery_worker:
