@@ -17,7 +17,6 @@ import { ServerDirectMode } from "./pages/ServerDirectMode";
 import { ServerAnalysis } from "./pages/ServerAnalysis";
 import { Remediation } from "./pages/Remediation";
 import { Compliance } from "./pages/Compliance";
-import { Governance } from "./pages/Governance";
 import { GlpiAnalyses } from "./pages/GlpiAnalyses";
 import { Migrations } from "./pages/Migrations";
 import { FirewallMigrations } from "./pages/FirewallMigrations";
@@ -29,16 +28,11 @@ import { Identity } from "./pages/Identity";
 import { Onboarding } from "./pages/Onboarding";
 import { Alerts } from "./pages/Alerts";
 import { Executive } from "./pages/Executive";
-import { Enterprise } from "./pages/Enterprise";
 import { GoldenBundles } from "./pages/GoldenBundles";
 import { VMMigration } from "./pages/VMMigration";
-import { PlatformConfig } from "./pages/PlatformConfig";
 import { AssistantPage } from "./pages/AssistantPage";
-import { SiemPage } from "./pages/SiemPage";
 import { CloudPosture } from "./pages/CloudPosture";
 import { PlaybooksPage } from "./pages/PlaybooksPage";
-import { ComplianceEnterprisePage } from "./pages/ComplianceEnterprisePage";
-import { AISafetyPage } from "./pages/AISafetyPage";
 import { SelfServicePortalPage } from "./pages/SelfServicePortalPage";
 import { SecurityInfraPage } from "./pages/SecurityInfraPage";
 import { EdgeAgentsPage } from "./pages/EdgeAgentsPage";
@@ -92,7 +86,7 @@ export function AppRouter() {
       <Route path="/server-analysis" element={<ProtectedLayout><ServerAnalysis /></ProtectedLayout>} />
       <Route path="/remediation" element={<ProtectedLayout><Remediation /></ProtectedLayout>} />
       <Route path="/compliance" element={<ProtectedLayout><Compliance /></ProtectedLayout>} />
-      <Route path="/governance" element={<ProtectedLayout><Governance /></ProtectedLayout>} />
+      <Route path="/governance" element={<Navigate to="/compliance" replace />} />
       <Route path="/glpi"       element={<ProtectedLayout><GlpiAnalyses /></ProtectedLayout>} />
       <Route path="/migrations"          element={<ProtectedLayout><Migrations /></ProtectedLayout>} />
       <Route path="/firewall-migrations" element={<ProtectedLayout><FirewallMigrations /></ProtectedLayout>} />
@@ -104,16 +98,16 @@ export function AppRouter() {
       <Route path="/onboarding" element={<ProtectedLayout><Onboarding /></ProtectedLayout>} />
       <Route path="/alerts" element={<ProtectedLayout><Alerts /></ProtectedLayout>} />
       <Route path="/executive" element={<ProtectedLayout><Executive /></ProtectedLayout>} />
-      <Route path="/enterprise" element={<ProtectedLayout><Enterprise /></ProtectedLayout>} />
+      <Route path="/enterprise" element={<Navigate to="/settings" replace />} />
       <Route path="/golden-bundles" element={<ProtectedLayout><GoldenBundles /></ProtectedLayout>} />
       <Route path="/vm-migration" element={<ProtectedLayout><VMMigration /></ProtectedLayout>} />
-      <Route path="/platform-config" element={<ProtectedLayout><PlatformConfig /></ProtectedLayout>} />
+      <Route path="/platform-config" element={<Navigate to="/settings" replace />} />
       <Route path="/assistant" element={<ProtectedLayout><AssistantPage /></ProtectedLayout>} />
-      <Route path="/siem"          element={<ProtectedLayout><SiemPage /></ProtectedLayout>} />
+      <Route path="/siem" element={<Navigate to="/alerts" replace />} />
       <Route path="/cloud-posture" element={<ProtectedLayout><CloudPosture /></ProtectedLayout>} />
       <Route path="/playbooks"             element={<ProtectedLayout><PlaybooksPage /></ProtectedLayout>} />
-      <Route path="/compliance-enterprise" element={<ProtectedLayout><ComplianceEnterprisePage /></ProtectedLayout>} />
-      <Route path="/ai-safety"             element={<ProtectedLayout><AISafetyPage /></ProtectedLayout>} />
+      <Route path="/compliance-enterprise" element={<Navigate to="/compliance" replace />} />
+      <Route path="/ai-safety"             element={<Navigate to="/security-infra" replace />} />
       <Route path="/selfservice-portal"    element={<ProtectedLayout><SelfServicePortalPage /></ProtectedLayout>} />
       <Route path="/security-infra"        element={<ProtectedLayout><SecurityInfraPage /></ProtectedLayout>} />
       <Route path="/edge-agents"           element={<ProtectedLayout><EdgeAgentsPage /></ProtectedLayout>} />

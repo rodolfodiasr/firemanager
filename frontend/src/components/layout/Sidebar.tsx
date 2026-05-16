@@ -8,7 +8,6 @@ import {
   Shield,
   Settings,
   ShieldAlert,
-  Terminal,
   Radar,
   Building2,
   Globe,
@@ -17,7 +16,6 @@ import {
   ShieldCheck,
   ClipboardCheck,
   ArrowRightLeft,
-  BarChart3,
   MessageSquare,
   FileInput,
   BookMarked,
@@ -30,11 +28,9 @@ import {
   BarChart2,
   Package2,
   Monitor,
-  KeyRound,
   Lock,
   ShieldHalf,
   Coins,
-  FileCheck2,
   Cpu,
   Store,
   Sparkles,
@@ -61,7 +57,8 @@ const navSections: NavSection[] = [
   {
     title: "",
     items: [
-      { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+      { to: "/",          icon: LayoutDashboard, label: "Dashboard"           },
+      { to: "/executive", icon: BarChart2,        label: "Dashboard Executivo" }, // Onda 1
     ],
   },
 
@@ -69,10 +66,9 @@ const navSections: NavSection[] = [
   {
     title: "Firewalls",
     items: [
-      { to: "/devices",     icon: Server,   label: "Dispositivos"  },
-      { to: "/inspector",   icon: Radar,    label: "Inspetor"      },
-      { to: "/direct-mode", icon: Terminal, label: "CLI Direto"    },
-      { to: "/agent",       icon: Bot,      label: "Agente de Firewall"},
+      { to: "/devices",   icon: Server, label: "Dispositivos"    },
+      { to: "/inspector", icon: Radar,  label: "Inspetor"        },
+      { to: "/agent",     icon: Bot,    label: "Agente · Firewall" }, // Onda 3: renomeado; CLI Direto removido
     ],
   },
 
@@ -80,9 +76,9 @@ const navSections: NavSection[] = [
   {
     title: "Automação",
     items: [
-      { to: "/golden-templates",    icon: BookMarked,  label: "Templates"       },
-      { to: "/golden-bundles",      icon: Package2,    label: "Kits · Bundles"  },
-      { to: "/firewall-migrations", icon: FileInput,   label: "Importar Regras" },
+      { to: "/golden-templates",    icon: BookMarked, label: "Templates"       },
+      { to: "/golden-bundles",      icon: Package2,   label: "Kits · Bundles"  },
+      { to: "/firewall-migrations", icon: FileInput,  label: "Importar Regras" },
     ],
   },
 
@@ -90,9 +86,9 @@ const navSections: NavSection[] = [
   {
     title: "Redes & Conectividade",
     items: [
-      { to: "/connectivity", icon: Network,        label: "Topologia & Rotas"    },
-      { to: "/migrations",   icon: ArrowRightLeft, label: "Migração de Switches" },
-      { to: "/network-agent", icon: Bot,            label: "Agente de Redes"      },
+      { to: "/connectivity",  icon: Network,        label: "Topologia & Rotas"    },
+      { to: "/migrations",    icon: ArrowRightLeft, label: "Migração de Switches" },
+      { to: "/network-agent", icon: Bot,            label: "Agente · Redes"       }, // Onda 3: renomeado
     ],
   },
 
@@ -100,11 +96,12 @@ const navSections: NavSection[] = [
   {
     title: "Infraestrutura",
     items: [
-      { to: "/servers",             icon: HardDrive,   label: "Servidores"      },
-      { to: "/server-analysis",     icon: Brain,       label: "Agente N3"       },
-      { to: "/server-direct",       icon: Terminal,    label: "Console SSH"     },
-      { to: "/database-connectors", icon: DatabaseZap, label: "Bancos de Dados" },
-      { to: "/vm-migration",        icon: Monitor,     label: "Migração de VMs" },
+      { to: "/servers",             icon: HardDrive,   label: "Servidores"          },
+      { to: "/server-analysis",     icon: Brain,       label: "Agente · Servidores" }, // Onda 1+3: era Agente N3; Console SSH removido
+      { to: "/database-connectors", icon: DatabaseZap, label: "Bancos de Dados"     },
+      { to: "/vm-migration",        icon: Monitor,     label: "Migração de VMs"     },
+      { to: "/rmm",                 icon: Server,      label: "RMM",                 beta: true }, // Onda 1: movido de Segurança
+      { to: "/cloud-posture",       icon: Globe,       label: "Cloud Posture"        },             // Onda 1: movido de Segurança
     ],
   },
 
@@ -112,10 +109,10 @@ const navSections: NavSection[] = [
   {
     title: "Identidade & Acesso",
     items: [
-      { to: "/identity",           icon: Users,    label: "Identidade"          },
-      { to: "/onboarding",         icon: UserPlus, label: "Onboarding"          },
-      { to: "/selfservice-portal", icon: Store,    label: "Self-Service Portal", beta: true },
-      { to: "/edge-agents", icon: Cpu, label: "Edge Agents & SSO", beta: true },
+      { to: "/identity",           icon: Users,    label: "Identidade"           },
+      { to: "/onboarding",         icon: UserPlus, label: "Onboarding"           },
+      { to: "/selfservice-portal", icon: Store,    label: "Self-Service Portal",  beta: true },
+      { to: "/edge-agents",        icon: Cpu,      label: "Edge Agents & SSO",    beta: true },
     ],
   },
 
@@ -123,23 +120,22 @@ const navSections: NavSection[] = [
   {
     title: "Segurança & Resposta",
     items: [
-      { to: "/alerts",        icon: Bell,        label: "Alertas"           },
-      { to: "/remediation",  icon: ShieldCheck, label: "Remediações"       },
-      { to: "/playbooks",    icon: ShieldHalf,  label: "SOAR Playbooks"    },
-      { to: "/siem",         icon: Radar,       label: "Integrações SIEM"  },
-      { to: "/rmm",          icon: Server,      label: "RMM",               beta: true },
-      { to: "/cloud-posture", icon: Globe,       label: "Cloud Posture"    },
-      { to: "#", icon: Brain,  label: "Threat Intelligence", upcoming: "F35" },
+      { to: "/alerts",     icon: Bell,       label: "Alertas & SIEM"  }, // Onda 2: unifica Alertas + SIEM
+      { to: "/remediation", icon: ShieldCheck, label: "Remediações"   },
+      { to: "/playbooks",  icon: ShieldHalf, label: "SOAR Playbooks"  },
+      // RMM e Cloud Posture movidos para Infraestrutura — Onda 1
+      // Integrações SIEM removido da sidebar — Onda 2 (redirect /siem → /alerts)
+      { to: "#", icon: Brain, label: "Threat Intelligence", upcoming: "F35" },
     ],
   },
 
-  // ── Conformidade & Governança ─────────────────────────────────────────────
+  // ── Conformidade ──────────────────────────────────────────────────────────
   {
-    title: "Conformidade & Governança",
+    title: "Conformidade",  // Onda 2: era "Conformidade & Governança"
     items: [
-      { to: "/compliance",            icon: ClipboardCheck, label: "Conformidade"              },
-      { to: "/governance",            icon: BarChart3,      label: "Governança"                },
-      { to: "/compliance-enterprise", icon: FileCheck2,     label: "Packs CIS / PCI / LGPD", beta: true },
+      { to: "/compliance", icon: ClipboardCheck, label: "Compliance" }, // Onda 2: unifica 3→1
+      // Governança removido da sidebar — Onda 2 (redirect /governance → /compliance)
+      // Packs CIS removido da sidebar — Onda 2 (redirect /compliance-enterprise → /compliance)
     ],
   },
 
@@ -147,32 +143,26 @@ const navSections: NavSection[] = [
   {
     title: "Inteligência IA",
     items: [
-      { to: "/knowledge",  icon: Database,  label: "Base de Conhecimento"  },
-      { to: "/assistant",  icon: Sparkles,  label: "Assistente IA"         },
+      { to: "/knowledge", icon: Database,      label: "Base de Conhecimento"  },
+      { to: "/assistant", icon: Sparkles,      label: "Assistente IA"         },
+      { to: "/glpi",      icon: MessageSquare, label: "Tickets IA"            }, // Onda 1: movido de Relatórios
       { to: "#", icon: Radar, label: "Análise de Regras IA", upcoming: "F29" },
     ],
   },
 
-  // ── Relatórios ────────────────────────────────────────────────────────────
-  {
-    title: "Relatórios",
-    items: [
-      { to: "/executive", icon: BarChart2,     label: "Dashboard Executivo" },
-      { to: "/glpi",      icon: MessageSquare, label: "Tickets IA"          },
-    ],
-  },
+  // Relatórios removida — Onda 1: Dashboard Executivo → raiz; Tickets IA → Inteligência IA
 
   // ── Plataforma ────────────────────────────────────────────────────────────
   {
-    title: "Plataforma",
+    title: "Plataforma",  // Onda 2: 7 → 4 itens
     items: [
-      { to: "/audit",           icon: Shield,      label: "Auditoria",        badge: true },
-      { to: "/enterprise",      icon: KeyRound,    label: "Enterprise"                    },
-      { to: "/ai-safety",       icon: ShieldHalf,  label: "IA Safety",       beta: true },
-      { to: "/platform-config", icon: ShieldCheck, label: "Config. Plataforma"            },
-      { to: "/settings",        icon: Settings,    label: "Configurações"                 },
-      { to: "/security-infra", icon: ShieldCheck, label: "Infra de Segurança", beta: true },
-      { to: "/product",        icon: Coins,       label: "Produto & Billing", beta: true },
+      { to: "/audit",          icon: Shield,      label: "Auditoria",               badge: true },
+      { to: "/security-infra", icon: ShieldHalf,  label: "Segurança da Plataforma", beta: true  }, // Onda 2: unifica IA Safety + Infra Seg
+      { to: "/settings",       icon: Settings,    label: "Configurações"                         }, // Onda 2: unifica Config + Enterprise + Settings
+      { to: "/product",        icon: Coins,       label: "Produto & Billing",        beta: true  },
+      // Enterprise removido da sidebar — Onda 2 (redirect /enterprise → /settings)
+      // IA Safety removido da sidebar — Onda 2 (redirect /ai-safety → /security-infra)
+      // Config. Plataforma removido — Onda 2 (redirect /platform-config → /settings)
     ],
   },
 
