@@ -256,18 +256,20 @@ export const helpByRoute: Record<string, ModuleHelp> = {
 
   "/rmm": {
     slug: "rmm",
-    title: "RMM",
+    title: "RMM — Estações & Scripts",
     section: "Infraestrutura",
     status: "beta",
     description:
-      "Integração com plataformas de Remote Monitoring and Management (Tactical RMM, N-able, etc.). Sincroniza inventário de endpoints, recebe alertas de agentes RMM e permite executar scripts remotos a partir da plataforma.",
+      "Gerenciamento remoto de endpoints via Tactical RMM, NinjaRMM, Atera e ConnectWise Automate. Sincroniza inventário de estações, executa scripts PowerShell/Bash remotamente e oferece um catálogo de 35+ templates prontos organizados por perfil profissional.",
     howToUse: [
-      "Configure a integração com seu RMM em Configurações > Integrações.",
-      "Após sincronização, os endpoints aparecem automaticamente no inventário.",
-      "Monitore alertas provenientes do RMM na Central de Alertas.",
-      "Execute scripts remotos nos endpoints diretamente pelo módulo.",
+      "Na aba 'Integrações', adicione sua plataforma RMM e clique em 'Testar Conexão' para validar.",
+      "Use 'Sincronizar' para importar os agentes/endpoints da plataforma RMM.",
+      "Clique em um endpoint para abrir o painel de execução e rodar comandos ou scripts remotamente.",
+      "Na aba 'Templates de Script', explore o catálogo por categoria: Monitoramento, Segurança, Manutenção, Rede, Resp. Incidente, Identidade, Compliance e Forense.",
+      "Clique em um template para visualizar o script completo e aplicá-lo direto no painel de execução.",
+      "Crie templates personalizados com o botão '+ Novo Template' — templates builtin são somente leitura.",
     ],
-    tip: "Este módulo está em Beta. Algumas funcionalidades podem estar incompletas ou mudar sem aviso prévio.",
+    tip: "Os templates de script cobrem os 6 perfis profissionais: Analista de Redes, Analista de Servidores, Analista de Firewall, Analista SecOps, Suporte N1 e Suporte N2. Use o filtro de categoria para encontrar rapidamente o script adequado ao seu contexto.",
   },
 
   "/cloud-posture": {
