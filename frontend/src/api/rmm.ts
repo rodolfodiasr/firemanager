@@ -28,6 +28,22 @@ export interface RmmAgent {
   patches_pending: number | null;
   alerts_count: number;
   synced_at: string;
+  raw_data?: Record<string, unknown> | null;
+}
+
+export interface RmmScriptRun {
+  id: string;
+  integration_id: string;
+  agent_external_id: string;
+  agent_hostname: string;
+  run_type: "script" | "command";
+  shell: string;
+  body: string;
+  output: string | null;
+  exit_code: number | null;
+  status: "pending" | "running" | "success" | "error";
+  started_at: string;
+  finished_at: string | null;
 }
 
 export const rmmApi = {
@@ -52,8 +68,25 @@ export const rmmApi = {
   sync: (id: string) =>
     apiClient.post<{ synced: number; message: string }>(`/rmm/${id}/sync`).then((r) => r.data),
 
-  agents: (id: string) =>
-    apiClient.get<RmmAgent[]>(`/rmm/${id}/agents`).then((r) => r.data),
+  agents: (id: string, status?: string) =>
+    apiClient.get<RmmAgent[]>(`/rmm/${id}/agents`, { params: status ? { status } : undefined }).then((r) => r.data),
+
+  run: (integrationId: string, agentExternalId: string, data: {
+    run_type: "script" | "command";
+    shell: string;
+    body: string;
+    timeout: number;
+  }) =>
+    apiClient
+      .post<RmmScriptRun>(`/rmm/${integrationId}/agents/${agentExternalId}/run`, data)
+      .then((r) => r.data),
+
+  scriptRuns: (integrationId: string, agentId?: string) =>
+    apiClient
+      .get<RmmScriptRun[]>(`/rmm/${integrationId}/script-runs`, {
+        params: agentId ? { agent_id: agentId } : undefined,
+      })
+      .then((r) => r.data),
 };
 
 export const ssoMappingsApi = {

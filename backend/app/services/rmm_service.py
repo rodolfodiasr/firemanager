@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.rmm import RmmAgent, RmmIntegration
+from app.models.rmm import RmmAgent, RmmIntegration, RmmScriptRun
 from app.utils.crypto import decrypt_credentials, encrypt_credentials
 
 
@@ -174,6 +174,81 @@ async def sync_agents(db: AsyncSession, integration: RmmIntegration) -> int:
     return len(synced_ids)
 
 
+async def execute_on_agent(
+    db: AsyncSession,
+    integration: RmmIntegration,
+    agent_external_id: str,
+    agent_hostname: str,
+    run_type: str,
+    shell: str,
+    body: str,
+    timeout: int,
+    executed_by: UUID,
+) -> RmmScriptRun:
+    config = decrypt_credentials(integration.config_encrypted or "{}")
+    config["base_url"] = integration.base_url
+    config["verify_ssl"] = integration.verify_ssl
+
+    run = RmmScriptRun(
+        integration_id=integration.id,
+        tenant_id=integration.tenant_id,
+        agent_external_id=agent_external_id,
+        agent_hostname=agent_hostname,
+        run_type=run_type,
+        shell=shell,
+        body=body,
+        status="running",
+        executed_by=executed_by,
+    )
+    db.add(run)
+    await db.flush()
+
+    try:
+        if integration.rmm_type == "tactical_rmm":
+            from app.services.tactical_rmm_service import run_script, run_command
+            if run_type == "script":
+                result = await run_script(config, agent_external_id, body, shell, timeout)
+            else:
+                result = await run_command(config, agent_external_id, body, shell, timeout)
+        else:
+            raise ValueError(f"Execução remota não suportada para: {integration.rmm_type}")
+
+        run.output = result.get("output") or result.get("stdout") or ""
+        run.exit_code = result.get("retcode") if result.get("retcode") is not None else result.get("exit_code")
+        run.status = "success" if (run.exit_code or 0) == 0 else "error"
+    except Exception as e:
+        run.output = str(e)
+        run.exit_code = -1
+        run.status = "error"
+
+    run.finished_at = datetime.now(timezone.utc)
+    await db.flush()
+    await db.refresh(run)
+    return run
+
+
+async def list_script_runs(
+    db: AsyncSession,
+    tenant_id: UUID,
+    integration_id: UUID,
+    agent_external_id: str | None = None,
+    limit: int = 50,
+) -> list[RmmScriptRun]:
+    q = (
+        select(RmmScriptRun)
+        .where(
+            RmmScriptRun.tenant_id == tenant_id,
+            RmmScriptRun.integration_id == integration_id,
+        )
+        .order_by(RmmScriptRun.started_at.desc())
+        .limit(limit)
+    )
+    if agent_external_id:
+        q = q.where(RmmScriptRun.agent_external_id == agent_external_id)
+    result = await db.execute(q)
+    return list(result.scalars().all())
+
+
 def _parse_dt(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -186,7 +261,6 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 
 def _normalize_tactical(raw: dict) -> dict:
-    # Extrai primeiro IP da lista local_ips ou ip_addresses
     ips = raw.get("local_ips") or raw.get("ip_addresses") or ""
     if isinstance(ips, list):
         ip = ips[0] if ips else None

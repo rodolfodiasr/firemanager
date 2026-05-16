@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,6 +62,30 @@ class RmmAgentRead(BaseModel):
     patches_pending: int | None
     alerts_count: int
     synced_at: datetime
+    raw_data: Any | None = None
+    model_config = {"from_attributes": True}
+
+
+class RunRequest(BaseModel):
+    run_type: str  # "script" | "command"
+    shell: str = "powershell"
+    body: str
+    timeout: int = 60
+
+
+class RmmScriptRunRead(BaseModel):
+    id: UUID
+    integration_id: UUID
+    agent_external_id: str
+    agent_hostname: str
+    run_type: str
+    shell: str
+    body: str
+    output: str | None
+    exit_code: int | None
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
     model_config = {"from_attributes": True}
 
 
@@ -174,9 +198,64 @@ async def list_agents(
     integration_id: UUID,
     ctx: Annotated[TenantContext, Depends(get_tenant_context)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    status: str | None = Query(None, description="Filtrar por status: online | offline"),
 ) -> list[RmmAgentRead]:
     integration = await rmm_service.get_integration(db, integration_id, ctx.tenant.id)
     if not integration:
         raise HTTPException(status_code=404, detail="Integração não encontrada.")
     agents = await rmm_service.list_agents(db, ctx.tenant.id, integration_id)
+    if status:
+        agents = [a for a in agents if a.status == status]
     return [RmmAgentRead.model_validate(a) for a in agents]
+
+
+@router.post("/{integration_id}/agents/{agent_external_id}/run", response_model=RmmScriptRunRead)
+async def run_on_agent(
+    integration_id: UUID,
+    agent_external_id: str,
+    data: RunRequest,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RmmScriptRunRead:
+    integration = await rmm_service.get_integration(db, integration_id, ctx.tenant.id)
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integração não encontrada.")
+    if data.run_type not in ("script", "command"):
+        raise HTTPException(status_code=400, detail="run_type deve ser 'script' ou 'command'.")
+    if data.timeout < 5 or data.timeout > 300:
+        raise HTTPException(status_code=400, detail="timeout deve estar entre 5 e 300 segundos.")
+
+    agents = await rmm_service.list_agents(db, ctx.tenant.id, integration_id)
+    agent = next((a for a in agents if a.external_id == agent_external_id), None)
+    hostname = agent.hostname if agent else agent_external_id
+
+    run = await rmm_service.execute_on_agent(
+        db=db,
+        integration=integration,
+        agent_external_id=agent_external_id,
+        agent_hostname=hostname,
+        run_type=data.run_type,
+        shell=data.shell,
+        body=data.body,
+        timeout=data.timeout,
+        executed_by=ctx.user.id,
+    )
+    await db.commit()
+    return RmmScriptRunRead.model_validate(run)
+
+
+@router.get("/{integration_id}/script-runs", response_model=list[RmmScriptRunRead])
+async def list_script_runs(
+    integration_id: UUID,
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    agent_id: str | None = Query(None),
+    limit: int = Query(50, le=200),
+) -> list[RmmScriptRunRead]:
+    integration = await rmm_service.get_integration(db, integration_id, ctx.tenant.id)
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integração não encontrada.")
+    runs = await rmm_service.list_script_runs(
+        db, ctx.tenant.id, integration_id, agent_id, limit
+    )
+    return [RmmScriptRunRead.model_validate(r) for r in runs]

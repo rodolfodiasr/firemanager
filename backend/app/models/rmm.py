@@ -32,6 +32,7 @@ class RmmIntegration(Base):
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     agents: Mapped[list["RmmAgent"]] = relationship("RmmAgent", back_populates="integration", cascade="all, delete-orphan")
+    script_runs: Mapped[list["RmmScriptRun"]] = relationship("RmmScriptRun", back_populates="integration", cascade="all, delete-orphan")
 
 
 class RmmAgent(Base):
@@ -52,3 +53,24 @@ class RmmAgent(Base):
     synced_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
 
     integration: Mapped["RmmIntegration"] = relationship("RmmIntegration", back_populates="agents")
+
+
+class RmmScriptRun(Base):
+    __tablename__ = "rmm_script_runs"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    integration_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("rmm_integrations.id", ondelete="CASCADE"), nullable=False, index=True)
+    tenant_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_external_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    agent_hostname: Mapped[str] = mapped_column(String(200), nullable=False)
+    run_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    shell: Mapped[str] = mapped_column(String(20), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    output: Mapped[str | None] = mapped_column(Text, nullable=True)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    executed_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+
+    integration: Mapped["RmmIntegration"] = relationship("RmmIntegration", back_populates="script_runs")
