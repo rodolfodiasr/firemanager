@@ -88,8 +88,7 @@ async def run_script(
         "env_vars": [],
     }
     async with httpx.AsyncClient(verify=config.get("verify_ssl", True), timeout=timeout + 20) as client:
-        pk = await _resolve_agent_pk(client, base, headers, agent_id)
-        r = await client.post(f"{base}/agents/{pk}/runscript/", json=payload, headers=headers)
+        r = await client.post(f"{base}/agents/{agent_id}/runscript/", json=payload, headers=headers)
         r.raise_for_status()
         if not r.text.strip():
             return {"output": "(sem saída)", "retcode": 0}
@@ -110,14 +109,13 @@ async def run_command(
     base = _base_url(config)
     headers = _headers(config)
     payload = {
+        "cmd": command,
         "shell": shell,
-        "command": command,
         "timeout": timeout,
         "run_as_user": False,
     }
     async with httpx.AsyncClient(verify=config.get("verify_ssl", True), timeout=timeout + 20) as client:
-        pk = await _resolve_agent_pk(client, base, headers, agent_id)
-        r = await client.post(f"{base}/agents/{pk}/runcommand/", json=payload, headers=headers)
+        r = await client.post(f"{base}/agents/{agent_id}/cmd/", json=payload, headers=headers)
         r.raise_for_status()
         if not r.text.strip():
             return {"output": "(sem saída)", "retcode": 0}
