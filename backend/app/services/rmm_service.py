@@ -174,6 +174,17 @@ async def sync_agents(db: AsyncSession, integration: RmmIntegration) -> int:
     return len(synced_ids)
 
 
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
 def _normalize_tactical(raw: dict) -> dict:
     return {
         "external_id": str(raw.get("id", raw.get("username", ""))),
@@ -181,7 +192,7 @@ def _normalize_tactical(raw: dict) -> dict:
         "os_name": "",
         "ip_address": None,
         "status": "online" if raw.get("is_active") else "offline",
-        "last_seen": raw.get("last_login"),
+        "last_seen": _parse_dt(raw.get("last_login")),
         "patches_pending": None,
         "alerts_count": 0,
         "raw_data": raw,
