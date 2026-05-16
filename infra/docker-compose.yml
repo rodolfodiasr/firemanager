@@ -108,16 +108,9 @@ services:
       - 8.8.8.8
       - 8.8.4.4
       - 1.1.1.1
-    # F34.cont — container hardening
+    # F34.cont — container hardening (seccomp customizado desativado: muito restritivo para runc neste kernel)
     security_opt:
       - no-new-privileges:true
-      - seccomp:./security/seccomp-default.json
-      # AppArmor: comentado por padrão (requer profile carregado no host)
-      # - apparmor:firemanager-api
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   celery_worker:
@@ -148,8 +141,6 @@ services:
     # F34.cont — container hardening
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
     command: celery -A app.workers.celery_app worker --loglevel=info
 
   celery_beat:
@@ -171,8 +162,6 @@ services:
     # F34.cont — container hardening
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
     command: celery -A app.workers.celery_app beat --loglevel=info
 
   frontend:
