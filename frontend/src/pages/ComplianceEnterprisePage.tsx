@@ -400,7 +400,7 @@ function BcdrTab() {
         scope: form.scope || null,
         status: form.status,
         contacts,
-        recovery_steps: form.procedures ? [{ step: form.procedures }] : null,
+        recovery_steps: form.procedures ? [{ step: form.procedures, owner: "", duration_minutes: 0 }] : null,
       });
     },
     onSuccess: () => {
