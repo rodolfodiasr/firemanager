@@ -61,7 +61,8 @@ async def _resolve_agent_pk(
         if r.status_code == 200 and r.text.strip():
             data = r.json()
             pk = data.get("id") or data.get("pk")
-            logger.warning("[TRMM] agent detail keys=%s pk=%s", list(data.keys())[:15], pk)
+            id_keys = [k for k in data.keys() if "id" in k.lower() or "pk" in k.lower()]
+            logger.warning("[TRMM] agent detail ALL_KEYS=%s ID_KEYS=%s pk=%s", list(data.keys()), id_keys, pk)
             if isinstance(pk, int):
                 return str(pk)
     except Exception as exc:
