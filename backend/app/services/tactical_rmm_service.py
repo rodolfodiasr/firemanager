@@ -1,7 +1,11 @@
 """Fase 22B — Tactical RMM REST API integration."""
 from __future__ import annotations
 
+import logging
+
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 def _headers(config: dict) -> dict:
@@ -50,15 +54,18 @@ async def _resolve_agent_pk(
     agent_id: str,
 ) -> str:
     """Tenta obter o pk numérico do agente; retorna o slug se não encontrar."""
+    url = f"{base}/agents/{agent_id}/"
     try:
-        r = await client.get(f"{base}/agents/{agent_id}/", headers=headers, timeout=10)
+        r = await client.get(url, headers=headers, timeout=10)
+        logger.info("[TRMM] GET %s → status=%s body=%s", url, r.status_code, r.text[:300])
         if r.status_code == 200 and r.text.strip():
             data = r.json()
             pk = data.get("id") or data.get("pk")
+            logger.info("[TRMM] agent detail keys=%s pk=%s", list(data.keys())[:15], pk)
             if isinstance(pk, int):
                 return str(pk)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.info("[TRMM] GET %s → exception: %s", url, exc)
     return agent_id
 
 
