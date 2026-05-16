@@ -110,14 +110,36 @@
   "billing": {
     "title": "Billing & Planos",
     "currentPlan": "Plano atual",
+    "current_plan": "Plano Atual",
     "invoices": "Faturas",
     "upgradePrompt": "Faça upgrade para desbloquear mais recursos.",
+    "upgrade": "Fazer Upgrade",
     "stripePortal": "Portal de Pagamento",
+    "subscription": "Assinatura",
+    "checkout": "Checkout",
+    "cancel_subscription": "Cancelar Assinatura",
+    "download_pdf": "Baixar PDF",
     "status": {
       "active": "Ativo",
       "trialing": "Trial",
       "past_due": "Pagamento pendente",
       "canceled": "Cancelado"
     }
+  },
+  "devices": {
+    "title": "Dispositivos",
+    "add": "Adicionar Dispositivo",
+    "vendor": "Vendor",
+    "ip": "Endereço IP",
+    "status": "Status",
+    "last_seen": "Último contato"
+  },
+  "auth": {
+    "login": "Entrar",
+    "logout": "Sair",
+    "email": "E-mail",
+    "password": "Senha",
+    "mfa_code": "Código MFA",
+    "forgot_password": "Esqueci minha senha"
   }
 }

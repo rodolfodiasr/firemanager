@@ -111,4 +111,15 @@ export const productApi = {
     apiClient.get<UserPreferences>(`${BASE}/preferences`).then(r => r.data),
   updatePreferences: (data: { language?: string; timezone?: string; theme?: string; notifications_enabled?: boolean }) =>
     apiClient.patch<UserPreferences>(`${BASE}/preferences`, data).then(r => r.data),
+
+  // Stripe Checkout
+  createCheckout: (plan_id: string, success_url?: string, cancel_url?: string) =>
+    apiClient.post<{ checkout_url: string }>(`${BASE}/billing/checkout`, {
+      plan_id,
+      ...(success_url ? { success_url } : {}),
+      ...(cancel_url ? { cancel_url } : {}),
+    }).then(r => r.data),
+
+  // Invoice PDF URL
+  invoicePdfUrl: (invoice_id: string) => `/api${BASE}/billing/invoices/${invoice_id}/pdf`,
 };

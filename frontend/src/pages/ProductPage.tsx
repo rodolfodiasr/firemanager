@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   productApi,
   type BillingInvoice,
@@ -9,7 +10,7 @@ import {
 } from "../api/product";
 import {
   Coins, BookOpen, Settings, CheckCircle, Circle, CreditCard,
-  FileText, Globe, ArrowRight, Sparkles,
+  FileText, Globe, ArrowRight, Sparkles, ExternalLink, Download,
 } from "lucide-react";
 
 type Tab = "billing" | "onboarding" | "help" | "preferences";
@@ -60,6 +61,8 @@ export function ProductPage() {
 
 function BillingTab() {
   const qc = useQueryClient();
+  const { t } = useTranslation();
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
   const { data: plans = [] } = useQuery({ queryKey: ["billing-plans"], queryFn: productApi.listPlans });
   const { data: subscription } = useQuery({ queryKey: ["billing-subscription"], queryFn: productApi.getSubscription });
@@ -75,6 +78,20 @@ function BillingTab() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["billing-subscription"] }),
   });
 
+  const handleUpgrade = async (plan: BillingPlan) => {
+    setCheckoutLoading(plan.id);
+    try {
+      const successUrl = `${window.location.origin}/billing?success=1`;
+      const cancelUrl = `${window.location.origin}/billing?canceled=1`;
+      const { checkout_url } = await productApi.createCheckout(plan.id, successUrl, cancelUrl);
+      window.location.href = checkout_url;
+    } catch (err) {
+      console.error("Erro ao iniciar checkout Stripe:", err);
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
   const planBadge: Record<string, string> = {
     starter: "bg-gray-700 text-gray-300",
     pro: "bg-brand-900/50 text-brand-300",
@@ -87,7 +104,7 @@ function BillingTab() {
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2">
           <div className="flex items-center gap-3">
             <CreditCard size={18} className="text-brand-400" />
-            <span className="font-semibold text-white">Plano Atual: {subscription.plan.name}</span>
+            <span className="font-semibold text-white">{t("billing.current_plan")}: {subscription.plan.name}</span>
             <span className={`text-xs px-2 py-0.5 rounded ${planBadge[subscription.plan.slug] || "bg-gray-700 text-gray-300"}`}>{subscription.status}</span>
           </div>
           <div className="grid grid-cols-3 gap-4 mt-3 text-sm">
@@ -131,10 +148,28 @@ function BillingTab() {
                 {p.features?.siem && <li className="text-green-400">✓ SIEM</li>}
                 {p.features?.edge_agent && <li className="text-green-400">✓ Edge Agents</li>}
               </ul>
-              {subscription?.plan.slug !== p.slug && (
-                <button onClick={() => startMut.mutate(p.slug)} className="w-full flex items-center justify-center gap-2 py-2 bg-brand-600/30 hover:bg-brand-600/50 text-brand-300 rounded text-sm font-medium">
-                  Selecionar <ArrowRight size={12} />
-                </button>
+              {subscription?.plan.slug !== p.slug ? (
+                <div className="space-y-2">
+                  {/* Stripe Checkout — redirect para pagamento real */}
+                  <button
+                    onClick={() => handleUpgrade(p)}
+                    disabled={checkoutLoading === p.id}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded text-sm font-medium disabled:opacity-60"
+                  >
+                    {checkoutLoading === p.id ? "Aguarde..." : (
+                      <>{t("billing.upgrade")} <ExternalLink size={12} /></>
+                    )}
+                  </button>
+                  {/* Fallback — iniciar sem Stripe (modo dev) */}
+                  <button
+                    onClick={() => startMut.mutate(p.slug)}
+                    className="w-full flex items-center justify-center gap-2 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs"
+                  >
+                    Selecionar (sem pagamento) <ArrowRight size={11} />
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center text-xs text-brand-400 py-2">Plano atual</div>
               )}
             </div>
           ))}
@@ -143,7 +178,7 @@ function BillingTab() {
 
       {invoices.length > 0 && (
         <div>
-          <h3 className="text-white font-semibold mb-3">Faturas</h3>
+          <h3 className="text-white font-semibold mb-3">{t("billing.invoices")}</h3>
           <div className="space-y-2">
             {invoices.map((inv: BillingInvoice) => (
               <div key={inv.id} className="bg-gray-800 rounded-lg p-4 flex items-center justify-between border border-gray-700">
@@ -154,7 +189,31 @@ function BillingTab() {
                     <p className="text-xs text-gray-400">{new Date(inv.created_at).toLocaleDateString("pt-BR")}</p>
                   </div>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded ${inv.status === "paid" ? "bg-green-900/50 text-green-300" : inv.status === "open" ? "bg-yellow-900/50 text-yellow-300" : "bg-gray-700 text-gray-400"}`}>{inv.status}</span>
+                <div className="flex items-center gap-3">
+                  <span className={`text-xs px-2 py-0.5 rounded ${inv.status === "paid" ? "bg-green-900/50 text-green-300" : inv.status === "open" ? "bg-yellow-900/50 text-yellow-300" : "bg-gray-700 text-gray-400"}`}>{inv.status}</span>
+                  {/* Download PDF */}
+                  <a
+                    href={productApi.invoicePdfUrl(inv.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-brand-400 hover:text-brand-300"
+                    title={t("billing.download_pdf")}
+                  >
+                    <Download size={13} /> PDF
+                  </a>
+                  {/* Link para PDF do Stripe se disponível */}
+                  {inv.invoice_pdf_url && (
+                    <a
+                      href={inv.invoice_pdf_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-300"
+                      title="PDF Stripe"
+                    >
+                      <ExternalLink size={11} />
+                    </a>
+                  )}
+                </div>
               </div>
             ))}
           </div>

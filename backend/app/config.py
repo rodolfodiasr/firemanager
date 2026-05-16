@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     email_from: str = "FireManager <noreply@firemanager.local>"
 
+    # Stripe
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_publishable_key: str = ""
+
     # NVD (National Vulnerability Database)
     nvd_api_key: str = ""
 

@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -334,3 +334,99 @@ async def update_preferences(
     await db.flush()
     await db.refresh(prefs)
     return prefs
+
+
+# ── Stripe Checkout ───────────────────────────────────────────────────────────
+
+class CheckoutRequest(BaseModel):
+    plan_id: str
+    success_url: str = "https://app.firemanager.io/billing?success=1"
+    cancel_url: str = "https://app.firemanager.io/billing?canceled=1"
+
+
+@router.post("/billing/checkout")
+async def create_checkout(
+    body: CheckoutRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    ctx: Annotated[TenantContext, Depends(_require_admin)],
+) -> dict:
+    """Inicia checkout Stripe para upgrade de plano."""
+    from app.services.stripe_service import create_checkout_session
+
+    try:
+        plan_uuid = uuid.UUID(body.plan_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="plan_id inválido")
+
+    plan = await db.scalar(select(BillingPlan).where(BillingPlan.id == plan_uuid))
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plano não encontrado")
+
+    try:
+        url = await create_checkout_session(db, ctx.tenant, plan, body.success_url, body.cancel_url)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erro ao criar sessão Stripe: {e}")
+
+    return {"checkout_url": url}
+
+
+# ── Invoice PDF Download ──────────────────────────────────────────────────────
+
+@router.get("/billing/invoices/{invoice_id}/pdf")
+async def download_invoice_pdf(
+    invoice_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> Response:
+    """Gera e retorna o PDF de uma fatura."""
+    invoice = await db.scalar(
+        select(BillingInvoice).where(
+            BillingInvoice.id == invoice_id,
+            BillingInvoice.tenant_id == ctx.tenant.id,
+        )
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Fatura não encontrada")
+
+    # Carregar subscription + plan para dados do PDF
+    sub = None
+    plan_name = "N/A"
+    if invoice.subscription_id:
+        sub = await db.scalar(
+            select(BillingSubscription)
+            .where(BillingSubscription.id == invoice.subscription_id)
+            .options(selectinload(BillingSubscription.plan))
+        )
+        if sub and sub.plan:
+            plan_name = sub.plan.name
+
+    def _fmt_date(dt) -> str:
+        if dt is None:
+            return ""
+        if hasattr(dt, "strftime"):
+            return dt.strftime("%d/%m/%Y")
+        return str(dt)
+
+    invoice_data = {
+        "tenant_name": ctx.tenant.name,
+        "plan_name": plan_name,
+        "amount_brl": float(invoice.amount_brl),
+        "period_start": _fmt_date(invoice.period_start),
+        "period_end": _fmt_date(invoice.period_end),
+        "paid_at": _fmt_date(invoice.paid_at),
+        "invoice_number": str(invoice.id)[:8].upper(),
+    }
+
+    try:
+        from app.services.invoice_pdf_service import generate_invoice_pdf
+        pdf_bytes = generate_invoice_pdf(invoice_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar PDF: {e}")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="fatura-{invoice_data["invoice_number"]}.pdf"'
+        },
+    )

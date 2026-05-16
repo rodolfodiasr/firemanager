@@ -96,14 +96,36 @@
   "billing": {
     "title": "Billing & Plans",
     "currentPlan": "Current plan",
+    "current_plan": "Current Plan",
     "invoices": "Invoices",
     "upgradePrompt": "Upgrade to unlock more features.",
+    "upgrade": "Upgrade",
     "stripePortal": "Payment Portal",
+    "subscription": "Subscription",
+    "checkout": "Checkout",
+    "cancel_subscription": "Cancel Subscription",
+    "download_pdf": "Download PDF",
     "status": {
       "active": "Active",
       "trialing": "Trial",
       "past_due": "Payment pending",
       "canceled": "Canceled"
     }
+  },
+  "devices": {
+    "title": "Devices",
+    "add": "Add Device",
+    "vendor": "Vendor",
+    "ip": "IP Address",
+    "status": "Status",
+    "last_seen": "Last seen"
+  },
+  "auth": {
+    "login": "Sign In",
+    "logout": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "mfa_code": "MFA Code",
+    "forgot_password": "Forgot password"
   }
 }
