@@ -11,6 +11,7 @@ import toast from "react-hot-toast";
 import {
   rmmApi, rmmTemplatesApi,
   type RmmIntegration, type RmmAgent, type RmmScriptRun, type RmmScriptTemplate,
+  type TemplateCategory, type TemplateShell,
 } from "../api/rmm";
 
 const RMM_TYPE_LABELS: Record<string, string> = {
@@ -98,8 +99,8 @@ interface TemplateFormProps {
 function TemplateFormModal({ initial, prefill, onClose, onSaved }: TemplateFormProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [category, setCategory] = useState(initial?.category ?? "general");
-  const [shell, setShell] = useState(initial?.shell ?? prefill?.shell ?? "powershell");
+  const [category, setCategory] = useState<string>(initial?.category ?? "general");
+  const [shell, setShell] = useState<string>(initial?.shell ?? prefill?.shell ?? "powershell");
   const [runType, setRunType] = useState<"command" | "script">(
     (initial?.run_type ?? prefill?.run_type ?? "command") as "command" | "script"
   );
@@ -113,7 +114,7 @@ function TemplateFormModal({ initial, prefill, onClose, onSaved }: TemplateFormP
     try {
       let saved: RmmScriptTemplate;
       if (initial) {
-        saved = await rmmTemplatesApi.update(initial.id, { name, description, category, shell, run_type: runType, body });
+        saved = await rmmTemplatesApi.update(initial.id, { name, description, category: category as TemplateCategory, shell: shell as TemplateShell, run_type: runType, body });
         toast.success("Template atualizado.");
       } else {
         saved = await rmmTemplatesApi.create({ name, description, category, shell, run_type: runType, body });
