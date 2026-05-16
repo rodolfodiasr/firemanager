@@ -29,7 +29,13 @@ async def list_users(config: dict) -> list[dict]:
     async with httpx.AsyncClient(verify=config.get("verify_ssl", True), timeout=15) as client:
         r = await client.get(f"{base}/accounts/users/", headers=_headers(config))
         r.raise_for_status()
-        return r.json()
+        if not r.text.strip():
+            raise ValueError(f"Resposta vazia do servidor (HTTP {r.status_code}). Verifique a URL base e a API key.")
+        try:
+            return r.json()
+        except Exception:
+            preview = r.text[:200]
+            raise ValueError(f"Resposta não é JSON (HTTP {r.status_code}): {preview}")
 
 
 async def get_user(config: dict, username: str) -> dict | None:
