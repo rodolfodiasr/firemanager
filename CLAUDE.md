@@ -166,24 +166,33 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 36.cont | Governança de Identidade Avançada | `identity_posture_snapshots` + `excessive_access_alerts` + `group_health_reports` + `role_profiles` (migration 0059); `identity_analytics_service.py` (posture score 0–100, role mining, privilege creep, group health); 8 novos endpoints em `/identity-governance/posture/*` | ✅ |
 | 37 | Integrador de SIEM | `siem_connectors` + `siem_alerts` (migration 0057); normalização Wazuh/Splunk/Sentinel/Log360/QRadar; webhook público `/webhooks/siem/{secret}`; trigger SOAR via `evaluate_trigger`; `SiemPage.tsx` com CRUD de conectores e feed de alertas | ✅ |
 | 38 | Cloud Security Posture (CSPM) | `cloud_accounts` + `cloud_security_findings` + `cloud_resources` (migration 0058); `cspm_service.py` (checks por provider, sync, upsert findings); API CRUD contas + findings; `CloudPosture.tsx` com grid de contas e tabela de findings | ✅ |
-| 39 | Identidade Self-Service | `otp_requests` (SHA-256, TTL 10 min); `POST /self-service/otp/request`, `/password/reset`, `/account/unlock`; reset/unlock via ldap3 (AD) e Graph (Azure AD); Celery beat `expiry_reminders` (lembretes 14d/7d/1d antes da expiração) | ✅ (parcial — pendente: portal web separado, catálogo de acesso visual, relatórios AD pré-prontos) |
-| 34 | Infraestrutura de Segurança Avançada | `vault_configs` + `vault_secret_refs` + `opa_policies` + `opa_evaluations` + `security_profiles` + `pentest_schedules` (migration 0064); `security_infra_service.py` (seed 3 políticas Rego built-in, `_evaluate_rego_simple`); API `/security-infra/*`; `SecurityInfraPage.tsx` (tabs: HashiCorp Vault, OPA Políticas, Perfis de Hardening, Pentest Tracker) | ✅ (parcial — CRUD config store; mTLS, microsegmentação Docker e container hardening real pendentes) |
-| 31 | Edge Agents, SSO/OIDC, Marketplace, RBAC Granular | `edge_agents` (token SHA-256) + `sso_configs` + `marketplace_plugins` + `tenant_plugins` + `rbac_custom_roles` + `rbac_role_assignments` (migration 0065); `edge_agent_service.py` (5 plugins builtin, `generate_agent_token`); API `/platform/*`; `EdgeAgentsPage.tsx` (tabs: Edge Agents, SSO/OIDC, Marketplace, RBAC Granular) | ✅ (parcial — CRUD + registro de agentes; WebSocket on-premise, fluxo OIDC real e CGNAT pendentes) |
-| 32 | Produto: Billing, Onboarding, Help Center, Preferências | `billing_plans` + `billing_subscriptions` + `billing_invoices` + `onboarding_checklists` + `help_articles` + `user_preferences` (migration 0066); `product_service.py` (3 planos seed, 4 artigos, checklist 4 etapas); API `/product/*`; `ProductPage.tsx` (tabs: Billing & Planos, Onboarding, Central de Ajuda, Preferências) | ✅ (parcial — CRUD completo; integração Stripe, i18n real e WCAG AA pendentes) |
+| 39 | Identidade Self-Service | `otp_requests` (SHA-256, TTL 10 min); `POST /self-service/otp/request`, `/password/reset`, `/account/unlock`; reset/unlock via ldap3 (AD) e Graph (Azure AD); Celery beat `expiry_reminders` (lembretes 14d/7d/1d antes da expiração) | ✅ |
+| 34 | Infraestrutura de Segurança Avançada | `vault_configs` + `vault_secret_refs` + `opa_policies` + `opa_evaluations` + `security_profiles` + `pentest_schedules` (migration 0064); `security_infra_service.py` (seed 3 políticas Rego built-in, `_evaluate_rego_simple`); API `/security-infra/*`; `SecurityInfraPage.tsx` (tabs: HashiCorp Vault, OPA Políticas, Perfis de Hardening, Pentest Tracker) | ✅ (parcial — mTLS/step-ca e Vault HA pendentes — ver F34.cont) |
+| 31 | Edge Agents, SSO/OIDC, Marketplace, RBAC Granular | `edge_agents` (token SHA-256) + `sso_configs` + `marketplace_plugins` + `tenant_plugins` + `rbac_custom_roles` + `rbac_role_assignments` (migration 0065); `edge_agent_service.py` (5 plugins builtin, `generate_agent_token`); API `/platform/*`; `EdgeAgentsPage.tsx` (tabs: Edge Agents, SSO/OIDC, Marketplace, RBAC Granular) | ✅ (parcial — Edge Agent Python/Docker runtime pendente — ver F31.cont) |
+| 32 | Produto: Billing, Onboarding, Help Center, Preferências | `billing_plans` + `billing_subscriptions` + `billing_invoices` + `onboarding_checklists` + `help_articles` + `user_preferences` (migration 0066); `product_service.py` (3 planos seed, 4 artigos, checklist 4 etapas); API `/product/*`; `ProductPage.tsx` (tabs: Billing & Planos, Onboarding, Central de Ajuda, Preferências) | ✅ |
 | 28.1 | DLP — Prevenção de Perda de Dados no Chat | `dlp_configs` + `dlp_rules` + `dlp_incidents` (migration 0067); `dlp_service.py` (20 regras builtin: 6 pii_br CPF/CNPJ/PIS/TítuloEleitor/DadosBancários/PIX, 8 credentials SSH/JWT/AWS/conn-string/HTTP-Basic/API-token, 6 infra_mssp SNMP/VPN-PSK/TACACS+/LDAP/Enable/BGP); hook em `operations.py` + `assistant.py`; UI em `Organisation.tsx` (aba DLP: config por tenant, gestão de regras por categoria, regex custom, tabela de incidentes); `validate-docbr` para CPF/CNPJ com dígito verificador | ✅ |
 | 47 | Chat IA — Guia da Plataforma (super admin) | Novo modo `"platform"` no AI Assistant; `_PLATFORM_GUIDE_TEMPLATE` com mapa completo de todos os 20+ módulos (caminho de navegação, funcionalidades, fluxos); guard 403 no `POST /assistant/chat` para não super admin; opção "Guia" visível no seletor de modo apenas para `is_super_admin`; ícone `BookOpen`; empty state e placeholder específicos | ✅ |
+| 30 | Compliance Enterprise e BC/DR | `compliance_packs` + `compliance_assessments` + `bcdr_plans` + `sla_tiers` (migration 0061); packs CIS/PCI-DSS/BACEN/LGPD com checks automatizados; DPA/LGPD template; RTO/RPO documentados; `ComplianceEnterprisePage.tsx` | ✅ |
+| 33 | IA Safety & Governança | `maintenance_windows` + `dual_approval_requests` + `erasure_requests` (migration 0062); `security_incidents` + SIRP (migration 0083); aprovação dupla para devices críticos; janelas de manutenção; direito ao esquecimento; `AISafetyPage.tsx` | ✅ |
+| 32.cont | Produto — Stripe + i18n + WCAG | `stripe_customer_id`/`stripe_subscription_id`/`stripe_price_id` em billing (migration 0073); `react-i18next` 18+ namespaces pt-BR/en-US (common, nav, auth, devices, billing, rmm, sso, compliance, siem, identity, alerts, edgeAgents, playbooks, assistant, executive, aiSafety, selfServicePortal, webAudit); WCAG 2.1 AA: skip-link, `id="main-content"`, aria-labels, aria-hidden em ícones decorativos | ✅ |
+| 39.cont | Self-Service Portal Completo | `access_catalog_items` + `access_requests` (migrations 0063 + 0084); catálogo visual de solicitação de acesso por grupo/sistema; workflow de aprovação pelo manager; `SelfServicePortalPage.tsx` | ✅ |
+| 48 | Web Audit & Browser Forensics | `web_audit_configs` + `web_audit_entries` + `web_audit_findings` (migration 0082); coleta via GPO + BrowsingHistoryView; análise IA por categoria (malicioso/shadow IT/compliance/produtividade); integração SOAR + TI feeds; `WebAuditPage.tsx` (tabs: Visão Geral, Findings, Usuários, Configuração, Relatórios) | ✅ |
+| 49 | GLPI Plugin Widget | `glpi_widget_tokens` (migration 0072); embed iframe do Eternity SecOps no GLPI com autenticação por token; exibe status de device/alerta contextualizado dentro do chamado GLPI | ✅ |
+| — | Investigação Iterativa IA (N3) | `investigation_sessions` + `investigation_phases` + `investigation_messages` (migrations 0076–0078); diagnóstico faseado multi-device; agente IA planeja fases → executa → analisa → sintetiza; suporte a device+servidor+integrações em sessão única | ✅ |
+| — | Backup Module | `backup_configs` + `backup_jobs` (migration 0074); destinos S3/GCS/local; agendamento Celery; `AdminBackupPage.tsx` | ✅ |
+| — | LLM Configs Multi-Provider | `llm_configs` (migration 0075); configuração de provedores LLM global (super admin) e por tenant; suporte Anthropic/OpenAI/Ollama com parâmetros customizáveis (temperatura, max_tokens, modelo) | ✅ |
+| 23.ext | RMM Integrations | `rmm_integrations` + `rmm_devices` (migration 0068); NinjaRMM, Atera, ConnectWise Automate, Tactical RMM; `RmmPage.tsx` com CRUD de integrações e listagem de devices gerenciados | ✅ |
+| 36.ext | File Share Governance | `file_share_configs` + `file_shares` + `file_share_permissions` (migration 0070); auditoria de pastas compartilhadas AD via SMB/WinRM; detecção de permissões excessivas e compartilhamentos órfãos | ✅ |
+| 37.ext | SIEM CEF Syslog Forwarder | `siem_syslog_configs` (migration 0071); forwarder CEF universal (UDP/TCP/TLS) para qualquer SIEM; normalização de eventos do Eternity SecOps para formato CEF; configurável por tenant | ✅ |
+| 31.cont | SSO Role Mapping + Device Connection Mode | `sso_role_mappings` (migration 0069): mapeamento grupo IdP → role plataforma + JIT provisioning; `connection_mode` + `edge_agent_id` em devices (migration 0081): suporte a `direct` vs `edge` por device | ✅ (parcial — Edge Agent Python/Docker runtime, WebSocket gateway e dispatcher pendentes) |
+| 34.cont | Seccomp Blocklist | `infra/security/seccomp-default.json` convertido para SCMP_ACT_ALLOW (blocklist) + 21 syscalls perigosas bloqueadas (ptrace, kexec, módulos de kernel, reboot, iopl/ioperm, etc.); `docker-compose.yml` com `seccomp:./security/seccomp-default.json` | ✅ (parcial — mTLS/step-ca, Vault HA 3 nodes, sidecar OPA real pendentes) |
 
 ### Próximas Fases (resumo)
 
 | Fase | Descrição | Entregáveis pendentes |
 |---|---|---|
-| 30 | Compliance Enterprise e BC/DR | Compliance packs (CIS/PCI/BACEN/LGPD + vertical Identidade), DPA/LGPD, RTO/RPO, SLA formal, relatório executivo |
-| 31.cont | Edge Agent — WebSocket on-premise + OIDC real | Edge agent WebSocket sainte para ambientes CGNAT; fluxo PKCE OIDC completo (Azure AD/Okta/Google); provisionamento JIT de usuários via SSO |
-| 32.cont | Produto — Stripe + i18n + Acessibilidade | Integração Stripe (checkout, webhooks `invoice.paid`/`payment_failed`); `react-i18next` (pt-BR/en-US); auditoria WCAG 2.1 AA com axe-core |
-| 33 | IA Safety & Governança | Aprovação dupla, janelas de manutenção, SIRP, red team trimestral, four-eyes AD, direito ao esquecimento, RFC 3161 |
-| 34.cont | Infra Segurança — mTLS + Microsegmentação | mTLS interno entre serviços (step-ca), redes Docker isoladas (frontend_net/backend_net/worker_net), AppArmor/Seccomp profiles, Vault HA real |
-| 39.cont | Identidade Self-Service — Portal e Relatórios | Portal web separado (URL dedicada via white-label), catálogo de acesso visual com AccessReviewTask, relatórios AD pré-prontos (senha expirada, contas inativas, membros de grupo, admins sem MFA) |
-| 48 | Web Audit & Browser Forensics | Auditoria de navegação de estações AD via GPO + BrowsingHistoryView; `web_audit_configs` + `web_audit_entries` + `web_audit_findings`; análise IA por categoria (produtividade/suspeito/malicioso/shadow IT); integração SOAR + TI feeds; dashboard de produtividade e risco por usuário/departamento; relatório PDF para RH/compliance |
+| 31.cont | Edge Agent Runtime + OIDC Completo | Edge Agent processo Python/Docker com WebSocket sainte (WSS 443 via Cloudflare); suporte CGNAT zero-inbound; WebSocket gateway `/edge-gateway/{token}` no backend; dispatcher `edge_dispatcher.py`; fluxo PKCE OIDC completo; JIT SSO de usuários |
+| 34.cont | Infra Segurança — mTLS + Vault HA | mTLS interno entre serviços (step-ca); Vault HA 3 nodes com AppRole auth; sidecar OPA real (em vez de simulação Python); AppArmor profiles; redes Docker já isoladas (frontend_net/backend_net/worker_net ✅) |
 
 ---
 
@@ -240,14 +249,14 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 ---
 
 ### Fase 31 — Edge Agents, SSO/OIDC, Marketplace e RBAC Granular ✅ (parcial)
-*Registro de agentes e config store para SSO/RBAC — WebSocket on-premise e fluxo OIDC real pendentes*
+*Registro de agentes e config store para SSO/RBAC — Edge Agent Python/Docker real e fluxo OIDC real pendentes*
 
 **Implementado (migration 0065):**
 
 | Componente | Detalhe |
 |---|---|
 | `edge_agents` | Agentes por tenant: name, token_hash (SHA-256 de `secrets.token_urlsafe(32)`), status (online/offline/stale), version, last_seen, ip_address, device_ids JSONB; token raw exibido UMA vez no registro |
-| `sso_configs` | Config SSO por tenant (unique): provider (azure_ad/okta/google/custom_oidc), client_id, client_secret_encrypted, discovery_url, group_claim, group_mapping JSONB, sso_required |
+| `sso_configs` | Config SSO por tenant (unique): provider (azure_ad/okta/google/custom_oidc/ldap), client_id, client_secret_encrypted, discovery_url, group_claim, group_mapping JSONB, sso_required, extra_config JSONB (LDAP: ldap_url, base_dn, bind_user, bind_password_encrypted, user_filter) |
 | `marketplace_plugins` | Plugins globais: name, slug, version, category (connector/report/workflow/alert_rule), is_builtin, download_count, approved_at; 5 built-in: fortinet-fortigate, sonicwall-sonicos, wazuh-siem, lgpd-compliance, executive-risk-dashboard |
 | `tenant_plugins` | Plugins instalados por tenant (UniqueConstraint tenant+plugin): installed_at, installed_by |
 | `rbac_custom_roles` | Roles customizadas por tenant (UniqueConstraint tenant+name): name, description, permissions JSONB |
@@ -255,7 +264,88 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | API `/platform/*` | CRUD /agents, PUT /sso (upsert), /marketplace (+ /seed + /installed + /{id}/install + /{id}/uninstall), /rbac-roles, /rbac-assignments |
 | `EdgeAgentsPage.tsx` | 4 tabs: Edge Agents (token reveal one-time, online/offline badge), SSO/OIDC (upsert form Azure AD/Okta/Google/custom), Marketplace (install/uninstall com set tracking), RBAC Granular (custom roles CRUD) |
 
-**Pendente (F31.cont):** Edge agent Python/Docker real com WebSocket sainte, suporte CGNAT com reconexão exponencial, fluxo PKCE OIDC completo, provisionamento JIT de usuários via SSO.
+**Pendente (F31.cont):** Edge Agent Python/Docker real com WebSocket sainte via Cloudflare (WSS 443), suporte CGNAT com reconexão exponencial, dispatcher backend, fluxo PKCE OIDC completo, provisionamento JIT de usuários via SSO.
+
+---
+
+### Fase 31.cont — Edge Agent Real + OIDC Completo ✅ (parcial)
+*SSO role mapping + device connection_mode implementados (migrations 0069+0081). Pendente: processo Python/Docker com WebSocket sainte, gateway backend e dispatcher.*
+
+#### Arquitetura
+
+```
+┌─────────────────────────────────┐     ┌──────────────────────────────────┐
+│   FireManager Cloud (Cloudflare) │     │   LAN do Cliente                 │
+│                                  │     │                                  │
+│  /edge-gateway/{token}           │◄────│  fm-edge (Docker/pip)            │
+│   WebSocket hub por tenant       │     │    ├─ WebSocket sainte WSS 443   │
+│                                  │────►│    ├─ Reconexão backoff exp.     │
+│  Dispatcher: device "edge"       │     │    ├─ SSH/REST para devices LAN  │
+│   └─ envia job pelo WebSocket    │     │    └─ Retorna resultado           │
+│   └─ aguarda resposta (timeout)  │     │                                  │
+│                                  │     │  [Firewall] [Switch] [Servidor]  │
+└─────────────────────────────────┘     └──────────────────────────────────┘
+```
+
+#### Cloudflare como proxy WebSocket
+
+- WSS 443 passa pelo Cloudflare proxy (nuvem laranja) — IP de origem nunca exposto
+- TLS 1.3 válido para o domínio — Edge Agent valida por domínio, sem pinning
+- Cloudflare Full (Strict): re-criptografa entre CDN e nginx de origem
+- **Heartbeat obrigatório ≤ 90s** para não cair no timeout de 100s do Cloudflare
+- WAF do Cloudflare filtra handshakes malformados antes de chegar ao backend
+- Habilitar explicitamente: Cloudflare → Network → WebSockets: ON
+
+#### Segurança — Modelo de ameaças
+
+| Camada | Mecanismo |
+|---|---|
+| **Token** | 32 bytes aleatórios; SHA-256 no banco (nunca plaintext); exibido uma vez; sem endpoint de recuperação |
+| **Transporte** | TLS 1.3 + Cloudflare; credenciais Fernet-cifradas mesmo no WebSocket |
+| **Credenciais** | Enviadas cifradas (Fernet); decriptadas apenas no Edge Agent; descartadas da memória após uso |
+| **Escopo de comandos** | Agent só aceita comandos para `device_ids` registrados; sem shell arbitrário — apenas via connectors tipados |
+| **Escopo de rede** | Allowlist de sub-redes configurada no registro — não vira proxy genérico |
+| **Comprometimento do agent** | Token revogável instantaneamente (WebSocket cai em segundos); audit log de toda operação |
+| **Endpoint exposto** | Rate limiting no Cloudflare; token 256 bits = força bruta inviável; SHA-256 no banco = dump não revela token |
+
+#### Instalação pelo cliente
+
+```bash
+# Docker (recomendado)
+docker run -d \
+  --name fm-edge \
+  --restart always \
+  firemanager/edge-agent:latest \
+  --token TOKEN_GERADO_NA_PLATAFORMA \
+  --server wss://firemanager.io/edge-gateway
+
+# pip
+pip install firemanager-edge-agent
+fm-edge start --token TOKEN --server wss://firemanager.io/edge-gateway
+```
+
+#### Componentes a implementar
+
+| Componente | Arquivo | Descrição |
+|---|---|---|
+| **Edge Agent processo** | `edge_agent/main.py` | asyncio + websockets; handshake, job loop, reconexão backoff |
+| **Job executor** | `edge_agent/executor.py` | Recebe job JSON; roteia para SSH/REST connector local; retorna resultado |
+| **Security module** | `edge_agent/security.py` | Valida device_id contra allowlist; decripta Fernet; descarta após uso |
+| **Heartbeat** | `edge_agent/heartbeat.py` | Ping a cada 30s; atualiza `last_seen` no backend |
+| **WebSocket gateway** | `backend/app/api/edge_gateway.py` | FastAPI WebSocket endpoint `/edge-gateway/{token}`; authn por token; hub por tenant |
+| **Dispatcher** | `backend/app/services/edge_dispatcher.py` | Detecta `device.connection_mode = "edge"`; envia job; aguarda resposta com timeout |
+| **Dockerfile** | `edge_agent/Dockerfile` | `python:3.12-slim`; usuário não-root; `--read-only` filesystem |
+
+#### Campo `connection_mode` no Device
+
+```
+Device:
+  connection_mode: "direct"  → SSH/REST direto do cloud (padrão atual)
+  connection_mode: "edge"    → delega ao Edge Agent do tenant
+  edge_agent_id: UUID        → qual agent gerencia este device
+```
+
+Completamente opcional — devices sem edge_agent_id continuam funcionando como hoje.
 
 ---
 
@@ -555,8 +645,8 @@ Celery beat ICMP probe a cada 5 min para cada device: registra RTT e packet loss
 
 ---
 
-### Fase 30 — Compliance Enterprise e Continuidade de Negócio
-*Pacotes regulatórios, documentação legal, SLA formal e disaster recovery*
+### Fase 30 — Compliance Enterprise e Continuidade de Negócio ✅
+*Pacotes regulatórios, documentação legal, SLA formal e disaster recovery — implementado (migration 0061, ComplianceEnterprisePage.tsx)*
 
 **Origem:** Mesa Redonda Rounds 1, 2 e 3 — Flávia (Compliance), Patrícia (Privacidade), Augusto (LGPD), Eduardo (BC/DR), Mônica (SLA)
 
@@ -580,8 +670,8 @@ Campo `data_region: str` no Tenant (ex: "BR", "EU", "US"). Metadado `data_region
 
 ---
 
-### Fase 31 — Expansão de Plataforma e White-label Completo
-*Edge agent, suporte CGNAT, revendas completas e estratégia open core*
+### Fase 31 — Expansão de Plataforma e White-label Completo ✅ (parcial)
+*Edge agent, suporte CGNAT, revendas completas e estratégia open core — CRUD e registro implementados (migration 0065); Edge Agent runtime pendente em F31.cont*
 
 **Origem:** Mesa Redonda Rounds 2 e 3 — Leonardo (Infra), Sérgio (Redes/ISP), Flávia (Revenda), Juliana (Produto)
 
@@ -611,8 +701,8 @@ Modelo `Plugin`: name, version, author_tenant_id, category (connector/report/wor
 
 ---
 
-### Fase 32 — Produto, UX e Documentação
-*Experiência do usuário, acessibilidade, documentação por persona e internacionalização*
+### Fase 32 — Produto, UX e Documentação ✅
+*Experiência do usuário, acessibilidade, documentação por persona e internacionalização — implementado (migrations 0066+0073, i18n 18+ namespaces, WCAG 2.1 AA, ProductPage.tsx)*
 
 **Origem:** Mesa Redonda Rounds 2 e 3 — André (Produto), Beatriz (UX/Acessibilidade), Juliana (GTM), Cristina (CS)
 
@@ -636,8 +726,8 @@ Widget flutuante (bottom-right, botão "?" com badge) com rating 1–5 estrelas 
 
 ---
 
-### Fase 33 — IA Safety & Governança
-*Controles formais de segurança do agente IA, aprovação avançada e framework de governança*
+### Fase 33 — IA Safety & Governança ✅
+*Controles formais de segurança do agente IA, aprovação avançada e framework de governança — implementado (migrations 0062+0083, AISafetyPage.tsx)*
 
 **Origem:** Mesa Redonda Segurança da Informação — Felipe (Responsible AI), Larissa (LGPD), Marcos (IR), Carlos (SOC), Paulo (OT), Mônica (SecOps), Rafael (CISO), Ana (Red Team)
 
@@ -676,8 +766,8 @@ Página pública `firemanager.io/security`: email `security@firemanager.io`, PGP
 
 ---
 
-### Fase 34 — Infraestrutura de Segurança Avançada
-*mTLS interno, KMS/HSM, microsegmentação, OPA e observabilidade de segurança*
+### Fase 34 — Infraestrutura de Segurança Avançada ✅ (parcial)
+*mTLS interno, KMS/HSM, microsegmentação, OPA e observabilidade de segurança — config store implementado (migration 0064); seccomp blocklist ativo; mTLS/Vault HA pendentes em F34.cont*
 
 **Origem:** Mesa Redonda Segurança — Sandra (Architecture), Roberto (Crypto), Juliana (Cloud), Fernanda (Zero Trust), Mônica (SecOps), Diego (Threat Intel)
 
@@ -867,8 +957,8 @@ Bundles (F26) com suporte a `apply_strategy: cloud_api` além de `cli_ssh` e `re
 
 ---
 
-### Fase 39 — Identidade Self-Service e Automação Proativa
-*Extensão natural da governança de identidade (F36) para operações de baixo risco sem analista*
+### Fase 39 — Identidade Self-Service e Automação Proativa ✅
+*Reset senha/desbloqueio OTP + lembretes proativos + catálogo de acesso — implementado (migrations 0054+0063+0084, SelfServicePortalPage.tsx)*
 
 **Princípio:** Algumas operações de identidade são repetitivas, de baixo risco e consomem tempo de analista desnecessariamente (reset de senha, desbloqueio de conta). Automatizá-las dentro do escopo de governança de identidade já estabelecido em F21/F22/F36 é extensão natural do propósito. Esta fase NÃO cria um ServiceDesk — integra com o ServiceDesk existente via F23.
 
@@ -1168,8 +1258,8 @@ BundleSection
 
 ---
 
-### Fase 48 — Web Audit & Browser Forensics
-*Auditoria de navegação web das estações do Active Directory com análise IA — segurança, produtividade e compliance*
+### Fase 48 — Web Audit & Browser Forensics ✅
+*Auditoria de navegação web das estações do Active Directory com análise IA — implementado (migration 0082, WebAuditPage.tsx)*
 
 **Princípio:** O analista de segurança precisa saber o que os usuários acessam na rede corporativa — para detectar comprometimentos (C2, phishing, exfiltração), shadow IT (VPNs não autorizadas, ferramentas de acesso remoto), violações de política (apostas, conteúdo inadequado) e produtividade (redes sociais, streaming em horário de trabalho). Esta fase usa BrowsingHistoryView (NirSoft) como coletor — testado forensicamente, suporta todos os browsers — e o Eternity SecOps como motor de análise, armazenamento e alertas.
 
@@ -1301,6 +1391,34 @@ O agente coleta via WinRM, processa o SQLite do Chrome/Firefox, retorna análise
 | `frontend/src/store/assistantStore.ts` | `chatMode` type inclui `"platform"` |
 | `frontend/src/components/assistant/AssistantPanel.tsx` | Opção "Guia" condicional a `isSuperAdmin`, ícone `BookOpen` |
 | `frontend/src/pages/AssistantPage.tsx` | Opção "Guia da Plataforma" condicional, empty state e placeholder específicos |
+
+---
+
+### Features Implementadas Fora do Roadmap Original ✅
+
+#### F49 — GLPI Plugin Widget
+`glpi_widget_tokens` (migration 0072): tokens de acesso por tenant/integração para embed iframe do Eternity SecOps diretamente dentro de chamados GLPI. O técnico vê status de dispositivo, alertas e pode lançar análise IA sem sair do GLPI.
+
+#### Investigação Iterativa IA (N3 Agentic)
+`investigation_sessions` + `investigation_phases` + `investigation_messages` (migrations 0076–0078): motor de diagnóstico faseado multi-device. O agente IA planeja N fases de investigação, executa comandos em cada fase, analisa os resultados e sintetiza um diagnóstico final. Suporta device + servidor + integrações (GLPI/Zabbix/Wazuh) em uma sessão única. `cross_domain_detected` identifica problemas que cruzam domínios (ex: firewall + servidor + AD).
+
+#### Backup Module
+`backup_configs` + `backup_jobs` (migration 0074): configuração de políticas de backup por tenant (destinos S3/GCS/local, frequência, retenção). `AdminBackupPage.tsx` com CRUD de políticas e histórico de jobs. Celery task para execução agendada com verificação de integridade.
+
+#### LLM Configs Multi-Provider
+`llm_configs` (migration 0075): tabela de configuração de provedores LLM global (super admin) e por tenant. Permite configurar Anthropic/OpenAI/Ollama com parâmetros customizáveis (temperatura, max_tokens, modelo específico) sem necessidade de alterar código ou env vars.
+
+#### F23.ext — RMM Integrations
+`rmm_integrations` + `rmm_devices` (migration 0068): integrações com NinjaRMM, Atera, ConnectWise Automate e Tactical RMM. `RmmPage.tsx` com CRUD de integrações e grid de dispositivos gerenciados. Sync Celery para manter inventário atualizado.
+
+#### F36.ext — File Share Governance
+`file_share_configs` + `file_shares` + `file_share_permissions` (migration 0070): auditoria de pastas compartilhadas AD via SMB/WinRM. Detecta permissões excessivas (Everyone com escrita), compartilhamentos sem owner e pastas órfãs. Sync periódico via Celery beat.
+
+#### F37.ext — SIEM CEF Syslog Forwarder
+`siem_syslog_configs` (migration 0071): forwarder CEF universal (UDP/TCP/TLS) que converte eventos do Eternity SecOps para o formato Common Event Format e envia para qualquer SIEM. Configurável por tenant com filtro de severidade e tipo de evento.
+
+#### F31.cont — SSO Role Mappings + Device Connection Mode
+`sso_role_mappings` (migration 0069): mapeamento de grupos do IdP (Azure AD/Okta/Google) para roles da plataforma com JIT provisioning — usuário novo via SSO recebe role automaticamente pelo grupo. `connection_mode` + `edge_agent_id` em devices (migration 0081): campo que determina se o device é acessado diretamente (`direct`) ou via Edge Agent (`edge`).
 
 ---
 
