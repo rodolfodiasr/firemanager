@@ -57,15 +57,15 @@ async def _resolve_agent_pk(
     url = f"{base}/agents/{agent_id}/"
     try:
         r = await client.get(url, headers=headers, timeout=10)
-        logger.info("[TRMM] GET %s → status=%s body=%s", url, r.status_code, r.text[:300])
+        logger.warning("[TRMM] GET %s → status=%s body=%s", url, r.status_code, r.text[:300])
         if r.status_code == 200 and r.text.strip():
             data = r.json()
             pk = data.get("id") or data.get("pk")
-            logger.info("[TRMM] agent detail keys=%s pk=%s", list(data.keys())[:15], pk)
+            logger.warning("[TRMM] agent detail keys=%s pk=%s", list(data.keys())[:15], pk)
             if isinstance(pk, int):
                 return str(pk)
     except Exception as exc:
-        logger.info("[TRMM] GET %s → exception: %s", url, exc)
+        logger.warning("[TRMM] GET %s → exception: %s", url, exc)
     return agent_id
 
 
