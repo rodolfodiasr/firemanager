@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Layers, Flame, Network, Server, Monitor, Play, Loader2,
   CheckCircle2, AlertTriangle, Clock, RefreshCw, Sparkles, ArrowRight,
-  ChevronDown, ChevronRight, History, Trash2,
+  ChevronDown, ChevronRight, History, Trash2, Wrench, MessageSquare,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import {
@@ -192,12 +192,32 @@ function SessionDetail({ sessionId, onBack }: { sessionId: string; onBack: () =>
       )}
 
       {session.correlation && (
-        <button
-          onClick={() => navigate("/assistant", { state: { prefill: session.correlation } })}
-          className="w-full flex items-center justify-center gap-2 py-2.5 border border-brand-300 text-brand-700 text-sm font-medium rounded-xl hover:bg-brand-50"
-        >
-          <ArrowRight size={13} /> Gerar Plano de Ação no Assistente IA
-        </button>
+        <div className="space-y-2">
+          <button
+            onClick={() => navigate("/assistant", { state: { prefill: session.correlation } })}
+            className="w-full flex items-center justify-center gap-2 py-2.5 border border-brand-300 text-brand-700 text-sm font-medium rounded-xl hover:bg-brand-50"
+          >
+            <ArrowRight size={13} /> Gerar Plano de Ação no Assistente IA
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => navigate("/remediation", {
+                state: { prefill: session.correlation, source: "cross-domain", sessionId: session.id },
+              })}
+              className="flex items-center justify-center gap-2 py-2 border border-amber-300 text-amber-700 text-sm font-medium rounded-xl hover:bg-amber-50"
+            >
+              <Wrench size={13} /> Criar Remediação
+            </button>
+            <button
+              onClick={() => navigate("/glpi", {
+                state: { prefill: `Investigação Cruzada — ${session.problem_description}\n\n${session.correlation}` },
+              })}
+              className="flex items-center justify-center gap-2 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50"
+            >
+              <MessageSquare size={13} /> Criar Ticket IA
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

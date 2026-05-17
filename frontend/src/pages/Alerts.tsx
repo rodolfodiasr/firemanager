@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Bell, Zap, Clock, CheckCircle, XCircle, Loader2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Trash2, Bell, Zap, Clock, CheckCircle, XCircle, Loader2, ToggleLeft, ToggleRight, Play, X, GitBranch } from "lucide-react";
+import toast from "react-hot-toast";
 import { alertsApi } from "../api/alerts";
+import { playbooksApi, type PlaybookRule } from "../api/playbooks";
 import type { AlertChannel, AlertRule } from "../types/alerts";
 
 type Tab = "channels" | "rules" | "events";
@@ -247,11 +249,95 @@ function RuleModal({ rule, channels, onClose }: { rule: AlertRule | null; channe
   );
 }
 
+// ── Playbook Trigger Modal ─────────────────────────────────────────────────────
+function TriggerPlaybookModal({
+  alertTitle,
+  alertBody,
+  onClose,
+}: {
+  alertTitle: string;
+  alertBody: string;
+  onClose: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const { data: playbooks = [], isLoading } = useQuery({
+    queryKey: ["playbooks"],
+    queryFn: playbooksApi.list,
+  });
+
+  const triggerMut = useMutation({
+    mutationFn: (id: string) =>
+      playbooksApi.trigger(id, { alert_title: alertTitle, alert_body: alertBody, source: "manual" }),
+    onSuccess: () => { toast.success("Playbook disparado com sucesso"); onClose(); },
+    onError: () => toast.error("Erro ao disparar playbook"),
+  });
+
+  const activePlaybooks = playbooks.filter((p: PlaybookRule) => p.enabled);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <h2 className="text-base font-semibold flex items-center gap-2">
+            <Play size={16} className="text-brand-600" /> Disparar Playbook
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5">
+            <p className="text-xs font-medium text-gray-700">{alertTitle}</p>
+            <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{alertBody}</p>
+          </div>
+
+          {isLoading ? (
+            <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin text-gray-400" /></div>
+          ) : activePlaybooks.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">Nenhum playbook ativo. Ative um em SOAR Playbooks.</p>
+          ) : (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {activePlaybooks.map((p: PlaybookRule) => (
+                <button
+                  key={p.id}
+                  onClick={() => setSelectedId(p.id)}
+                  className={`w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors ${
+                    selectedId === p.id
+                      ? "border-brand-500 bg-brand-50"
+                      : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                  }`}
+                >
+                  <GitBranch size={14} className={`shrink-0 mt-0.5 ${selectedId === p.id ? "text-brand-600" : "text-gray-400"}`} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800">{p.name}</p>
+                    <p className="text-xs text-purple-600 mt-0.5">{p.trigger_type}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-4 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button>
+          <button
+            onClick={() => selectedId && triggerMut.mutate(selectedId)}
+            disabled={!selectedId || triggerMut.isPending}
+            className="px-4 py-2 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {triggerMut.isPending && <Loader2 size={14} className="animate-spin" />}
+            Disparar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export function Alerts() {
   const [tab, setTab] = useState<Tab>("channels");
   const [showChannelModal, setShowChannelModal] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null | "new">(null);
+  const [triggerEvent, setTriggerEvent] = useState<{ title: string; body: string } | null>(null);
 
   const qc = useQueryClient();
 
@@ -389,7 +475,14 @@ export function Alerts() {
                   <span className="text-xs text-gray-400">{new Date(e.created_at).toLocaleString("pt-BR")}</span>
                 </div>
                 <p className="text-xs text-gray-600 mt-1">{e.body}</p>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex items-center justify-between gap-2">
+                <button
+                  onClick={() => setTriggerEvent({ title: e.title, body: e.body })}
+                  className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 px-2 py-0.5 rounded transition-colors shrink-0"
+                >
+                  <Play size={10} /> Disparar Playbook
+                </button>
+                <div className="flex gap-2 flex-wrap">
                   {Object.entries(e.channels_result).map(([cid, status]) => {
                     const ch = channels.find(c => c.id === cid);
                     return (
@@ -400,6 +493,7 @@ export function Alerts() {
                     );
                   })}
                 </div>
+                </div>
               </div>
             ))}
           </div>
@@ -409,6 +503,13 @@ export function Alerts() {
       {showChannelModal && <ChannelModal onClose={() => setShowChannelModal(false)} />}
       {editingRule !== null && (
         <RuleModal rule={editingRule === "new" ? null : editingRule} channels={channels} onClose={() => setEditingRule(null)} />
+      )}
+      {triggerEvent && (
+        <TriggerPlaybookModal
+          alertTitle={triggerEvent.title}
+          alertBody={triggerEvent.body}
+          onClose={() => setTriggerEvent(null)}
+        />
       )}
     </div>
   );

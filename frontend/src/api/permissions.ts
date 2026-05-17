@@ -2,7 +2,16 @@ import apiClient from "./client";
 import type { TenantRole } from "../types/tenant";
 
 export type DeviceCategory = "firewall" | "switch" | "routing" | "server" | "hypervisor";
-export type FunctionalModule = "compliance" | "remediation" | "server_analysis" | "bulk_jobs";
+export type FunctionalModule =
+  | "compliance"
+  | "remediation"
+  | "server_analysis"
+  | "bulk_jobs"
+  | "alerts"
+  | "playbooks"
+  | "cross_investigation"
+  | "ai_assistant"
+  | "knowledge_base";
 
 export interface CategoryRoleRead {
   user_id: string;

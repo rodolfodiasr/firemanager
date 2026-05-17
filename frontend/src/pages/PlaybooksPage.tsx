@@ -11,6 +11,13 @@ import type { PlaybookRule, PlaybookCreate, BuilderState } from "../api/playbook
 
 type Tab = "playbooks" | "executions" | "mttr";
 
+const EXEC_STATUS_COLORS: Record<string, string> = {
+  running: "bg-blue-100 text-blue-700",
+  success: "bg-green-100 text-green-700",
+  partial: "bg-yellow-100 text-yellow-700",
+  failed:  "bg-red-100 text-red-700",
+};
+
 const TRIGGER_LABELS: Record<string, string> = {
   risk_score_drop: "Risk Score Crítico",
   anomaly_detected: "Anomalia Detectada",
@@ -469,6 +476,7 @@ export function PlaybooksPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editPlaybook, setEditPlaybook] = useState<PlaybookRule | undefined>();
   const [builderPlaybook, setBuilderPlaybook] = useState<PlaybookRule | undefined>();
+  const [execPlaybookId, setExecPlaybookId] = useState<string | null>(null);
 
   const { data: playbooks = [], isLoading } = useQuery({
     queryKey: ["playbooks"],
@@ -479,6 +487,13 @@ export function PlaybooksPage() {
     queryKey: ["playbooks-mttr"],
     queryFn: playbooksApi.getMttr,
     enabled: tab === "mttr",
+  });
+
+  const { data: executions = [], isLoading: loadingExecs } = useQuery({
+    queryKey: ["playbook-executions", execPlaybookId],
+    queryFn: () => playbooksApi.listExecutions(execPlaybookId!),
+    enabled: tab === "executions" && !!execPlaybookId,
+    refetchInterval: 5000,
   });
 
   const toggleMut = useMutation({
@@ -527,6 +542,9 @@ export function PlaybooksPage() {
       <div className="flex gap-2 mb-6">
         <button className={tabClass("playbooks")} onClick={() => setTab("playbooks")}>
           <span className="flex items-center gap-1.5"><GitBranch size={14} /> Playbooks ({playbooks.length})</span>
+        </button>
+        <button className={tabClass("executions")} onClick={() => setTab("executions")}>
+          <span className="flex items-center gap-1.5"><Play size={14} /> Execuções</span>
         </button>
         <button className={tabClass("mttr")} onClick={() => setTab("mttr")}>
           <span className="flex items-center gap-1.5"><BarChart3 size={14} /> MTTR</span>
@@ -598,6 +616,72 @@ export function PlaybooksPage() {
               </div>
             )}
           </>
+        )}
+
+        {tab === "executions" && (
+          <div className="space-y-4">
+            {/* Playbook selector */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-600 shrink-0">Playbook:</label>
+              <select
+                value={execPlaybookId ?? ""}
+                onChange={(e) => setExecPlaybookId(e.target.value || null)}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="">— Selecione um playbook —</option>
+                {playbooks.map((p: PlaybookRule) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {!execPlaybookId ? (
+              <div className="text-center py-12 text-gray-400">
+                <Play size={32} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Selecione um playbook para ver o histórico de execuções.</p>
+              </div>
+            ) : loadingExecs ? (
+              <div className="flex justify-center py-12"><Loader2 size={22} className="animate-spin text-gray-400" /></div>
+            ) : executions.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Clock size={32} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Nenhuma execução registrada para este playbook.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {executions.map((ex) => (
+                  <div key={ex.id} className="border border-gray-200 rounded-xl p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${EXEC_STATUS_COLORS[ex.status] ?? STATUS_COLORS[ex.status] ?? "bg-gray-100 text-gray-600"}`}>
+                            {ex.status}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(ex.triggered_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                          </span>
+                          {ex.resolved_at && (
+                            <span className="text-xs text-gray-400">
+                              → {new Date(ex.resolved_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                            </span>
+                          )}
+                        </div>
+                        {ex.actions_taken.length > 0 && (
+                          <div className="flex gap-1 flex-wrap mt-1.5">
+                            {ex.actions_taken.map((a, i) => (
+                              <span key={i} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                                {String(a.type ?? a.action ?? "ação")}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {tab === "mttr" && (

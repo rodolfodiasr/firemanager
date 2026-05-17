@@ -6,6 +6,7 @@ import {
   Bot,
   Server,
   Shield,
+  KeyRound,
   Settings,
   ShieldAlert,
   Radar,
@@ -162,6 +163,7 @@ const navSections: NavSection[] = [
     title: "Plataforma",  // Onda 2: 7 → 4 itens
     items: [
       { to: "/audit",          icon: Shield,      label: "Auditoria",               badge: true },
+      { to: "/vault",          icon: KeyRound,    label: "Vault de Segredos"                     },
       { to: "/security-infra", icon: ShieldHalf,  label: "Segurança da Plataforma", beta: true  }, // Onda 2: unifica IA Safety + Infra Seg
       { to: "/settings",       icon: Settings,    label: "Configurações"                         }, // Onda 2: unifica Config + Enterprise + Settings
       { to: "/product",        icon: Coins,       label: "Produto & Billing",        beta: true  },

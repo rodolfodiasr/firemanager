@@ -84,11 +84,16 @@ const DEVICE_CATS: { key: DeviceCategory; label: string }[] = [
   { key: "server",     label: "Servidor" },
   { key: "hypervisor", label: "Hypervisor" },
 ];
-const FUNC_MODULES: { key: FunctionalModule; label: string }[] = [
-  { key: "compliance",      label: "Compliance" },
-  { key: "remediation",     label: "Remediação" },
-  { key: "server_analysis", label: "Análise de Servidores" },
-  { key: "bulk_jobs",       label: "Jobs em Lote" },
+const FUNC_MODULES: { key: FunctionalModule; label: string; group: string }[] = [
+  { key: "compliance",         label: "Compliance",              group: "Conformidade"       },
+  { key: "remediation",        label: "Remediação",              group: "Conformidade"       },
+  { key: "server_analysis",    label: "Análise de Servidores",   group: "Infraestrutura"     },
+  { key: "bulk_jobs",          label: "Jobs em Lote",            group: "Infraestrutura"     },
+  { key: "alerts",             label: "Alertas & SIEM",          group: "Segurança"          },
+  { key: "playbooks",          label: "SOAR Playbooks",          group: "Segurança"          },
+  { key: "ai_assistant",       label: "Assistente IA",           group: "Inteligência IA"    },
+  { key: "knowledge_base",     label: "Base de Conhecimento",    group: "Inteligência IA"    },
+  { key: "cross_investigation", label: "Investigação Cruzada",   group: "Inteligência IA"    },
 ];
 const PERM_ROLES: { value: TenantRole | ""; label: string }[] = [
   { value: "",           label: "— (herdar)" },
@@ -205,30 +210,39 @@ function PermissionMatrixDrawer({
               <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-0.5">Módulos Funcionais</p>
               <p className="text-xs text-gray-400 mb-3">
                 Controla o acesso por área de trabalho, independente do tipo de dispositivo.
+                Investigação Cruzada também exige CategoryRole nos domínios consultados.
               </p>
-              <table className="w-full text-sm">
-                <tbody className="divide-y divide-gray-100">
-                  {FUNC_MODULES.map(({ key, label }) => {
-                    const override = getModOverride(key);
-                    return (
-                      <tr key={key} className="hover:bg-gray-50">
-                        <td className="py-2.5 pr-4 text-gray-700">{label}</td>
-                        <td className="py-2.5">
-                          <select
-                            value={override}
-                            onChange={(e) => handleModChange(key, e.target.value as TenantRole | "")}
-                            className={`border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 ${
-                              override ? "border-brand-300 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-500"
-                            }`}
-                          >
-                            {PERM_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                          </select>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              {(() => {
+                const groups = Array.from(new Set(FUNC_MODULES.map((m) => m.group)));
+                return groups.map((grp) => (
+                  <div key={grp} className="mb-4">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 px-0.5">{grp}</p>
+                    <table className="w-full text-sm">
+                      <tbody className="divide-y divide-gray-100">
+                        {FUNC_MODULES.filter((m) => m.group === grp).map(({ key, label }) => {
+                          const override = getModOverride(key);
+                          return (
+                            <tr key={key} className="hover:bg-gray-50">
+                              <td className="py-2 pr-4 text-gray-700">{label}</td>
+                              <td className="py-2">
+                                <select
+                                  value={override}
+                                  onChange={(e) => handleModChange(key, e.target.value as TenantRole | "")}
+                                  className={`border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 ${
+                                    override ? "border-brand-300 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-500"
+                                  }`}
+                                >
+                                  {PERM_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                                </select>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ));
+              })()}
             </div>
 
             <div className="border-t border-gray-100 pt-4">

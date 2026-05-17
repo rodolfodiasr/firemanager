@@ -5,7 +5,7 @@ import {
   Flame, Network, Server, Monitor, Plus, Loader2,
   CheckCircle2, Clock, AlertTriangle, ArrowRight,
   Sparkles, ChevronDown, ChevronRight, Trash2, Users,
-  Send, RefreshCw, ClipboardList,
+  Send, RefreshCw, ClipboardList, Wrench, MessageSquare,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import {
@@ -210,15 +210,35 @@ function CompositeDetail({ inv, onBack }: { inv: CompositeInvestigation; onBack:
         )}
 
         {inv.consolidation && (
-          <button
-            onClick={() => actionPlanMut.mutate()}
-            disabled={actionPlanMut.isPending}
-            className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-xl hover:bg-brand-700 disabled:opacity-50"
-          >
-            {actionPlanMut.isPending
-              ? <><Loader2 size={13} className="animate-spin" /> Gerando…</>
-              : <><ClipboardList size={13} /> Gerar Plano de Ação no Assistente IA</>}
-          </button>
+          <>
+            <button
+              onClick={() => actionPlanMut.mutate()}
+              disabled={actionPlanMut.isPending}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-xl hover:bg-brand-700 disabled:opacity-50"
+            >
+              {actionPlanMut.isPending
+                ? <><Loader2 size={13} className="animate-spin" /> Gerando…</>
+                : <><ClipboardList size={13} /> Gerar Plano de Ação no Assistente IA</>}
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => navigate("/remediation", {
+                  state: { prefill: inv.consolidation, source: "composite", compositeId: inv.id },
+                })}
+                className="flex items-center justify-center gap-2 py-2 border border-amber-300 text-amber-700 text-sm font-medium rounded-xl hover:bg-amber-50"
+              >
+                <Wrench size={13} /> Criar Remediação
+              </button>
+              <button
+                onClick={() => navigate("/glpi", {
+                  state: { prefill: `Investigação Composta — ${inv.symptom}\n\n${inv.consolidation}` },
+                })}
+                className="flex items-center justify-center gap-2 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50"
+              >
+                <MessageSquare size={13} /> Criar Ticket IA
+              </button>
+            </div>
+          </>
         )}
 
         {inv.status !== "resolved" && inv.consolidation && (
