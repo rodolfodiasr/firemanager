@@ -5,11 +5,12 @@ import type { TenantRole } from "../types/tenant";
 import apiClient from "../api/client";
 
 const ROLE_RANK: Record<TenantRole, number> = {
-  admin:       5,
-  analyst_n2:  4,
-  analyst:     3,
-  analyst_n1:  2,
-  readonly:    1,
+  admin:        5,
+  analyst_n2:   4,
+  analyst_sec:  4,
+  analyst:      3,
+  analyst_n1:   2,
+  readonly:     1,
 };
 
 // Returns true if the current user's effective role for a module meets minRole.

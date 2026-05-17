@@ -24,18 +24,20 @@ import type { TenantMember, TenantRead, TenantRole } from "../types/tenant";
 
 const ROLES: TenantRole[] = ["admin", "analyst_n2", "analyst_n1", "readonly"];
 const ROLE_LABELS: Record<TenantRole, string> = {
-  admin:       "Admin",
-  analyst_n2:  "Analista N2",
-  analyst_n1:  "Analista N1",
-  readonly:    "Leitor",
-  analyst:     "Analista (legado)",
+  admin:        "Admin",
+  analyst_n2:   "Analista N2",
+  analyst_sec:  "Analista Segurança",
+  analyst_n1:   "Analista N1",
+  readonly:     "Leitor",
+  analyst:      "Analista (legado)",
 };
 const ROLE_COLORS: Record<TenantRole, string> = {
-  admin:       "bg-brand-100 text-brand-700",
-  analyst_n2:  "bg-blue-100 text-blue-700",
-  analyst_n1:  "bg-cyan-100 text-cyan-700",
-  readonly:    "bg-gray-100 text-gray-600",
-  analyst:     "bg-blue-100 text-blue-600",
+  admin:        "bg-brand-100 text-brand-700",
+  analyst_n2:   "bg-blue-100 text-blue-700",
+  analyst_sec:  "bg-purple-100 text-purple-700",
+  analyst_n1:   "bg-cyan-100 text-cyan-700",
+  readonly:     "bg-gray-100 text-gray-600",
+  analyst:      "bg-blue-100 text-blue-600",
 };
 
 function RoleBadge({ role }: { role: TenantRole }) {

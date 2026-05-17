@@ -326,18 +326,20 @@ function PermissionMatrixDrawer({
 // ── Permission Matrix Table (todos usuários × todos domínios) ─────────────────
 
 const CAT_COLORS: Record<TenantRole, string> = {
-  admin:      "bg-brand-100 text-brand-700 border-brand-200",
-  analyst_n2: "bg-blue-100 text-blue-700 border-blue-200",
-  analyst_n1: "bg-cyan-100 text-cyan-700 border-cyan-200",
-  readonly:   "bg-gray-100 text-gray-600 border-gray-200",
-  analyst:    "bg-blue-50 text-blue-500 border-blue-100",
+  admin:        "bg-brand-100 text-brand-700 border-brand-200",
+  analyst_n2:   "bg-blue-100 text-blue-700 border-blue-200",
+  analyst_sec:  "bg-purple-100 text-purple-700 border-purple-200",
+  analyst_n1:   "bg-cyan-100 text-cyan-700 border-cyan-200",
+  readonly:     "bg-gray-100 text-gray-600 border-gray-200",
+  analyst:      "bg-blue-50 text-blue-500 border-blue-100",
 };
 const CAT_SHORT: Record<TenantRole, string> = {
-  admin:      "Admin",
-  analyst_n2: "N2",
-  analyst_n1: "N1",
-  readonly:   "Leitor",
-  analyst:    "N2",
+  admin:        "Admin",
+  analyst_n2:   "N2",
+  analyst_sec:  "Sec",
+  analyst_n1:   "N1",
+  readonly:     "Leitor",
+  analyst:      "N2",
 };
 
 function PermissionMatrixTable({ tenantId }: { tenantId: string }) {
