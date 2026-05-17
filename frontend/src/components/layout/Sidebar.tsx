@@ -207,8 +207,9 @@ export function Sidebar() {
   const showTenants = user?.is_super_admin || tenantRole === "admin";
 
   // User's effective rank for sidebar visibility
+  // Super admins are cross-tenant and have no tenantRole — always grant rank 5
   const effectiveRole = user?.role ?? tenantRole ?? "readonly";
-  const userRank = ROLE_RANK[effectiveRole] ?? 1;
+  const userRank = user?.is_super_admin ? 5 : (ROLE_RANK[effectiveRole] ?? 1);
 
   const { data: pendingCount = 0 } = useQuery({
     queryKey: ["audit-pending-count"],
