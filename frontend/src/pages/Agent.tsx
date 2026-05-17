@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Pencil, Layers, Square, CheckSquare, AlertCircle, Loader2, BookOpen, Search, MessageSquare, Microscope, Sparkles } from "lucide-react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { Pencil, Layers, Square, CheckSquare, AlertCircle, Loader2, BookOpen, Search, MessageSquare, Microscope, Sparkles, History, ChevronRight } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { ChatWindow } from "../components/agent/ChatWindow";
 import { useDevices } from "../hooks/useDevices";
@@ -144,6 +144,62 @@ function BulkPanel({ devices }: { devices: Device[] }) {
   );
 }
 
+// ── Operation History Panel ───────────────────────────────────────────────────
+
+function OperationHistoryPanel({ categories, onSelect }: {
+  categories: string[];
+  onSelect: (id: string) => void;
+}) {
+  const { data: operations = [], isLoading } = useQuery({
+    queryKey: ["operations"],
+    queryFn: operationsApi.list,
+  });
+
+  const filtered = operations.filter((op) =>
+    categories.includes(op.device_category ?? "")
+  );
+
+  const STATUS_LABEL: Record<string, { label: string; color: string }> = {
+    executed:       { label: "Executado",  color: "text-green-600" },
+    pending_review: { label: "Em revisão", color: "text-amber-600" },
+    draft:          { label: "Rascunho",   color: "text-gray-400"  },
+  };
+
+  if (isLoading) return (
+    <p className="text-xs text-gray-400 flex items-center gap-1">
+      <Loader2 size={11} className="animate-spin" /> Carregando...
+    </p>
+  );
+  if (filtered.length === 0) return (
+    <p className="text-xs text-gray-400 italic">Nenhuma operação registrada ainda.</p>
+  );
+
+  return (
+    <div className="space-y-1">
+      {filtered.map((op) => {
+        const s = STATUS_LABEL[op.status] ?? { label: op.status, color: "text-gray-400" };
+        return (
+          <button
+            key={op.id}
+            onClick={() => onSelect(op.id)}
+            className="w-full text-left flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <ChevronRight size={12} className="text-gray-300 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-700 truncate">{op.natural_language_input}</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {new Date(op.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                {" · "}
+                <span className={`font-medium ${s.color}`}>{s.label}</span>
+              </p>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function Agent() {
@@ -160,6 +216,7 @@ export function Agent() {
   const [bulkMode, setBulkMode] = useState(false);
   const [mode, setMode] = useState<"operate" | "investigate">(handoffState?.context ? "investigate" : "operate");
   const [useBookstackContext, setUseBookstackContext] = useState(true);
+  const [leftTab, setLeftTab] = useState<"device" | "history">("device");
 
   const { data: editOp } = useQuery({
     queryKey: ["operation", editId],
@@ -249,34 +306,57 @@ export function Agent() {
           <BulkPanel devices={devices} />
         ) : (
           <div className="flex-1 flex gap-4 min-h-0">
-            {/* Device selector panel */}
-            <div className="w-64 bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-3 overflow-y-auto">
-              <h3 className="text-sm font-semibold text-gray-700">Dispositivo alvo</h3>
-              {devices.length === 0 ? (
-                <p className="text-xs text-gray-400">Nenhum firewall cadastrado</p>
-              ) : (
-                <div className="space-y-2">
-                  {devices.map((device) => (
-                    <button
-                      key={device.id}
-                      onClick={() => {
-                        setSelectedDeviceId(device.id);
-                        reset();
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                        selectedDeviceId === device.id
-                          ? "bg-brand-600 text-white"
-                          : "hover:bg-gray-50 text-gray-700"
-                      }`}
-                    >
-                      <p className="font-medium">{device.name}</p>
-                      <p className={`text-xs ${selectedDeviceId === device.id ? "text-red-200" : "text-gray-400"}`}>
-                        {device.vendor} · {device.status}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              )}
+            {/* Left panel — Dispositivo | Histórico */}
+            <div className="w-64 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden">
+              {/* Tab headers */}
+              <div className="flex border-b border-gray-100 shrink-0">
+                {([["device", "Dispositivo"], ["history", "Histórico"]] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setLeftTab(id)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
+                      leftTab === id
+                        ? "border-brand-600 text-brand-600"
+                        : "border-transparent text-gray-400 hover:text-gray-600"
+                    }`}
+                  >
+                    {id === "device" ? <Search size={11} /> : <History size={11} />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {/* Tab content */}
+              <div className="flex-1 overflow-y-auto p-3">
+                {leftTab === "device" ? (
+                  devices.length === 0 ? (
+                    <p className="text-xs text-gray-400">Nenhum firewall cadastrado</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {devices.map((device) => (
+                        <button
+                          key={device.id}
+                          onClick={() => { setSelectedDeviceId(device.id); reset(); }}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                            selectedDeviceId === device.id
+                              ? "bg-brand-600 text-white"
+                              : "hover:bg-gray-50 text-gray-700"
+                          }`}
+                        >
+                          <p className="font-medium">{device.name}</p>
+                          <p className={`text-xs ${selectedDeviceId === device.id ? "text-red-200" : "text-gray-400"}`}>
+                            {device.vendor} · {device.status}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <OperationHistoryPanel
+                    categories={["firewall"]}
+                    onSelect={(id) => navigate(`/agent?edit=${id}`)}
+                  />
+                )}
+              </div>
             </div>
 
             {/* Main area — Operate or Investigate */}

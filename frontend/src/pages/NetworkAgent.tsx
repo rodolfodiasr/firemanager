@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
-import { Layers, Square, CheckSquare, AlertCircle, Loader2, Search, MessageSquare, Microscope, Sparkles } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Layers, Square, CheckSquare, AlertCircle, Loader2, Search, MessageSquare, Microscope, Sparkles, History, ChevronRight } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { ChatWindow } from "../components/agent/ChatWindow";
 import { useDevices } from "../hooks/useDevices";
 import { useAgent } from "../hooks/useAgent";
 import { bulkJobsApi } from "../api/bulk_jobs";
+import { operationsApi } from "../api/operations";
 import type { Device } from "../types/device";
 import { InvestigationPanel } from "../components/investigation/InvestigationPanel";
 
@@ -145,6 +146,62 @@ function BulkPanel({ devices }: { devices: Device[] }) {
   );
 }
 
+// ── Operation History Panel ───────────────────────────────────────────────────
+
+function OperationHistoryPanel({ categories, onSelect }: {
+  categories: string[];
+  onSelect: (id: string) => void;
+}) {
+  const { data: operations = [], isLoading } = useQuery({
+    queryKey: ["operations"],
+    queryFn: operationsApi.list,
+  });
+
+  const filtered = operations.filter((op) =>
+    categories.includes(op.device_category ?? "")
+  );
+
+  const STATUS_LABEL: Record<string, { label: string; color: string }> = {
+    executed:       { label: "Executado",  color: "text-green-600" },
+    pending_review: { label: "Em revisão", color: "text-amber-600" },
+    draft:          { label: "Rascunho",   color: "text-gray-400"  },
+  };
+
+  if (isLoading) return (
+    <p className="text-xs text-gray-400 flex items-center gap-1">
+      <Loader2 size={11} className="animate-spin" /> Carregando...
+    </p>
+  );
+  if (filtered.length === 0) return (
+    <p className="text-xs text-gray-400 italic">Nenhuma operação registrada ainda.</p>
+  );
+
+  return (
+    <div className="space-y-1">
+      {filtered.map((op) => {
+        const s = STATUS_LABEL[op.status] ?? { label: op.status, color: "text-gray-400" };
+        return (
+          <button
+            key={op.id}
+            onClick={() => onSelect(op.id)}
+            className="w-full text-left flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <ChevronRight size={12} className="text-gray-300 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-700 truncate">{op.natural_language_input}</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {new Date(op.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                {" · "}
+                <span className={`font-medium ${s.color}`}>{s.label}</span>
+              </p>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function NetworkAgent() {
@@ -152,18 +209,34 @@ export function NetworkAgent() {
   const location = useLocation();
   const handoffState = location.state as { context?: string; suggested_query?: string } | null;
   const deviceParam = searchParams.get("device");
+  const editId = searchParams.get("edit");
 
   const { devices: allDevices } = useDevices();
   const devices = allDevices.filter((d) =>
     NETWORK_CATEGORIES.includes(d.category as typeof NETWORK_CATEGORIES[number])
   );
 
+  const { data: editOp } = useQuery({
+    queryKey: ["operation", editId],
+    queryFn: () => operationsApi.get(editId!),
+    enabled: !!editId,
+    staleTime: Infinity,
+  });
+
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(deviceParam ?? null);
   const [bulkMode, setBulkMode] = useState(false);
   const [mode, setMode] = useState<"operate" | "investigate">(handoffState?.context ? "investigate" : "operate");
+  const [leftTab, setLeftTab] = useState<"device" | "history">("device");
 
   const { messages, readyToExecute, requiresApproval, loading, intent, send, execute, submitForReview, reset } =
-    useAgent(selectedDeviceId, null, false);
+    useAgent(selectedDeviceId, editOp?.id ?? null, false);
+
+  useEffect(() => {
+    if (!editOp) return;
+    setSelectedDeviceId(editOp.device_id);
+    setLeftTab("device");
+    reset();
+  }, [editOp?.id]);
 
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
   const canBulk = devices.length >= 2;
@@ -223,39 +296,62 @@ export function NetworkAgent() {
           <BulkPanel devices={devices} />
         ) : (
           <div className="flex-1 flex gap-4 min-h-0">
-            {/* Device selector */}
-            <div className="w-64 bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-3 overflow-y-auto">
-              <h3 className="text-sm font-semibold text-gray-700">Dispositivo alvo</h3>
-              {devices.length === 0 ? (
-                <div className="text-xs text-gray-400 space-y-1">
-                  <p>Nenhum switch ou roteador encontrado.</p>
-                  <p className="text-gray-300">
-                    Cadastre um device com categoria <strong>Switch</strong> ou <strong>Routing</strong>.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {devices.map((device) => (
-                    <button
-                      key={device.id}
-                      onClick={() => {
-                        setSelectedDeviceId(device.id);
-                        reset();
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                        selectedDeviceId === device.id
-                          ? "bg-brand-600 text-white"
-                          : "hover:bg-gray-50 text-gray-700"
-                      }`}
-                    >
-                      <p className="font-medium">{device.name}</p>
-                      <p className={`text-xs ${selectedDeviceId === device.id ? "text-red-200" : "text-gray-400"}`}>
-                        {device.vendor} · {device.category}
+            {/* Left panel — Dispositivo | Histórico */}
+            <div className="w-64 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden">
+              {/* Tab headers */}
+              <div className="flex border-b border-gray-100 shrink-0">
+                {([["device", "Dispositivo"], ["history", "Histórico"]] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => setLeftTab(id)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
+                      leftTab === id
+                        ? "border-brand-600 text-brand-600"
+                        : "border-transparent text-gray-400 hover:text-gray-600"
+                    }`}
+                  >
+                    {id === "device" ? <Search size={11} /> : <History size={11} />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {/* Tab content */}
+              <div className="flex-1 overflow-y-auto p-3">
+                {leftTab === "device" ? (
+                  devices.length === 0 ? (
+                    <div className="text-xs text-gray-400 space-y-1">
+                      <p>Nenhum switch ou roteador encontrado.</p>
+                      <p className="text-gray-300">
+                        Cadastre um device com categoria <strong>Switch</strong> ou <strong>Routing</strong>.
                       </p>
-                    </button>
-                  ))}
-                </div>
-              )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {devices.map((device) => (
+                        <button
+                          key={device.id}
+                          onClick={() => { setSelectedDeviceId(device.id); reset(); }}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                            selectedDeviceId === device.id
+                              ? "bg-brand-600 text-white"
+                              : "hover:bg-gray-50 text-gray-700"
+                          }`}
+                        >
+                          <p className="font-medium">{device.name}</p>
+                          <p className={`text-xs ${selectedDeviceId === device.id ? "text-red-200" : "text-gray-400"}`}>
+                            {device.vendor} · {device.category}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <OperationHistoryPanel
+                    categories={["switch", "routing"]}
+                    onSelect={(id) => navigate(`/network-agent?edit=${id}`)}
+                  />
+                )}
+              </div>
             </div>
 
             {/* Main area — Operate or Investigate */}
