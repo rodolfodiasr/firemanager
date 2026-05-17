@@ -1159,6 +1159,7 @@ export function Migrations() {
   const qc = useQueryClient();
   const [showNew, setShowNew] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const { data: migrations = [], isLoading } = useQuery({
     queryKey: ["migrations"],
@@ -1195,12 +1196,32 @@ export function Migrations() {
     onError: () => toast.error("Erro ao excluir migração"),
   });
 
+  const displayedMigrations = migrations.filter((m: MigrationListItem) =>
+    showHistory
+      ? ["completed", "failed"].includes(m.status)
+      : !["completed", "failed"].includes(m.status)
+  );
+
   return (
     <PageWrapper
       title="Migração de Configuração"
       subtitle="Migre configurações de VLAN e interfaces entre switches de diferentes fabricantes."
     >
-      <div className="flex justify-end mb-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => setShowHistory(false)}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${!showHistory ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            Ativas
+          </button>
+          <button
+            onClick={() => setShowHistory(true)}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${showHistory ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            Histórico
+          </button>
+        </div>
         <button
           onClick={() => setShowNew(true)}
           className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700"
@@ -1214,11 +1235,11 @@ export function Migrations() {
         <div className="flex items-center justify-center py-20">
           <Loader2 className="animate-spin text-brand-600" size={28} />
         </div>
-      ) : migrations.length === 0 ? (
+      ) : displayedMigrations.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400">
           <ArrowRightLeft size={40} className="mb-3 opacity-30" />
-          <p className="text-sm">Nenhuma migração criada ainda.</p>
-          <p className="text-xs mt-1">Clique em "Nova Migração" para começar.</p>
+          <p className="text-sm">{showHistory ? "Nenhuma migração no histórico." : "Nenhuma migração ativa."}</p>
+          {!showHistory && <p className="text-xs mt-1">Clique em "Nova Migração" para começar.</p>}
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
@@ -1233,7 +1254,7 @@ export function Migrations() {
               </tr>
             </thead>
             <tbody>
-              {migrations.map((m: MigrationListItem) => {
+              {displayedMigrations.map((m: MigrationListItem) => {
                 const src = devicesById[m.source_device_id];
                 const tgt = devicesById[m.target_device_id];
                 const lvlBadge = aiLevelBadge(m.ai_level);

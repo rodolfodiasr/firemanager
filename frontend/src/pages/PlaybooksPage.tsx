@@ -3,13 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Play, Pause, Trash2, Zap, Clock, CheckCircle, XCircle,
   Loader2, X, ChevronDown, GitBranch, BarChart3, Settings2,
-  ArrowRight, Circle, Square,
+  ArrowRight, Circle, Square, ShieldCheck,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { playbooksApi } from "../api/playbooks";
-import type { PlaybookRule, PlaybookCreate, BuilderState } from "../api/playbooks";
+import type { PlaybookRule, PlaybookCreate, BuilderState, PlaybookApproval } from "../api/playbooks";
 
-type Tab = "playbooks" | "executions" | "mttr";
+type Tab = "playbooks" | "executions" | "aprovacoes" | "mttr";
 
 const EXEC_STATUS_COLORS: Record<string, string> = {
   running: "bg-blue-100 text-blue-700",
@@ -469,6 +469,119 @@ function PlaybookModal({ playbook, onClose }: { playbook?: PlaybookRule; onClose
   );
 }
 
+// ── Aprovações Tab (SoD) ─────────────────────────────────────────────────────
+function AprovacoesTab() {
+  const qc = useQueryClient();
+  const [comments, setComments] = useState<Record<string, string>>({});
+
+  const { data: approvals = [], isLoading } = useQuery({
+    queryKey: ["playbook-approvals"],
+    queryFn: playbooksApi.listPendingApprovals,
+    refetchInterval: 10000,
+  });
+
+  const approveMut = useMutation({
+    mutationFn: ({ id, comment }: { id: string; comment?: string }) =>
+      playbooksApi.approveExecution(id, comment),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["playbook-approvals"] });
+      toast.success("Execução aprovada");
+    },
+    onError: () => toast.error("Erro ao aprovar"),
+  });
+
+  const rejectMut = useMutation({
+    mutationFn: ({ id, comment }: { id: string; comment: string }) =>
+      playbooksApi.rejectExecution(id, comment),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["playbook-approvals"] });
+      toast.success("Execução rejeitada");
+    },
+    onError: () => toast.error("Erro ao rejeitar"),
+  });
+
+  if (isLoading) return (
+    <div className="flex justify-center py-12"><Loader2 size={22} className="animate-spin text-gray-400" /></div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+        <ShieldCheck size={16} className="text-amber-600 shrink-0 mt-0.5" />
+        <p className="text-sm text-amber-800">
+          <strong>Princípio SoD:</strong> quem cria o playbook não aprova a execução. Analistas N2 ou Admin devem revisar antes de executar.
+        </p>
+      </div>
+
+      {approvals.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">
+          <CheckCircle size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">Nenhuma execução pendente de aprovação.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {(approvals as PlaybookApproval[]).map((a) => (
+            <div key={a.id} className="border border-gray-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-900 text-sm">{a.rule_name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">pendente</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Disparado por <strong>{a.triggered_by}</strong> em{" "}
+                    {new Date(a.triggered_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                  </p>
+                </div>
+              </div>
+              {Object.keys(a.context).length > 0 && (
+                <div className="bg-gray-50 rounded-lg px-3 py-2">
+                  <p className="text-xs text-gray-500 font-medium mb-1">Contexto</p>
+                  <pre className="text-xs text-gray-700 whitespace-pre-wrap overflow-hidden max-h-20">
+                    {JSON.stringify(a.context, null, 2)}
+                  </pre>
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Comentário (obrigatório para rejeitar)
+                </label>
+                <textarea
+                  rows={2}
+                  value={comments[a.id] ?? ""}
+                  onChange={e => setComments(c => ({ ...c, [a.id]: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand-400 resize-none"
+                  placeholder="Justificativa..."
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => approveMut.mutate({ id: a.id, comment: comments[a.id] })}
+                  disabled={approveMut.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  <CheckCircle size={13} /> Aprovar
+                </button>
+                <button
+                  onClick={() => {
+                    const c = comments[a.id] ?? "";
+                    if (!c.trim()) { toast.error("Informe um comentário para rejeitar"); return; }
+                    rejectMut.mutate({ id: a.id, comment: c });
+                  }}
+                  disabled={rejectMut.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  <XCircle size={13} /> Rejeitar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export function PlaybooksPage() {
   const qc = useQueryClient();
@@ -545,6 +658,9 @@ export function PlaybooksPage() {
         </button>
         <button className={tabClass("executions")} onClick={() => setTab("executions")}>
           <span className="flex items-center gap-1.5"><Play size={14} /> Execuções</span>
+        </button>
+        <button className={tabClass("aprovacoes")} onClick={() => setTab("aprovacoes")}>
+          <span className="flex items-center gap-1.5"><ShieldCheck size={14} /> Aprovações</span>
         </button>
         <button className={tabClass("mttr")} onClick={() => setTab("mttr")}>
           <span className="flex items-center gap-1.5"><BarChart3 size={14} /> MTTR</span>
@@ -683,6 +799,8 @@ export function PlaybooksPage() {
             )}
           </div>
         )}
+
+        {tab === "aprovacoes" && <AprovacoesTab />}
 
         {tab === "mttr" && (
           <div>

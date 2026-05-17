@@ -876,33 +876,101 @@ function HistoryTab() {
 
 // ── Logs Tab ──────────────────────────────────────────────────────────────────
 function LogsTab() {
+  const [actionFilter, setActionFilter] = useState("all");
+  const [moduleFilter, setModuleFilter] = useState("all");
+
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ["audit-logs"],
-    queryFn: () => auditApi.getLogs({ limit: 100 }),
+    queryFn: () => auditApi.getLogs({ limit: 200 }),
     refetchInterval: 10000,
   });
 
+  const ACTION_KEYWORDS: Record<string, string[]> = {
+    read:    ["view", "list", "get", "read", "fetch", "export", "download"],
+    write:   ["create", "update", "edit", "save", "modify", "patch", "set"],
+    execute: ["execute", "run", "trigger", "apply", "start", "fire", "send"],
+    delete:  ["delete", "remove", "revoke", "purge", "destroy", "wipe"],
+  };
+
+  const MODULE_KEYWORDS: Record<string, string> = {
+    devices:    "device|firewall",
+    identity:   "identity|user|ad_|offboard|onboard",
+    playbooks:  "playbook",
+    alerts:     "alert|notification",
+    compliance: "compliance",
+    vault:      "vault|secret",
+    audit:      "audit",
+  };
+
+  const filtered = logs.filter((log: { action: string }) => {
+    const action = log.action.toLowerCase();
+    if (actionFilter !== "all") {
+      const keywords = ACTION_KEYWORDS[actionFilter] ?? [];
+      if (!keywords.some((k: string) => action.includes(k))) return false;
+    }
+    if (moduleFilter !== "all") {
+      const pattern = MODULE_KEYWORDS[moduleFilter] ?? moduleFilter;
+      if (!new RegExp(pattern, "i").test(action)) return false;
+    }
+    return true;
+  });
+
   if (isLoading) return <div className="py-10 text-center text-gray-400">Carregando...</div>;
-  if (logs.length === 0) return <EmptyState title="Nenhum log registrado ainda" />;
 
   return (
-    <div className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto">
-      {logs.map((log) => (
-        <div key={log.id} className="px-6 py-3">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-900">{log.action}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {new Date(log.created_at).toLocaleString("pt-BR")}
-                {log.ip_address && ` · ${log.ip_address}`}
-              </p>
-            </div>
-            <span className="text-xs font-mono text-gray-300 ml-4" title="SHA-256 hash">
-              {log.record_hash.substring(0, 12)}...
-            </span>
-          </div>
+    <div>
+      <div className="flex items-center gap-3 px-6 py-3 border-b bg-gray-50 flex-wrap">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-gray-600">Tipo</label>
+          <select value={actionFilter} onChange={e => setActionFilter(e.target.value)}
+            className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand-400">
+            <option value="all">Todos</option>
+            <option value="read">Leitura</option>
+            <option value="write">Escrita</option>
+            <option value="execute">Execução</option>
+            <option value="delete">Exclusão</option>
+          </select>
         </div>
-      ))}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-gray-600">Módulo</label>
+          <select value={moduleFilter} onChange={e => setModuleFilter(e.target.value)}
+            className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand-400">
+            <option value="all">Todos</option>
+            <option value="devices">Dispositivos</option>
+            <option value="identity">Identidade</option>
+            <option value="playbooks">Playbooks</option>
+            <option value="alerts">Alertas</option>
+            <option value="compliance">Compliance</option>
+            <option value="vault">Vault</option>
+            <option value="audit">Auditoria</option>
+          </select>
+        </div>
+        <span className="text-xs text-gray-400 ml-auto">{filtered.length} / {logs.length} logs</span>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="py-10 text-center text-gray-400 text-sm">
+          {logs.length === 0 ? "Nenhum log registrado ainda." : "Nenhum log encontrado com os filtros selecionados."}
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100 max-h-[65vh] overflow-y-auto">
+          {filtered.map((log) => (
+            <div key={log.id} className="px-6 py-3">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{log.action}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {new Date(log.created_at).toLocaleString("pt-BR")}
+                    {log.ip_address && ` · ${log.ip_address}`}
+                  </p>
+                </div>
+                <span className="text-xs font-mono text-gray-300 ml-4" title="SHA-256 hash">
+                  {log.record_hash.substring(0, 12)}...
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

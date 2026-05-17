@@ -42,6 +42,16 @@ export interface MttrStats {
   tenant_avg_minutes: number;
 }
 
+export interface PlaybookApproval {
+  id: string;
+  rule_id: string;
+  rule_name: string;
+  triggered_by: string;
+  triggered_at: string;
+  context: Record<string, unknown>;
+  status: string;
+}
+
 export const playbooksApi = {
   list: () =>
     apiClient.get<PlaybookRule[]>("/playbooks").then((r) => r.data),
@@ -78,4 +88,13 @@ export const playbooksApi = {
       `/playbooks/${id}/builder`,
       state
     ).then((r) => r.data),
+
+  listPendingApprovals: () =>
+    apiClient.get<PlaybookApproval[]>("/playbooks/approvals/pending").then((r) => r.data),
+
+  approveExecution: (id: string, comment?: string) =>
+    apiClient.post(`/playbooks/executions/${id}/approve`, { comment: comment ?? "" }).then((r) => r.data),
+
+  rejectExecution: (id: string, comment: string) =>
+    apiClient.post(`/playbooks/executions/${id}/reject`, { comment }).then((r) => r.data),
 };

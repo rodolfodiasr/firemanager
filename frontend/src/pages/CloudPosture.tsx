@@ -8,7 +8,7 @@ import toast from "react-hot-toast";
 import { cspmApi } from "../api/cspm";
 import type { CloudAccount, CloudAccountCreate, CloudFinding } from "../api/cspm";
 
-type Tab = "accounts" | "findings";
+type Tab = "accounts" | "findings" | "history";
 
 const PROVIDER_LABELS: Record<string, string> = {
   aws: "Amazon Web Services",
@@ -370,6 +370,81 @@ function FindingsTab() {
   );
 }
 
+// ── History Tab ───────────────────────────────────────────────────────────────
+function HistoryTab() {
+  const { data: resolved = [], isLoading: loadingResolved } = useQuery({
+    queryKey: ["cloud-findings-resolved"],
+    queryFn: () => cspmApi.listFindings({ status: "resolved", limit: 100 }),
+  });
+  const { data: accepted = [], isLoading: loadingAccepted } = useQuery({
+    queryKey: ["cloud-findings-accepted"],
+    queryFn: () => cspmApi.listFindings({ status: "accepted", limit: 100 }),
+  });
+
+  const findings = [...resolved, ...accepted].sort(
+    (a, b) => new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime()
+  );
+
+  if (loadingResolved || loadingAccepted) {
+    return <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-gray-400" /></div>;
+  }
+
+  if (findings.length === 0) {
+    return (
+      <div className="text-center py-12 text-gray-500">
+        <CheckCircle size={32} className="mx-auto mb-2 text-green-300" />
+        <p className="text-sm">Nenhum finding resolvido ou aceito como risco.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-xs text-gray-500 mb-4">
+        {findings.length} finding{findings.length !== 1 ? "s" : ""} — resolvidos e aceitos como risco
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-gray-500 uppercase border-b">
+              <th className="pb-2 font-medium">Severidade</th>
+              <th className="pb-2 font-medium">Check</th>
+              <th className="pb-2 font-medium">Recurso</th>
+              <th className="pb-2 font-medium">Status</th>
+              <th className="pb-2 font-medium">Detectado em</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {findings.map((f: CloudFinding) => (
+              <tr key={f.id} className="hover:bg-gray-50 opacity-80">
+                <td className="py-3 pr-4">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${SEVERITY_COLORS[f.severity] ?? "bg-gray-100 text-gray-600"}`}>
+                    {f.severity}
+                  </span>
+                </td>
+                <td className="py-3 pr-4 text-gray-700 max-w-xs">
+                  <span className="font-medium">{f.check_title}</span>
+                </td>
+                <td className="py-3 pr-4 text-gray-500 font-mono text-xs truncate max-w-[180px]">
+                  {f.resource_name ?? f.resource_id}
+                </td>
+                <td className="py-3 pr-4">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[f.status] ?? "bg-gray-100 text-gray-600"}`}>
+                    {f.status}
+                  </span>
+                </td>
+                <td className="py-3 pr-4 text-gray-400 whitespace-nowrap text-xs">
+                  {new Date(f.detected_at).toLocaleDateString("pt-BR")}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export function CloudPosture() {
   const [tab, setTab] = useState<Tab>("accounts");
@@ -418,6 +493,9 @@ export function CloudPosture() {
         <button className={tabClass("findings")} onClick={() => setTab("findings")}>
           <span className="flex items-center gap-1.5"><AlertTriangle size={14} /> Findings</span>
         </button>
+        <button className={tabClass("history")} onClick={() => setTab("history")}>
+          <span className="flex items-center gap-1.5"><Shield size={14} /> Histórico</span>
+        </button>
       </div>
 
       {/* Content */}
@@ -446,6 +524,7 @@ export function CloudPosture() {
           </>
         )}
         {tab === "findings" && <FindingsTab />}
+        {tab === "history" && <HistoryTab />}
       </div>
 
       {showModal && (

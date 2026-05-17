@@ -6,10 +6,14 @@ import {
   ShieldCheck, ShieldX, Play, Trash2, ChevronDown, ChevronUp,
   AlertTriangle, CheckCircle2, XCircle, Clock, Loader2, Plus,
   Terminal, Pencil, RotateCcw, Check, X, FileDown, Wrench, Undo2,
+  Ticket, ExternalLink,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { remediationApi } from "../api/remediation";
 import { serversApi } from "../api/servers";
+import { glpiApi } from "../api/glpi";
+import apiClient from "../api/client";
 import type { RemediationCommand, RemediationPlan, RemediationStatus, CommandStatus, RemediationRisk, RollbackStep } from "../types/remediation";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -405,11 +409,134 @@ function RollbackSection({
   );
 }
 
+// ── GLPI Change Modal ─────────────────────────────────────────────────────────
+
+function GlpiChangeModal({ plan, onClose }: { plan: RemediationPlan; onClose: () => void }) {
+  const [title, setTitle] = useState(plan.request.slice(0, 255));
+  const [content, setContent] = useState(
+    plan.summary
+      ? `${plan.summary}\n\nComandos planejados: ${plan.commands.length}`
+      : plan.request
+  );
+  const [urgency, setUrgency] = useState("3");
+  const [saving, setSaving] = useState(false);
+  const [created, setCreated] = useState(false);
+  const [createdUrl, setCreatedUrl] = useState<string | null>(null);
+
+  const { data: integration, isLoading: intLoading } = useQuery({
+    queryKey: ["glpi-integration"],
+    queryFn: glpiApi.getIntegration,
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!integration) return;
+    setSaving(true);
+    try {
+      const result = await apiClient
+        .post<{ glpi_change_id: number; glpi_url: string | null }>(
+          `/glpi/integrations/${integration.id}/create-change`,
+          { title, content, urgency: parseInt(urgency), remediation_plan_id: plan.id }
+        )
+        .then((r) => r.data);
+      setCreatedUrl(result.glpi_url ?? null);
+      setCreated(true);
+      toast.success("Requisição de mudança criada no GLPI");
+    } catch {
+      toast.error("Erro ao criar requisição de mudança no GLPI");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Ticket size={18} className="text-brand-600" /> Abrir Requisição de Mudança no GLPI
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        </div>
+
+        {intLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="animate-spin text-brand-600" size={24} />
+          </div>
+        ) : !integration ? (
+          <div className="p-6 text-center space-y-3">
+            <AlertTriangle size={32} className="mx-auto text-yellow-500" />
+            <p className="text-sm text-gray-600">Nenhuma integração GLPI configurada.</p>
+            <p className="text-xs text-gray-400">Configure em <strong>Configurações → GLPI</strong>.</p>
+            <button onClick={onClose} className="mt-2 px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">
+              Fechar
+            </button>
+          </div>
+        ) : created ? (
+          <div className="p-6 text-center space-y-4">
+            <CheckCircle2 size={40} className="mx-auto text-green-500" />
+            <p className="text-sm font-medium text-gray-800">Requisição de mudança criada com sucesso!</p>
+            {createdUrl && (
+              <a href={createdUrl} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-brand-600 hover:text-brand-700 underline">
+                <ExternalLink size={14} /> Abrir no GLPI
+              </a>
+            )}
+            <div className="pt-2">
+              <button onClick={onClose} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">
+                Fechar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={255}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+              <textarea rows={5} value={content} onChange={(e) => setContent(e.target.value)} required
+                className="w-full border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-400" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Urgência</label>
+              <select value={urgency} onChange={(e) => setUrgency(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+                <option value="1">Muito Baixa</option>
+                <option value="2">Baixa</option>
+                <option value="3">Média</option>
+                <option value="4">Alta</option>
+                <option value="5">Muito Alta</option>
+              </select>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-xs text-blue-700">
+              Integração: <strong>{integration.glpi_url}</strong>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button type="submit" disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50">
+                {saving && <Loader2 size={14} className="animate-spin" />}
+                {saving ? "Criando…" : "Abrir Requisição"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Plan card ─────────────────────────────────────────────────────────────────
 
 function PlanCard({ plan, isN1 }: { plan: RemediationPlan; isN1: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [showCorrective, setShowCorrective] = useState(false);
+  const [showGlpiModal, setShowGlpiModal] = useState(false);
   const [observation, setObservation] = useState("");
   const qc = useQueryClient();
 
@@ -558,6 +685,14 @@ function PlanCard({ plan, isN1 }: { plan: RemediationPlan; isN1: boolean }) {
               </button>
             )}
             {!isN1 && (
+              <button
+                onClick={() => setShowGlpiModal(true)}
+                className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                <Ticket size={15} /> Abrir no GLPI
+              </button>
+            )}
+            {!isN1 && (
               <>
                 <div className="flex-1" />
                 <button
@@ -615,6 +750,9 @@ function PlanCard({ plan, isN1 }: { plan: RemediationPlan; isN1: boolean }) {
             <p className="text-xs text-red-600 mt-1">Erro ao retentar: {errMsg(retry.error)}</p>
           )}
         </div>
+      )}
+      {showGlpiModal && (
+        <GlpiChangeModal plan={plan} onClose={() => setShowGlpiModal(false)} />
       )}
     </div>
   );

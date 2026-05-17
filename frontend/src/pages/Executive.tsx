@@ -1,8 +1,106 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Shield, Users, AlertTriangle, Server, Database, TrendingUp, Download, Loader2, RefreshCw, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Shield, Users, AlertTriangle, Server, Database, TrendingUp, Download, Loader2, RefreshCw, CheckCircle, XCircle, Clock, Calendar, X } from "lucide-react";
+import toast from "react-hot-toast";
+import apiClient from "../api/client";
 import { executiveApi } from "../api/executive";
 import { FirmwareRiskCard } from "../components/dashboard/FirmwareRiskCard";
+
+function ScheduleReportModal({ onClose }: { onClose: () => void }) {
+  const [frequency, setFrequency] = useState<"weekly" | "monthly">("monthly");
+  const [dayOfWeek, setDayOfWeek] = useState("1");
+  const [dayOfMonth, setDayOfMonth] = useState("1");
+  const [time, setTime] = useState("08:00");
+  const [recipients, setRecipients] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await apiClient.post("/executive/schedule-report", {
+        frequency,
+        day_of_week: frequency === "weekly" ? parseInt(dayOfWeek) : null,
+        day_of_month: frequency === "monthly" ? parseInt(dayOfMonth) : null,
+        time,
+        recipients: recipients.split(",").map(r => r.trim()).filter(Boolean),
+      });
+      toast.success("Relatório agendado com sucesso");
+      onClose();
+    } catch {
+      toast.error("Erro ao agendar relatório");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Calendar size={18} className="text-brand-600" /> Agendar Relatório PDF
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Frequência</label>
+            <div className="flex gap-2">
+              {(["weekly", "monthly"] as const).map(f => (
+                <button key={f} type="button" onClick={() => setFrequency(f)}
+                  className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${frequency === f ? "bg-brand-600 text-white border-brand-600" : "border-gray-300 text-gray-700 hover:bg-gray-50"}`}>
+                  {f === "weekly" ? "Semanal" : "Mensal"}
+                </button>
+              ))}
+            </div>
+          </div>
+          {frequency === "weekly" ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Dia da semana</label>
+              <select value={dayOfWeek} onChange={e => setDayOfWeek(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+                {["Segunda", "Terça", "Quarta", "Quinta", "Sexta"].map((d, i) => (
+                  <option key={i} value={i + 1}>{d}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Dia do mês</label>
+              <select value={dayOfMonth} onChange={e => setDayOfMonth(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+                {Array.from({ length: 28 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>Dia {i + 1}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Horário</label>
+            <input type="time" value={time} onChange={e => setTime(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Destinatários</label>
+            <input value={recipients} onChange={e => setRecipients(e.target.value)} required
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+              placeholder="email1@empresa.com, email2@empresa.com" />
+            <p className="text-xs text-gray-400 mt-1">Separar múltiplos por vírgula</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button>
+            <button type="submit" disabled={saving}
+              className="px-4 py-2 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2">
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              Agendar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 function RiskGauge({ score }: { score: number }) {
   const color = score < 30 ? "text-green-500" : score < 60 ? "text-yellow-500" : "text-red-500";
@@ -51,6 +149,7 @@ const STATUS_ICONS: Record<string, React.ElementType> = {
 export function Executive() {
   const [period, setPeriod] = useState(30);
   const [downloading, setDownloading] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
 
   const { data: posture, isLoading, refetch } = useQuery({
     queryKey: ["executive-posture"],
@@ -73,8 +172,7 @@ export function Executive() {
     }
   };
 
-  // Suppress unused import warning — Shield is used conceptually for the page context
-  void Shield;
+    void Shield; void toast; // suppress unused warnings
 
   return (
     <div className="ml-64 min-h-screen bg-gray-50">
@@ -93,6 +191,11 @@ export function Executive() {
               <option value={30}>Últimos 30 dias</option>
               <option value={90}>Últimos 90 dias</option>
             </select>
+            <button onClick={() => setShowSchedule(true)}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+              <Calendar size={16} />
+              Agendar
+            </button>
             <button onClick={handleDownload} disabled={downloading || isLoading}
               className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 text-sm disabled:opacity-50">
               {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
@@ -209,6 +312,7 @@ export function Executive() {
           </div>
         )}
       </div>
+      {showSchedule && <ScheduleReportModal onClose={() => setShowSchedule(false)} />}
     </div>
   );
 }

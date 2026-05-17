@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Bell, Zap, Clock, CheckCircle, XCircle, Loader2, ToggleLeft, ToggleRight, Play, X, GitBranch } from "lucide-react";
+import { Plus, Trash2, Bell, Zap, Clock, CheckCircle, XCircle, Loader2, ToggleLeft, ToggleRight, Play, X, GitBranch, Shield } from "lucide-react";
 import toast from "react-hot-toast";
+import apiClient from "../api/client";
 import { alertsApi } from "../api/alerts";
 import { playbooksApi, type PlaybookRule } from "../api/playbooks";
 import type { AlertChannel, AlertRule } from "../types/alerts";
 
-type Tab = "channels" | "rules" | "events";
+type Tab = "channels" | "rules" | "events" | "sla";
 
 const CHANNEL_LABELS: Record<string, string> = {
   slack: "Slack", teams: "Microsoft Teams", email: "Email (SMTP)", webhook: "Webhook HTTP", jira: "Jira",
@@ -332,6 +333,157 @@ function TriggerPlaybookModal({
   );
 }
 
+// ── SLA Config Tab ────────────────────────────────────────────────────────────
+function SlaConfigTab() {
+  const [targets, setTargets] = useState({ critical: 15, high: 30, medium: 120, low: 480 });
+  const [escalation, setEscalation] = useState({
+    tier1_minutes: 30, tier1_action: "notify_channel",
+    tier2_minutes: 60, tier2_action: "escalate_n2",
+  });
+  const [windows, setWindows] = useState<Array<{ days: number[]; start: string; end: string }>>([]);
+  const [saving, setSaving] = useState(false);
+
+  const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+  function toggleDay(winIdx: number, day: number) {
+    setWindows(prev => prev.map((w, i) =>
+      i === winIdx ? { ...w, days: w.days.includes(day) ? w.days.filter(d => d !== day) : [...w.days, day] } : w
+    ));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await apiClient.put("/alerts/sla-config", { targets, escalation, maintenance_windows: windows });
+      toast.success("Configuração de SLA salva");
+    } catch {
+      toast.error("Erro ao salvar configuração");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const SEV_COLORS: Record<string, string> = {
+    critical: "bg-red-100 text-red-700",
+    high: "bg-orange-100 text-orange-700",
+    medium: "bg-yellow-100 text-yellow-700",
+    low: "bg-blue-100 text-blue-700",
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Metas de Resposta por Severidade</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {(["critical", "high", "medium", "low"] as const).map(sev => (
+            <div key={sev} className="bg-white border rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${SEV_COLORS[sev]}`}>{sev}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="number" min={1} value={targets[sev]}
+                  onChange={e => setTargets(t => ({ ...t, [sev]: parseInt(e.target.value) || 0 }))}
+                  className="w-20 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-brand-400" />
+                <span className="text-sm text-gray-500">minutos</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Tiers de Escalação</h3>
+        <div className="space-y-3">
+          {([1, 2] as const).map(tier => (
+            <div key={tier} className="bg-white border rounded-xl p-4 flex items-center gap-4 flex-wrap">
+              <span className="text-xs font-medium text-gray-500 w-12">Tier {tier}</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-gray-600">Após</span>
+                <input type="number" min={1}
+                  value={tier === 1 ? escalation.tier1_minutes : escalation.tier2_minutes}
+                  onChange={e => setEscalation(es => tier === 1
+                    ? { ...es, tier1_minutes: parseInt(e.target.value) || 0 }
+                    : { ...es, tier2_minutes: parseInt(e.target.value) || 0 })}
+                  className="w-16 border rounded px-2 py-1 text-sm" />
+                <span className="text-xs text-gray-600">min sem resposta:</span>
+                <select
+                  value={tier === 1 ? escalation.tier1_action : escalation.tier2_action}
+                  onChange={e => setEscalation(es => tier === 1
+                    ? { ...es, tier1_action: e.target.value }
+                    : { ...es, tier2_action: e.target.value })}
+                  className="border rounded px-2 py-1 text-sm">
+                  <option value="notify_channel">Notificar canal</option>
+                  <option value="escalate_n2">Escalar para N2</option>
+                  <option value="escalate_n3">Escalar para N3</option>
+                  <option value="notify_ciso">Notificar CISO</option>
+                </select>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-700">Janelas de Manutenção</h3>
+          <button
+            onClick={() => setWindows(w => [...w, { days: [1, 2, 3, 4, 5], start: "22:00", end: "06:00" }])}
+            className="flex items-center gap-1 text-xs text-brand-600 border border-brand-200 px-2 py-1 rounded hover:bg-brand-50">
+            <Plus size={12} /> Adicionar Janela
+          </button>
+        </div>
+        {windows.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4 bg-white border rounded-xl">
+            Nenhuma janela configurada. Alertas e escalações ocorrem em todos os horários.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {windows.map((win, idx) => (
+              <div key={idx} className="bg-white border rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-gray-600">Janela {idx + 1}</span>
+                  <button onClick={() => setWindows(w => w.filter((_, i) => i !== idx))}
+                    className="text-gray-400 hover:text-red-500"><X size={14} /></button>
+                </div>
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {DAYS.map((d, i) => (
+                    <button key={i} onClick={() => toggleDay(idx, i)}
+                      className={`text-xs px-2 py-0.5 rounded border font-medium ${
+                        win.days.includes(i) ? "bg-brand-600 text-white border-brand-600" : "border-gray-300 text-gray-500"
+                      }`}>{d}</button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600">Início</label>
+                    <input type="time" value={win.start}
+                      onChange={e => setWindows(w => w.map((ww, i) => i === idx ? { ...ww, start: e.target.value } : ww))}
+                      className="border rounded px-2 py-1 text-xs" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600">Fim</label>
+                    <input type="time" value={win.end}
+                      onChange={e => setWindows(w => w.map((ww, i) => i === idx ? { ...ww, end: e.target.value } : ww))}
+                      className="border rounded px-2 py-1 text-xs" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <button onClick={handleSave} disabled={saving}
+          className="flex items-center gap-2 px-5 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 text-sm disabled:opacity-50">
+          {saving && <Loader2 size={14} className="animate-spin" />}
+          Salvar Configuração
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export function Alerts() {
   const [tab, setTab] = useState<Tab>("channels");
@@ -359,7 +511,7 @@ export function Alerts() {
         </div>
 
         <div className="flex gap-1 mb-6 border-b">
-          {([["channels", "Canais", Bell], ["rules", "Regras", Zap], ["events", "Histórico", Clock]] as const).map(([key, label, Icon]) => (
+          {([["channels", "Canais", Bell], ["rules", "Regras", Zap], ["events", "Histórico", Clock], ["sla", "SLA & Manutenção", Shield]] as const).map(([key, label, Icon]) => (
             <button key={key} onClick={() => setTab(key as Tab)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === key ? "border-brand-600 text-brand-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
               <Icon size={16} />{label}
@@ -498,6 +650,7 @@ export function Alerts() {
             ))}
           </div>
         )}
+        {tab === "sla" && <SlaConfigTab />}
       </div>
 
       {showChannelModal && <ChannelModal onClose={() => setShowChannelModal(false)} />}
