@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
-import { Monitor, Search, Wifi, WifiOff, Loader2, Activity, Sparkles } from "lucide-react";
+import {
+  Monitor, Search, Wifi, WifiOff, Loader2, Activity, Sparkles,
+  Terminal, History, Play, CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp, MessageSquare,
+} from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { InvestigationPanel } from "../components/investigation/InvestigationPanel";
-import { rmmApi, type RmmAgent as RmmAgentType } from "../api/rmm";
+import { rmmApi, type RmmAgent as RmmAgentType, type RmmScriptRun } from "../api/rmm";
 
 const STATUS_COLORS: Record<string, string> = {
   online:  "text-green-600 bg-green-50",
@@ -23,11 +26,170 @@ function AgentStatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Operate Panel ─────────────────────────────────────────────────────────────
+
+function OperatePanel({ integrationId, agent }: { integrationId: string; agent: RmmAgentType }) {
+  const qc = useQueryClient();
+  const [shell, setShell] = useState<"powershell" | "cmd" | "bash">("powershell");
+  const [body, setBody] = useState("");
+  const [result, setResult] = useState<RmmScriptRun | null>(null);
+
+  const runMut = useMutation({
+    mutationFn: () => rmmApi.run(integrationId, agent.external_id, {
+      run_type: "command", shell, body, timeout: 60,
+    }),
+    onSuccess: (data) => {
+      setResult(data);
+      qc.invalidateQueries({ queryKey: ["rmm-script-runs", integrationId] });
+    },
+  });
+
+  const STATUS_ICON: Record<string, React.ReactNode> = {
+    success: <CheckCircle2 size={13} className="text-green-500" />,
+    error:   <XCircle size={13} className="text-red-500" />,
+    running: <Loader2 size={13} className="animate-spin text-blue-500" />,
+    pending: <Clock size={13} className="text-gray-400" />,
+  };
+
+  return (
+    <div className="flex flex-col gap-4 h-full">
+      <div className="flex items-center gap-2">
+        <Terminal size={14} className="text-brand-500" />
+        <p className="text-sm font-semibold text-gray-800">Executar comando em: <span className="text-brand-700">{agent.hostname}</span></p>
+      </div>
+
+      <div className="flex gap-2 items-center">
+        <label className="text-xs font-medium text-gray-500 shrink-0">Shell:</label>
+        {(["powershell", "cmd", "bash"] as const).map((s) => (
+          <button key={s} onClick={() => setShell(s)}
+            className={`text-xs px-2.5 py-1 rounded-lg border transition-colors font-mono ${
+              shell === s ? "bg-brand-600 text-white border-brand-600" : "border-gray-200 text-gray-500 hover:border-gray-300"
+            }`}
+          >{s}</button>
+        ))}
+      </div>
+
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        rows={6}
+        placeholder={
+          shell === "powershell"
+            ? "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10"
+            : shell === "cmd"
+            ? "tasklist /fi \"status eq running\""
+            : "top -bn1 | head -20"
+        }
+        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-brand-500"
+      />
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => { setResult(null); runMut.mutate(); }}
+          disabled={!body.trim() || runMut.isPending}
+          className="flex items-center gap-1.5 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 transition-colors"
+        >
+          {runMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+          {runMut.isPending ? "Executando..." : "Executar"}
+        </button>
+        {result && (
+          <span className="flex items-center gap-1 text-xs text-gray-500">
+            {STATUS_ICON[result.status]}
+            Exit code: <span className={`font-mono font-semibold ${result.exit_code === 0 ? "text-green-600" : "text-red-600"}`}>{result.exit_code ?? "—"}</span>
+          </span>
+        )}
+      </div>
+
+      {result?.output && (
+        <div className="flex-1 bg-gray-900 rounded-xl p-4 overflow-auto">
+          <pre className="text-xs text-gray-100 font-mono whitespace-pre-wrap leading-relaxed">{result.output}</pre>
+        </div>
+      )}
+
+      {runMut.isError && (
+        <p className="text-xs text-red-600">
+          {(runMut.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erro ao executar comando."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── History Panel ─────────────────────────────────────────────────────────────
+
+function HistoryPanel({ integrationId, agentExternalId }: { integrationId: string; agentExternalId: string }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const { data: runs = [], isLoading } = useQuery({
+    queryKey: ["rmm-script-runs", integrationId, agentExternalId],
+    queryFn: () => rmmApi.scriptRuns(integrationId, agentExternalId),
+    refetchInterval: 5000,
+  });
+
+  const STATUS_CFG: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+    success: { label: "Sucesso",    icon: <CheckCircle2 size={12} />, color: "text-green-600 bg-green-50" },
+    error:   { label: "Erro",       icon: <XCircle size={12} />,      color: "text-red-600 bg-red-50"     },
+    running: { label: "Executando", icon: <Loader2 size={12} className="animate-spin" />, color: "text-blue-600 bg-blue-50" },
+    pending: { label: "Aguardando", icon: <Clock size={12} />,        color: "text-gray-500 bg-gray-50"   },
+  };
+
+  if (isLoading) return (
+    <div className="flex items-center gap-2 text-xs text-gray-400 py-4">
+      <Loader2 size={12} className="animate-spin" /> Carregando histórico...
+    </div>
+  );
+
+  if (runs.length === 0) return (
+    <div className="text-center py-8 text-gray-400">
+      <Terminal size={28} className="mx-auto mb-2 opacity-20" />
+      <p className="text-xs">Nenhum comando executado nesta estação ainda.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-2">
+      {runs.map((run) => {
+        const cfg = STATUS_CFG[run.status] ?? STATUS_CFG.pending;
+        const isOpen = expanded === run.id;
+        return (
+          <div key={run.id} className="border border-gray-100 rounded-xl overflow-hidden">
+            <button
+              onClick={() => setExpanded(isOpen ? null : run.id)}
+              className="w-full flex items-start gap-3 p-3 hover:bg-gray-50 text-left transition-colors"
+            >
+              <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 mt-0.5 ${cfg.color}`}>
+                {cfg.icon}{cfg.label}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-mono text-gray-700 truncate">{run.body}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {new Date(run.started_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                  {run.exit_code !== null && ` · exit ${run.exit_code}`}
+                  {" · "}<span className="font-mono">{run.shell}</span>
+                </p>
+              </div>
+              {isOpen ? <ChevronUp size={13} className="text-gray-400 shrink-0" /> : <ChevronDown size={13} className="text-gray-400 shrink-0" />}
+            </button>
+            {isOpen && run.output && (
+              <div className="bg-gray-900 px-4 py-3 border-t border-gray-800">
+                <pre className="text-xs text-gray-100 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-auto">{run.output}</pre>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function RmmAgent() {
   const location = useLocation();
   const handoffState = location.state as { context?: string; suggested_query?: string } | null;
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<string>("");
   const [selectedAgent, setSelectedAgent] = useState<RmmAgentType | null>(null);
+  const [mode, setMode] = useState<"operate" | "history" | "investigate">("investigate");
 
   const { data: integrations = [], isLoading: loadingIntegrations } = useQuery({
     queryKey: ["rmm"],
@@ -164,43 +326,73 @@ export default function RmmAgent() {
           </div>
         </div>
 
-        {/* ── Right panel — investigation ── */}
-        <div className="flex-1 bg-white rounded-xl border border-gray-200 p-5 overflow-y-auto">
-          {selectedAgent ? (
-            <InvestigationPanel
-              agentType="rmm"
-              target={{
-                rmm_integration_id: selectedIntegrationId,
-                rmm_agent_external_id: selectedAgent.external_id,
-              }}
-              targetLabel={targetLabel}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-400">
-              <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center">
-                <Monitor size={32} className="opacity-30" />
+        {/* ── Right panel — mode switcher + content ── */}
+        <div className="flex-1 flex flex-col gap-3 min-h-0">
+          {/* Mode buttons */}
+          <div className="flex items-center gap-2">
+            {([
+              ["operate",     "Operar",     <MessageSquare size={12} />],
+              ["history",     "Histórico",  <History size={12} />],
+              ["investigate", "Investigar", <Search size={12} />],
+            ] as const).map(([id, label, icon]) => (
+              <button
+                key={id}
+                onClick={() => setMode(id)}
+                disabled={!selectedAgent}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  mode === id
+                    ? id === "operate"     ? "bg-brand-50 border-brand-300 text-brand-700 font-medium"
+                    : id === "history"     ? "bg-amber-50 border-amber-300 text-amber-700 font-medium"
+                    :                        "bg-violet-50 border-violet-300 text-violet-700 font-medium"
+                    : "border-gray-200 text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                {icon}{label}
+              </button>
+            ))}
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 bg-white rounded-xl border border-gray-200 p-5 overflow-y-auto min-h-0">
+            {!selectedAgent ? (
+              <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-400">
+                <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center">
+                  <Monitor size={32} className="opacity-30" />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-medium text-gray-500">Selecione uma estação</p>
+                  <p className="text-xs text-gray-400">
+                    {integrations.length === 0
+                      ? "Configure uma integração RMM para começar."
+                      : selectedIntegrationId
+                      ? "Escolha um agente na lista ao lado para iniciar."
+                      : "Selecione uma integração RMM e depois uma estação."}
+                  </p>
+                </div>
+                {integrations.length === 0 && (
+                  <a href="/rmm"
+                    className="flex items-center gap-1.5 text-xs px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 font-medium"
+                  >
+                    <Search size={12} />
+                    Configurar RMM
+                  </a>
+                )}
               </div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-medium text-gray-500">Selecione uma estação</p>
-                <p className="text-xs text-gray-400">
-                  {integrations.length === 0
-                    ? "Configure uma integração RMM para começar."
-                    : selectedIntegrationId
-                    ? "Escolha um agente na lista ao lado para iniciar o diagnóstico."
-                    : "Selecione uma integração RMM e depois uma estação."}
-                </p>
-              </div>
-              {integrations.length === 0 && (
-                <a
-                  href="/rmm"
-                  className="flex items-center gap-1.5 text-xs px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 font-medium"
-                >
-                  <Search size={12} />
-                  Configurar RMM
-                </a>
-              )}
-            </div>
-          )}
+            ) : mode === "operate" ? (
+              <OperatePanel integrationId={selectedIntegrationId} agent={selectedAgent} />
+            ) : mode === "history" ? (
+              <HistoryPanel integrationId={selectedIntegrationId} agentExternalId={selectedAgent.external_id} />
+            ) : (
+              <InvestigationPanel
+                agentType="rmm"
+                target={{
+                  rmm_integration_id: selectedIntegrationId,
+                  rmm_agent_external_id: selectedAgent.external_id,
+                }}
+                targetLabel={targetLabel}
+              />
+            )}
+          </div>
         </div>
       </div>
     </PageWrapper>
