@@ -203,6 +203,9 @@ def require_module_reviewer(module_name: str):
         except ValueError:
             raise HTTPException(status_code=500, detail=f"Módulo desconhecido: {module_name}")
 
+        if ctx.role == TenantRole.admin:
+            return ctx
+
         effective = await resolve_module_role(db, ctx.user.id, ctx.tenant.id, mod)
         if effective is None or effective == TenantRole.readonly:
             raise HTTPException(
@@ -228,6 +231,9 @@ def require_module_n2(module_name: str):
             mod = FunctionalModule(module_name)
         except ValueError:
             raise HTTPException(status_code=500, detail=f"Módulo desconhecido: {module_name}")
+
+        if ctx.role == TenantRole.admin:
+            return ctx
 
         effective = await resolve_module_role(db, ctx.user.id, ctx.tenant.id, mod)
         if effective is None or effective == TenantRole.readonly:
