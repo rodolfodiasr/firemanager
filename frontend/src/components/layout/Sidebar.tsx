@@ -27,7 +27,6 @@ import {
   DatabaseZap,
   Users,
   Bell,
-  BarChart2,
   Package2,
   Monitor,
   Laptop,
@@ -75,8 +74,7 @@ const navSections: NavSection[] = [
   {
     title: "",
     items: [
-      { to: "/",          icon: LayoutDashboard, label: "Dashboard"           },
-      { to: "/executive", icon: BarChart2,        label: "Dashboard Executivo", minRole: "analyst_n2" },
+      { to: "/",          icon: LayoutDashboard, label: "Dashboard" },
     ],
   },
 

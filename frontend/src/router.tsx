@@ -26,7 +26,6 @@ import { KnowledgeBase } from "./pages/KnowledgeBase";
 import { DatabaseConnectors } from "./pages/DatabaseConnectors";
 import { Identity } from "./pages/Identity";
 import { Alerts } from "./pages/Alerts";
-import { Executive } from "./pages/Executive";
 import { GoldenBundles } from "./pages/GoldenBundles";
 import { VMMigration } from "./pages/VMMigration";
 import { AssistantPage } from "./pages/AssistantPage";
@@ -101,7 +100,7 @@ export function AppRouter() {
       <Route path="/identity" element={<ProtectedLayout><Identity /></ProtectedLayout>} />
       <Route path="/onboarding" element={<Navigate to="/identity" replace />} />
       <Route path="/alerts" element={<ProtectedLayout><Alerts /></ProtectedLayout>} />
-      <Route path="/executive" element={<ProtectedLayout><Executive /></ProtectedLayout>} />
+      <Route path="/executive" element={<Navigate to="/?view=executive" replace />} />
       <Route path="/enterprise" element={<Navigate to="/settings" replace />} />
       <Route path="/golden-bundles" element={<ProtectedLayout><GoldenBundles /></ProtectedLayout>} />
       <Route path="/vm-migration" element={<ProtectedLayout><VMMigration /></ProtectedLayout>} />

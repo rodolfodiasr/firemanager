@@ -1,17 +1,25 @@
+import { useState } from "react";
+import { useSearchParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Shield, HardDrive, Database, Brain,
   AlertTriangle, Terminal, Monitor, Globe,
   Server as ServerIcon, Layers, ArrowRight, Activity,
+  Users, TrendingUp, Download, Loader2, RefreshCw,
+  CheckCircle, XCircle, Clock, Calendar, X,
+  Bell, ClipboardCheck, ShieldCheck,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import toast from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { StatusBadge } from "../components/shared/StatusBadge";
+import { FirmwareRiskCard } from "../components/dashboard/FirmwareRiskCard";
 import { devicesApi } from "../api/devices";
 import { operationsApi } from "../api/operations";
 import { serversApi } from "../api/servers";
 import { integrationsApi } from "../api/integrations";
+import { executiveApi } from "../api/executive";
 import type { Device, DeviceCategory, VendorEnum } from "../types/device";
+import { useDashboardViews, type DashboardView, type ViewDef } from "../hooks/useDashboardViews";
 
 // ── Static label maps ─────────────────────────────────────────────────────────
 
@@ -54,6 +62,72 @@ const STATUS_ORDER: Record<Device["status"], number> = {
   error: 0, offline: 1, unknown: 2, online: 3,
 };
 
+const EXEC_STATUS_COLORS: Record<string, string> = {
+  pending_discovery: "text-yellow-500",
+  pending_approval:  "text-blue-500",
+  running:           "text-indigo-500",
+  completed:         "text-green-500",
+  failed:            "text-red-500",
+  cancelled:         "text-gray-400",
+};
+
+const EXEC_STATUS_ICONS: Record<string, React.ElementType> = {
+  completed: CheckCircle,
+  failed:    XCircle,
+};
+
+// ── Page metadata per view ────────────────────────────────────────────────────
+
+const PAGE_META: Record<DashboardView, { title: string; subtitle: string }> = {
+  operational: {
+    title:    "Visão Geral da Infraestrutura",
+    subtitle: "Todos os dispositivos, servidores e integrações monitorados em tempo real",
+  },
+  security: {
+    title:    "Dashboard de Segurança",
+    subtitle: "Postura de segurança, alertas ativos e resposta a incidentes",
+  },
+  executive: {
+    title:    "Dashboard Executivo",
+    subtitle: "Visão consolidada da postura de segurança",
+  },
+  infra: {
+    title:    "Infraestrutura N3",
+    subtitle: "Análise profunda de servidores, bancos de dados e virtualização",
+  },
+};
+
+// ── Tab bar ───────────────────────────────────────────────────────────────────
+
+function DashboardTabBar({
+  views,
+  activeView,
+  onSelect,
+}: {
+  views: ViewDef[];
+  activeView: DashboardView;
+  onSelect: (v: DashboardView) => void;
+}) {
+  if (views.length <= 1) return null;
+  return (
+    <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-6 w-fit">
+      {views.map(({ id, label }) => (
+        <button
+          key={id}
+          onClick={() => onSelect(id)}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            activeView === id
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── Shared micro-components ───────────────────────────────────────────────────
 
 function StatusDot({ status }: { status: Device["status"] }) {
@@ -69,6 +143,167 @@ function CategoryIcon({ cat, size = 14 }: { cat: DeviceCategory; size?: number }
   if (cat === "routing")   return <Globe      size={size} className="text-blue-400 shrink-0" />;
   if (cat === "switch")    return <Layers     size={size} className="text-green-400 shrink-0" />;
   return                          <ServerIcon size={size} className="text-gray-400 shrink-0" />;
+}
+
+function MetricCard({ label, value, sub, icon: Icon, color }: {
+  label: string; value: number | string; sub?: string; icon: React.ElementType; color: string;
+}) {
+  return (
+    <div className="bg-white border rounded-xl p-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm text-gray-500">{label}</span>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${color}`}>
+          <Icon size={16} className="text-white" />
+        </div>
+      </div>
+      <div className="text-3xl font-bold text-gray-900">{value}</div>
+      {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+    </div>
+  );
+}
+
+function RiskGauge({ score }: { score: number }) {
+  const color   = score < 30 ? "text-green-500" : score < 60 ? "text-yellow-500" : "text-red-500";
+  const label   = score < 30 ? "BAIXO"          : score < 60 ? "MÉDIO"           : "ALTO";
+  const bgColor = score < 30 ? "bg-green-100"   : score < 60 ? "bg-yellow-100"   : "bg-red-100";
+  return (
+    <div className={`flex flex-col items-center justify-center p-6 rounded-xl ${bgColor}`}>
+      <div className={`text-5xl font-bold ${color}`}>{score}</div>
+      <div className={`text-sm font-semibold mt-1 ${color}`}>RISCO {label}</div>
+      <div className="text-xs text-gray-500 mt-1">score de 0 a 100</div>
+    </div>
+  );
+}
+
+// ── Schedule report modal ─────────────────────────────────────────────────────
+
+function ScheduleReportModal({ onClose }: { onClose: () => void }) {
+  const [frequency, setFrequency] = useState<"weekly" | "monthly">("monthly");
+  const [dayOfWeek, setDayOfWeek] = useState("1");
+  const [dayOfMonth, setDayOfMonth] = useState("1");
+  const [time, setTime] = useState("08:00");
+  const [recipients, setRecipients] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await executiveApi.scheduleReport({
+        frequency,
+        day_of_week:  frequency === "weekly"  ? parseInt(dayOfWeek)  : null,
+        day_of_month: frequency === "monthly" ? parseInt(dayOfMonth) : null,
+        time,
+        recipients: recipients.split(",").map((r) => r.trim()).filter(Boolean),
+      });
+      toast.success("Relatório agendado com sucesso");
+      onClose();
+    } catch {
+      toast.error("Erro ao agendar relatório");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Calendar size={18} className="text-brand-600" /> Agendar Relatório PDF
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={20} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Frequência</label>
+            <div className="flex gap-2">
+              {(["weekly", "monthly"] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setFrequency(f)}
+                  className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    frequency === f
+                      ? "bg-brand-600 text-white border-brand-600"
+                      : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {f === "weekly" ? "Semanal" : "Mensal"}
+                </button>
+              ))}
+            </div>
+          </div>
+          {frequency === "weekly" ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Dia da semana</label>
+              <select
+                value={dayOfWeek}
+                onChange={(e) => setDayOfWeek(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+              >
+                {["Segunda", "Terça", "Quarta", "Quinta", "Sexta"].map((d, i) => (
+                  <option key={i} value={i + 1}>{d}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Dia do mês</label>
+              <select
+                value={dayOfMonth}
+                onChange={(e) => setDayOfMonth(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+              >
+                {Array.from({ length: 28 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>Dia {i + 1}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Horário</label>
+            <input
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Destinatários</label>
+            <input
+              value={recipients}
+              onChange={(e) => setRecipients(e.target.value)}
+              required
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+              placeholder="email1@empresa.com, email2@empresa.com"
+            />
+            <p className="text-xs text-gray-400 mt-1">Separar múltiplos por vírgula</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              Agendar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 // ── Offline alert banner ──────────────────────────────────────────────────────
@@ -116,8 +351,13 @@ function DevicesOverviewCard({ devices }: { devices: Device[] }) {
   };
 
   const vendorCounts = Object.entries(
-    devices.reduce((acc, d) => { acc[d.vendor] = (acc[d.vendor] ?? 0) + 1; return acc; }, {} as Record<string, number>)
-  ).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    devices.reduce((acc, d) => {
+      acc[d.vendor] = (acc[d.vendor] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
+  )
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
 
   return (
     <div className={`bg-white rounded-xl border p-5 flex flex-col gap-4 ${hasIssues ? "border-red-200" : "border-gray-200"}`}>
@@ -343,7 +583,7 @@ function IntegrationsOverviewCard() {
 
 function DeviceInventoryPanel({ devices }: { devices: Device[] }) {
   const sorted = [...devices].sort(
-    (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+    (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status],
   );
 
   return (
@@ -410,7 +650,7 @@ function DeviceInventoryPanel({ devices }: { devices: Device[] }) {
   );
 }
 
-// ── Recent operations (right sidebar) ────────────────────────────────────────
+// ── Recent operations ─────────────────────────────────────────────────────────
 
 function RecentOpsPanel() {
   const { data: operations = [] } = useQuery({
@@ -460,7 +700,7 @@ function RecentOpsPanel() {
   );
 }
 
-// ── Analysis summary (right sidebar) ─────────────────────────────────────────
+// ── Analysis summary ──────────────────────────────────────────────────────────
 
 function AnalysisSummaryPanel() {
   const { data: sessions = [] } = useQuery({
@@ -506,40 +746,390 @@ function AnalysisSummaryPanel() {
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── View: Operacional ─────────────────────────────────────────────────────────
 
-export function Dashboard() {
-  const { data: devices = [] } = useQuery({
-    queryKey: ["devices"],
-    queryFn: devicesApi.list,
-  });
-
+function OperationalView({ devices }: { devices: Device[] }) {
   return (
-    <PageWrapper
-      title="Visão Geral da Infraestrutura"
-      subtitle="Todos os dispositivos, servidores e integrações monitorados em tempo real"
-    >
-      {/* Offline alert banner */}
+    <>
       <OfflineAlertBanner devices={devices} />
-
-      {/* Hero stats row */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <DevicesOverviewCard devices={devices} />
         <ServersOverviewCard />
         <IntegrationsOverviewCard />
       </div>
-
-      {/* Body: inventory + sidebar */}
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2">
           <DeviceInventoryPanel devices={devices} />
         </div>
-
         <div className="col-span-1 flex flex-col gap-4">
           <RecentOpsPanel />
           <AnalysisSummaryPanel />
         </div>
       </div>
+    </>
+  );
+}
+
+// ── View: Segurança ───────────────────────────────────────────────────────────
+
+function SecurityView() {
+  const { data: posture, isLoading } = useQuery({
+    queryKey: ["executive-posture"],
+    queryFn: executiveApi.getPosture,
+    refetchInterval: 60_000,
+  });
+
+  const secLinks = [
+    { to: "/alerts",     icon: Bell,          label: "Alertas & SIEM",           desc: "Alertas ativos, SIEM e correlação"       },
+    { to: "/playbooks",  icon: ShieldCheck,   label: "SOAR Playbooks",            desc: "Automação de resposta a incidentes"       },
+    { to: "/identity",   icon: Users,          label: "Governança de Identidade", desc: "SoD, campanhas de revisão e JIT"          },
+    { to: "/compliance", icon: ClipboardCheck, label: "Compliance",               desc: "CIS, PCI-DSS, BACEN, LGPD"               },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {isLoading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="animate-spin text-brand-600" size={32} />
+        </div>
+      ) : posture ? (
+        <>
+          <div className="grid grid-cols-4 gap-4">
+            <RiskGauge score={posture.risk_score} />
+            <MetricCard
+              label="Alertas Críticos (7d)"
+              value={posture.alerts_7d.critical}
+              sub={`${posture.alerts_7d.total} total`}
+              icon={AlertTriangle}
+              color="bg-red-500"
+            />
+            <MetricCard
+              label="Contas Órfãs"
+              value={posture.identity.orphan_accounts}
+              sub={`${posture.identity.orphan_percentage}% do total`}
+              icon={Users}
+              color="bg-orange-500"
+            />
+            <MetricCard
+              label="Ações Pendentes"
+              value={posture.lifecycle_30d.pending_actions}
+              sub="offboardings aguardando"
+              icon={Clock}
+              color="bg-amber-500"
+            />
+          </div>
+          <div className="grid grid-cols-4 gap-4">
+            <FirmwareRiskCard />
+          </div>
+        </>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-4">
+        {secLinks.map(({ to, icon: Icon, label, desc }) => (
+          <Link
+            key={to}
+            to={to}
+            className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4 hover:border-brand-300 hover:shadow-sm transition-all"
+          >
+            <div className="h-10 w-10 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
+              <Icon size={20} className="text-brand-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-gray-900">{label}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
+            </div>
+            <ArrowRight size={16} className="text-gray-300 shrink-0" />
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── View: Executivo ───────────────────────────────────────────────────────────
+
+function ExecutiveView() {
+  const [period, setPeriod] = useState(30);
+  const [downloading, setDownloading] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+
+  const { data: posture, isLoading, refetch } = useQuery({
+    queryKey: ["executive-posture"],
+    queryFn: executiveApi.getPosture,
+    refetchInterval: 60_000,
+  });
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const blob = await executiveApi.downloadReport(period);
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `relatorio-executivo-${period}d.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Erro ao gerar relatório PDF");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-end gap-3 mb-6">
+        <button
+          onClick={() => refetch()}
+          className="p-2 text-gray-500 hover:text-brand-600 border rounded-lg"
+          title="Atualizar dados"
+        >
+          <RefreshCw size={16} />
+        </button>
+        <select
+          className="border rounded-lg px-3 py-2 text-sm"
+          value={period}
+          onChange={(e) => setPeriod(Number(e.target.value))}
+        >
+          <option value={7}>Últimos 7 dias</option>
+          <option value={30}>Últimos 30 dias</option>
+          <option value={90}>Últimos 90 dias</option>
+        </select>
+        <button
+          onClick={() => setShowSchedule(true)}
+          className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+        >
+          <Calendar size={16} /> Agendar
+        </button>
+        <button
+          onClick={handleDownload}
+          disabled={downloading || isLoading}
+          className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 text-sm disabled:opacity-50"
+        >
+          {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+          Exportar PDF
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-24">
+          <Loader2 className="animate-spin text-brand-600" size={32} />
+        </div>
+      ) : !posture ? null : (
+        <div className="space-y-6">
+          <div className="grid grid-cols-4 gap-4">
+            <RiskGauge score={posture.risk_score} />
+            <MetricCard
+              label="Usuários Monitorados"
+              value={posture.identity.total_users}
+              icon={Users}
+              color="bg-blue-500"
+              sub={`${posture.identity.orphan_accounts} contas inativas`}
+            />
+            <MetricCard
+              label="Alertas Críticos (7d)"
+              value={posture.alerts_7d.critical}
+              icon={AlertTriangle}
+              color="bg-red-500"
+              sub={`${posture.alerts_7d.total} total`}
+            />
+            <MetricCard
+              label="Ações Pendentes"
+              value={posture.lifecycle_30d.pending_actions}
+              icon={Clock}
+              color="bg-yellow-500"
+              sub="Offboardings aguardando"
+            />
+          </div>
+
+          <div className="grid grid-cols-4 gap-4">
+            <FirmwareRiskCard />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white border rounded-xl p-5">
+              <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Users size={16} className="text-brand-600" /> Identidade & Contas
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Contas órfãs</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-red-400 rounded-full"
+                        style={{ width: `${posture.identity.orphan_percentage}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-medium">{posture.identity.orphan_percentage}%</span>
+                  </div>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Offboardings concluídos ({period}d)</span>
+                  <span className="font-medium text-green-600">{posture.lifecycle_30d.offboards_completed}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Onboardings concluídos ({period}d)</span>
+                  <span className="font-medium text-blue-600">{posture.lifecycle_30d.onboards_completed}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white border rounded-xl p-5">
+              <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <ServerIcon size={16} className="text-brand-600" /> Infraestrutura
+              </h3>
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span className="flex items-center gap-2"><ServerIcon size={14} /> Servidores monitorados</span>
+                  <span className="font-medium">{posture.infrastructure.servers}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span className="flex items-center gap-2"><Database size={14} /> Bancos de dados</span>
+                  <span className="font-medium">{posture.infrastructure.databases}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span className="flex items-center gap-2"><AlertTriangle size={14} /> Total de alertas (7d)</span>
+                  <span className="font-medium">{posture.alerts_7d.total}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border rounded-xl p-5">
+            <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <TrendingUp size={16} className="text-brand-600" /> Atividade Recente
+            </h3>
+            {posture.recent_actions.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">Nenhuma ação recente</p>
+            ) : (
+              <div className="space-y-2">
+                {posture.recent_actions.map((a) => {
+                  const Icon       = EXEC_STATUS_ICONS[a.status] || Clock;
+                  const colorClass = EXEC_STATUS_COLORS[a.status] || "text-gray-500";
+                  return (
+                    <div key={a.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                      <div className="flex items-center gap-3">
+                        <Icon size={16} className={colorClass} />
+                        <div>
+                          <span className="text-sm font-medium">{a.target_username}</span>
+                          <span
+                            className={`text-xs ml-2 px-2 py-0.5 rounded-full ${
+                              a.action_type === "onboard"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}
+                          >
+                            {a.action_type}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs ${colorClass}`}>{a.status}</span>
+                        <span className="text-xs text-gray-400">
+                          {new Date(a.created_at).toLocaleDateString("pt-BR")}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="text-xs text-gray-400 text-right">
+            Dados gerados em: {new Date(posture.generated_at).toLocaleString("pt-BR")}
+          </div>
+        </div>
+      )}
+
+      {showSchedule && <ScheduleReportModal onClose={() => setShowSchedule(false)} />}
+    </div>
+  );
+}
+
+// ── View: Infra N3 ────────────────────────────────────────────────────────────
+
+function InfraView() {
+  const infraLinks = [
+    { to: "/server-analysis",     icon: Brain,    label: "Agente · Servidores", desc: "Análise N3 com IA" },
+    { to: "/database-connectors", icon: Database, label: "Bancos de Dados",     desc: "Auditoria de privilégios" },
+    { to: "/vm-migration",        icon: Monitor,  label: "Migração de VMs",     desc: "VMware e Proxmox" },
+    { to: "/cloud-posture",       icon: Globe,    label: "Cloud Posture",       desc: "AWS, Azure, GCP" },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4">
+        <ServersOverviewCard />
+        <IntegrationsOverviewCard />
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        <div className="col-span-2">
+          <AnalysisSummaryPanel />
+        </div>
+        <div className="col-span-1 flex flex-col gap-3">
+          {infraLinks.map(({ to, icon: Icon, label, desc }) => (
+            <Link
+              key={to}
+              to={to}
+              className="bg-white rounded-xl border border-gray-200 px-4 py-3 flex items-center gap-3 hover:border-brand-300 hover:shadow-sm transition-all"
+            >
+              <div className="h-8 w-8 rounded-lg bg-brand-50 flex items-center justify-center shrink-0">
+                <Icon size={16} className="text-brand-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900">{label}</p>
+                <p className="text-xs text-gray-400">{desc}</p>
+              </div>
+              <ArrowRight size={14} className="text-gray-300 shrink-0" />
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export function Dashboard() {
+  const { views, defaultView } = useDashboardViews();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const viewParam = searchParams.get("view") as DashboardView | null;
+  const activeView: DashboardView =
+    viewParam && views.some((v) => v.id === viewParam) ? viewParam : defaultView;
+
+  function selectView(v: DashboardView) {
+    setSearchParams({ view: v }, { replace: true });
+  }
+
+  const { data: devices = [] } = useQuery({
+    queryKey: ["devices"],
+    queryFn: devicesApi.list,
+  });
+
+  // Pre-fetch posture data so it's ready when user switches to security/executive tabs
+  const canFetchPosture = views.some((v) => v.id === "executive" || v.id === "security");
+  useQuery({
+    queryKey: ["executive-posture"],
+    queryFn: executiveApi.getPosture,
+    staleTime: 60_000,
+    enabled: canFetchPosture,
+  });
+
+  const meta = PAGE_META[activeView];
+
+  return (
+    <PageWrapper title={meta.title} subtitle={meta.subtitle}>
+      <DashboardTabBar views={views} activeView={activeView} onSelect={selectView} />
+
+      {activeView === "operational" && <OperationalView devices={devices} />}
+      {activeView === "security"    && <SecurityView />}
+      {activeView === "executive"   && <ExecutiveView />}
+      {activeView === "infra"       && <InfraView />}
     </PageWrapper>
   );
 }
