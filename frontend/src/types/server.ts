@@ -19,6 +19,7 @@ export interface ServerCredentials {
   password?: string;
   // Linux SSH
   private_key?: string;
+  sudo_password?: string;
   // Windows WinRM
   auth_type?: "ntlm" | "ssl" | "kerberos";
   verify_ssl?: boolean;

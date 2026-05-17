@@ -133,6 +133,7 @@ async def analyze(
                     password=creds.get("password", ""),
                     private_key=creds.get("private_key", ""),
                     use_sudo=server.use_sudo,
+                    sudo_password=creds.get("sudo_password", ""),
                 )
                 proto = "SSH"
 

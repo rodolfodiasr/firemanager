@@ -33,6 +33,7 @@ def _run_commands_sync(
     commands: dict[str, str],
     timeout: int,
     use_sudo: bool = False,
+    sudo_password: str = "",
 ) -> dict[str, str]:
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -57,11 +58,21 @@ def _run_commands_sync(
         client.connect(**connect_kwargs)
         for key, cmd in commands.items():
             try:
-                actual_cmd = f"sudo {cmd}" if use_sudo else cmd
-                _, stdout, stderr = client.exec_command(actual_cmd, timeout=timeout)
+                if use_sudo:
+                    actual_cmd = f"sudo -S {cmd}" if sudo_password else f"sudo {cmd}"
+                else:
+                    actual_cmd = cmd
+                stdin, stdout, stderr = client.exec_command(actual_cmd, timeout=timeout)
+                if use_sudo and sudo_password:
+                    stdin.write(sudo_password + "\n")
+                    stdin.flush()
                 out = stdout.read().decode(errors="replace").strip()
                 err = stderr.read().decode(errors="replace").strip()
-                results[key] = out or err or "(sem saída)"
+                # strip sudo password prompt from stderr
+                err_clean = "\n".join(
+                    l for l in err.splitlines() if not l.strip().startswith("[sudo]")
+                )
+                results[key] = out or err_clean or "(sem saída)"
             except Exception as e:
                 results[key] = f"ERRO: {e}"
     finally:
@@ -80,6 +91,7 @@ class SshLinuxConnector:
         private_key: str = "",
         timeout: int = 15,
         use_sudo: bool = False,
+        sudo_password: str = "",
     ) -> None:
         self.host = host
         self.port = port
@@ -88,6 +100,7 @@ class SshLinuxConnector:
         self.private_key = private_key
         self.timeout = timeout
         self.use_sudo = use_sudo
+        self.sudo_password = sudo_password
 
     async def gather_diagnostics(self) -> dict[str, str]:
         return await asyncio.to_thread(
@@ -100,6 +113,7 @@ class SshLinuxConnector:
             _READ_COMMANDS,
             self.timeout,
             self.use_sudo,
+            self.sudo_password,
         )
 
     async def run_commands(self, commands: list[str]) -> tuple[str, bool]:

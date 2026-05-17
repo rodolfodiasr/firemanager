@@ -11,9 +11,10 @@ import type { Server, ServerCreate } from "../types/server";
 
 // ── Credential fields ─────────────────────────────────────────────────────────
 
-function LinuxCredentials({ register, initial }: {
+function LinuxCredentials({ register, initial, useSudo }: {
   register: ReturnType<typeof useForm<ServerCreate>>["register"];
   initial?: Server;
+  useSudo?: boolean;
 }) {
   return (
     <>
@@ -26,7 +27,7 @@ function LinuxCredentials({ register, initial }: {
         />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">Senha</label>
+        <label className="block text-xs font-medium text-gray-700 mb-1">Senha SSH</label>
         <input
           type="password"
           {...register("credentials.password")}
@@ -54,9 +55,26 @@ function LinuxCredentials({ register, initial }: {
         />
         <label htmlFor="use_sudo" className="text-xs text-gray-700">
           Usar <code className="bg-gray-100 px-1 rounded">sudo</code> nos comandos
-          <span className="text-gray-400 ml-1">(requer NOPASSWD configurado no servidor)</span>
         </label>
       </div>
+      {useSudo && (
+        <div className="pl-6 border-l-2 border-amber-200 space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Senha sudo
+              <span className="text-gray-400 font-normal ml-1">
+                (deixe vazio se for a mesma senha SSH ou se NOPASSWD estiver configurado)
+              </span>
+            </label>
+            <input
+              type="password"
+              {...register("credentials.sudo_password")}
+              placeholder="••••••••"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -136,6 +154,7 @@ function ServerModal({ initial, onClose }: ModalProps) {
   });
 
   const osType = useWatch({ control, name: "os_type" });
+  const useSudo = useWatch({ control, name: "use_sudo" });
   const isWindows = osType === "windows";
 
   const mut = useMutation({
@@ -235,7 +254,7 @@ function ServerModal({ initial, onClose }: ModalProps) {
             </p>
             {isWindows
               ? <WindowsCredentials register={register} initial={initial} />
-              : <LinuxCredentials register={register} initial={initial} />
+              : <LinuxCredentials register={register} initial={initial} useSudo={!!useSudo} />
             }
           </div>
 
