@@ -399,6 +399,8 @@ async def _execute_rmm_commands(
     """Execute read-only diagnostic commands on an RMM-managed endpoint."""
     from app.models.rmm import RmmIntegration, RmmAgent
     from app.services import rmm_service
+    from app.services.tactical_rmm_service import run_command as trmm_run_command
+    from app.utils.crypto import decrypt_credentials  # noqa: PLC0415
 
     if not session.rmm_integration_id or not session.rmm_agent_external_id:
         return "Integração RMM ou ID do agente não configurados para esta investigação."
@@ -422,6 +424,16 @@ async def _execute_rmm_commands(
     agent = result.scalar_one_or_none()
     hostname = agent.hostname if agent else session.rmm_agent_external_id
 
+    # Fail fast if agent is known offline — runscript/ returns 500 for offline agents
+    if agent and agent.status and agent.status.lower() not in ("online", "ok"):
+        last_seen = str(agent.last_seen)[:16] if agent.last_seen else "desconhecido"
+        return (
+            f"⚠️ O agente '{hostname}' está offline (status: {agent.status}, "
+            f"último acesso: {last_seen}). Execute os comandos quando o agente estiver online.\n\n"
+            f"Comandos planejados para quando o agente voltar:\n"
+            + "\n".join(f"  • {c}" for c in commands)
+        )
+
     is_windows = agent and agent.os_name and "windows" in agent.os_name.lower()
     shell = "powershell" if (is_windows or not agent) else "bash"
 
@@ -437,21 +449,49 @@ async def _execute_rmm_commands(
         ]
     body = "\n".join(parts)
 
-    run = await rmm_service.execute_on_agent(
-        db=db,
-        integration=integration,
-        agent_external_id=session.rmm_agent_external_id,
-        agent_hostname=hostname,
-        run_type="script",
-        shell=shell,
-        body=body,
-        timeout=120,
-        executed_by=session.user_id,
-    )
+    # Try runscript/ first; fall back to cmd/ one-by-one if it fails (e.g. agent just went offline)
+    try:
+        run = await rmm_service.execute_on_agent(
+            db=db,
+            integration=integration,
+            agent_external_id=session.rmm_agent_external_id,
+            agent_hostname=hostname,
+            run_type="script",
+            shell=shell,
+            body=body,
+            timeout=120,
+            executed_by=session.user_id,
+        )
+        if run.status == "error" and not run.output:
+            raise RuntimeError(f"runscript retornou erro (exit_code={run.exit_code})")
+        return run.output or "(sem saída)"
+    except Exception as script_err:
+        log.warning("runscript/ falhou, tentando cmd/ por comando: %s", script_err)
 
-    if run.status == "error" and not run.output:
-        return f"Erro ao executar via RMM (exit_code={run.exit_code})."
-    return run.output or "(sem saída)"
+    # Fallback: run each command individually via cmd/
+    config = decrypt_credentials(integration.config_encrypted or "{}")
+    config["base_url"] = integration.base_url
+    config["verify_ssl"] = integration.verify_ssl
+    outputs: list[str] = []
+    for cmd in commands:
+        try:
+            if shell == "powershell":
+                inline = f'try {{ {cmd} | Out-String }} catch {{ "ERRO: $_" }}'
+            else:
+                inline = f'{cmd} 2>&1'
+            result_cmd = await trmm_run_command(
+                config=config,
+                agent_id=session.rmm_agent_external_id,
+                command=inline,
+                shell=shell,
+                timeout=60,
+            )
+            out = result_cmd.get("output", "(sem saída)")
+        except Exception as cmd_err:
+            out = f"ERRO: {cmd_err}"
+        outputs.append(f"--- {cmd} ---\n{out}")
+
+    return "\n\n".join(outputs) if outputs else "(sem saída)"
 
 
 async def _collect_monitoring_data(db: AsyncSession, session: InvestigationSession) -> str:
