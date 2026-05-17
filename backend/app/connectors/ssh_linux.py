@@ -32,6 +32,7 @@ def _run_commands_sync(
     private_key_content: str,
     commands: dict[str, str],
     timeout: int,
+    use_sudo: bool = False,
 ) -> dict[str, str]:
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -56,7 +57,8 @@ def _run_commands_sync(
         client.connect(**connect_kwargs)
         for key, cmd in commands.items():
             try:
-                _, stdout, stderr = client.exec_command(cmd, timeout=timeout)
+                actual_cmd = f"sudo {cmd}" if use_sudo else cmd
+                _, stdout, stderr = client.exec_command(actual_cmd, timeout=timeout)
                 out = stdout.read().decode(errors="replace").strip()
                 err = stderr.read().decode(errors="replace").strip()
                 results[key] = out or err or "(sem saída)"
@@ -77,6 +79,7 @@ class SshLinuxConnector:
         password: str = "",
         private_key: str = "",
         timeout: int = 15,
+        use_sudo: bool = False,
     ) -> None:
         self.host = host
         self.port = port
@@ -84,6 +87,7 @@ class SshLinuxConnector:
         self.password = password
         self.private_key = private_key
         self.timeout = timeout
+        self.use_sudo = use_sudo
 
     async def gather_diagnostics(self) -> dict[str, str]:
         return await asyncio.to_thread(
@@ -95,6 +99,7 @@ class SshLinuxConnector:
             self.private_key,
             _READ_COMMANDS,
             self.timeout,
+            self.use_sudo,
         )
 
     async def run_commands(self, commands: list[str]) -> tuple[str, bool]:

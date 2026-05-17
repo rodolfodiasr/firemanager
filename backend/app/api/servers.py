@@ -32,6 +32,7 @@ def _to_read(server: Server) -> ServerRead:
         ssh_port=server.ssh_port,
         os_type=server.os_type,
         description=server.description,
+        use_sudo=server.use_sudo,
         is_active=server.is_active,
         created_at=server.created_at,
         updated_at=server.updated_at,
@@ -65,6 +66,7 @@ async def create_server(
         os_type=data.os_type,
         description=data.description,
         encrypted_credentials=encrypt_credentials(data.credentials),
+        use_sudo=data.use_sudo,
         is_active=data.is_active,
     )
     db.add(server)
@@ -92,6 +94,7 @@ async def update_server(
     if data.ssh_port is not None:    server.ssh_port = data.ssh_port
     if data.os_type is not None:     server.os_type = data.os_type
     if data.description is not None: server.description = data.description
+    if data.use_sudo is not None:    server.use_sudo = data.use_sudo
     if data.is_active is not None:   server.is_active = data.is_active
     if data.credentials is not None:
         server.encrypted_credentials = encrypt_credentials(data.credentials)

@@ -8,6 +8,7 @@ export interface Server {
   ssh_port: number;
   os_type: ServerOsType;
   description: string | null;
+  use_sudo: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -30,6 +31,7 @@ export interface ServerCreate {
   os_type?: ServerOsType;
   description?: string;
   credentials: ServerCredentials;
+  use_sudo?: boolean;
   is_active?: boolean;
 }
 
@@ -40,6 +42,7 @@ export interface ServerUpdate {
   os_type?: ServerOsType;
   description?: string;
   credentials?: ServerCredentials;
+  use_sudo?: boolean;
   is_active?: boolean;
 }
 

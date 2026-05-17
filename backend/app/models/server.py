@@ -35,6 +35,7 @@ class Server(Base):
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     encrypted_credentials: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    use_sudo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False

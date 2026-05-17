@@ -45,6 +45,18 @@ function LinuxCredentials({ register, initial }: {
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
         />
       </div>
+      <div className="flex items-center gap-2 pt-1">
+        <input
+          type="checkbox"
+          id="use_sudo"
+          {...register("use_sudo")}
+          className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+        />
+        <label htmlFor="use_sudo" className="text-xs text-gray-700">
+          Usar <code className="bg-gray-100 px-1 rounded">sudo</code> nos comandos
+          <span className="text-gray-400 ml-1">(requer NOPASSWD configurado no servidor)</span>
+        </label>
+      </div>
     </>
   );
 }
@@ -117,9 +129,10 @@ function ServerModal({ initial, onClose }: ModalProps) {
           ssh_port: initial.ssh_port,
           os_type: initial.os_type,
           description: initial.description ?? "",
+          use_sudo: initial.use_sudo,
           credentials: { username: "", auth_type: "ntlm" } as ServerCreate["credentials"],
         }
-      : { ssh_port: 22, os_type: "linux", credentials: { username: "", auth_type: "ntlm" } as ServerCreate["credentials"] },
+      : { ssh_port: 22, os_type: "linux", use_sudo: false, credentials: { username: "", auth_type: "ntlm" } as ServerCreate["credentials"] },
   });
 
   const osType = useWatch({ control, name: "os_type" });
@@ -134,6 +147,7 @@ function ServerModal({ initial, onClose }: ModalProps) {
           ssh_port: data.ssh_port,
           os_type: data.os_type,
           description: data.description,
+          use_sudo: data.use_sudo,
           credentials: data.credentials.username ? data.credentials : undefined,
         });
       }
@@ -305,6 +319,9 @@ function ServerRow({ server, onEdit }: RowProps) {
         <p className="text-xs text-gray-500 mt-0.5">
           {server.host}:{server.ssh_port}
           <span className="text-gray-300 ml-2">via {proto}</span>
+          {server.use_sudo && (
+            <span className="ml-2 text-xs font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">sudo</span>
+          )}
         </p>
         {server.description && (
           <p className="text-xs text-gray-400 mt-0.5 truncate">{server.description}</p>

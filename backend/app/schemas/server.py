@@ -13,6 +13,7 @@ class ServerCreate(BaseModel):
     os_type: ServerOsType = ServerOsType.linux
     description: str | None = None
     credentials: dict = Field(default_factory=dict)
+    use_sudo: bool = False
     is_active: bool = True
 
 
@@ -23,6 +24,7 @@ class ServerUpdate(BaseModel):
     os_type: ServerOsType | None = None
     description: str | None = None
     credentials: dict | None = None
+    use_sudo: bool | None = None
     is_active: bool | None = None
 
 
@@ -34,6 +36,7 @@ class ServerRead(BaseModel):
     ssh_port: int
     os_type: ServerOsType
     description: str | None
+    use_sudo: bool
     is_active: bool
     created_at: datetime
     updated_at: datetime
