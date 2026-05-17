@@ -204,6 +204,7 @@ function OperationHistoryPanel({ categories, onSelect }: {
 
 export function Agent() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const location = useLocation();
   const handoffState = location.state as { context?: string; suggested_query?: string } | null;
   const editId = searchParams.get("edit");

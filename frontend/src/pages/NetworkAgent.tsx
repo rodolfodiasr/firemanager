@@ -206,6 +206,7 @@ function OperationHistoryPanel({ categories, onSelect }: {
 
 export function NetworkAgent() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const location = useLocation();
   const handoffState = location.state as { context?: string; suggested_query?: string } | null;
   const deviceParam = searchParams.get("device");
