@@ -145,7 +145,9 @@ class SshLinuxConnector:
                 {"ping": "echo ok"},
                 10,
             )
-            ok = result.get("ping", "").strip() == "ok"
-            return ok, "SSH OK" if ok else "Resposta inesperada"
+            out = result.get("ping", "").strip()
+            ok = out == "ok"
+            return ok, "SSH OK" if ok else f"Resposta inesperada: {out!r}"
         except Exception as exc:
+            logger.warning("SSH ping failed %s@%s:%s — %s", self.username, self.host, self.port, exc)
             return False, str(exc)
