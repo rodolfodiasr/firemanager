@@ -40,6 +40,8 @@ import RmmPage from "./pages/RmmPage";
 import RmmAgent from "./pages/RmmAgent";
 import { AdminBackupPage } from "./pages/AdminBackupPage";
 import { HelpCenterPage } from "./pages/HelpCenterPage";
+import { CrossDomainPage } from "./pages/CrossDomainPage";
+import { CompositeInvestigationPage } from "./pages/CompositeInvestigationPage";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
 
@@ -117,6 +119,8 @@ export function AppRouter() {
       <Route path="/rmm-agent"             element={<ProtectedLayout><RmmAgent /></ProtectedLayout>} />
       <Route path="/admin-backup"          element={<ProtectedLayout><AdminBackupPage /></ProtectedLayout>} />
       <Route path="/help"                  element={<ProtectedLayout><HelpCenterPage /></ProtectedLayout>} />
+      <Route path="/cross-domain"          element={<ProtectedLayout><CrossDomainPage /></ProtectedLayout>} />
+      <Route path="/composite-investigation" element={<ProtectedLayout><CompositeInvestigationPage /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

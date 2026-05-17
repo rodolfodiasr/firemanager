@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   Bot, ExternalLink, Send, Loader2, Plus, Trash2, Sparkles, Database,
   Pin, PinOff, FolderOpen, Folder, Users, MoreHorizontal,
   Pencil, Share2, FolderInput, Check, X, ChevronRight, ChevronDown, FileText,
-  Globe, Shield, Tag, BookOpen,
+  Globe, Shield, Tag, BookOpen, Server, Network, Flame, Monitor, Layers,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import {
@@ -65,9 +65,87 @@ const FOLDER_COLORS = [
   "#ef4444", "#ec4899", "#8b5cf6", "#64748b",
 ];
 
+// ── Detecção de domínio no texto da IA ───────────────────────────────────────
+
+const DOMAIN_SIGNALS = [
+  {
+    route: "/server-analysis",
+    label: "Agente Servidores",
+    icon: <Server size={11} />,
+    keywords: ["servidor", "servidores", "server", "memória", "memoria", "cpu", "processo", "processos",
+      "ram", "disco", "disk", "swap", "kernel", "systemd", "linux", "windows server", "ssh",
+      "memory leak", "memory", "zabbix", "wazuh"],
+  },
+  {
+    route: "/agent",
+    label: "Agente Firewall",
+    icon: <Flame size={11} />,
+    keywords: ["firewall", "regra", "regras", "rule", "rules", "bloqueio", "bloquear", "acl",
+      "nat", "vpn", "ipsec", "politica", "política", "permit", "deny", "acesso negado",
+      "fortinet", "pfsense", "cisco asa", "checkpoint"],
+  },
+  {
+    route: "/network-agent",
+    label: "Agente Redes",
+    icon: <Network size={11} />,
+    keywords: ["rede", "redes", "switch", "roteador", "roteamento", "vlan", "uplink",
+      "gateway", "latência", "latencia", "ping", "traceroute", "bgp", "ospf",
+      "conectividade", "link", "trunk", "spanning tree", "stp"],
+  },
+  {
+    route: "/rmm-agent",
+    label: "Agente Estações",
+    icon: <Monitor size={11} />,
+    keywords: ["estação", "estações", "workstation", "endpoint", "computador", "pc",
+      "notebook", "desktop", "windows 10", "windows 11", "usuário", "usuario", "rmm"],
+  },
+];
+
+function detectDomains(text: string): typeof DOMAIN_SIGNALS {
+  const lower = text.toLowerCase();
+  return DOMAIN_SIGNALS.filter((d) =>
+    d.keywords.some((kw) => lower.includes(kw))
+  );
+}
+
+// ── InvestigateButtons ────────────────────────────────────────────────────────
+
+function InvestigateButtons({ content, sessionTitle }: { content: string; sessionTitle?: string | null }) {
+  const navigate = useNavigate();
+  const domains = detectDomains(content);
+  if (domains.length === 0) return null;
+
+  const context = sessionTitle
+    ? `[Contexto: ${sessionTitle}]\n\n${content}`
+    : content;
+
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-200 flex flex-wrap gap-1.5">
+      <span className="text-[10px] text-gray-400 w-full">Investigar com agente:</span>
+      {domains.map((d) => (
+        <button
+          key={d.route}
+          onClick={() => navigate(d.route, { state: { context, suggested_query: content.slice(0, 300) } })}
+          className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg border border-brand-300 text-brand-700 bg-brand-50 hover:bg-brand-100 transition-colors font-medium"
+        >
+          {d.icon}
+          {d.label}
+        </button>
+      ))}
+      <button
+        onClick={() => navigate("/cross-domain", { state: { context, suggested_query: content.slice(0, 300) } })}
+        className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg border border-violet-300 text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors font-medium"
+      >
+        <Layers size={11} />
+        Investigação Cruzada
+      </button>
+    </div>
+  );
+}
+
 // ── MessageBubble ─────────────────────────────────────────────────────────────
 
-function MessageBubble({ msg }: { msg: AssistantMessage }) {
+function MessageBubble({ msg, sessionTitle }: { msg: AssistantMessage; sessionTitle?: string | null }) {
   const isUser = msg.role === "user";
   return (
     <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}>
@@ -85,16 +163,19 @@ function MessageBubble({ msg }: { msg: AssistantMessage }) {
       }`}>
         {msg.content}
         {!isUser && (
-          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-            {msg.model && (
-              <span className="text-[10px] text-gray-400 font-medium">{msg.model}</span>
-            )}
-            {msg.ragContextUsed && (
-              <span className="flex items-center gap-0.5 text-[10px] text-blue-500">
-                <Database size={9} />RAG
-              </span>
-            )}
-          </div>
+          <>
+            <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+              {msg.model && (
+                <span className="text-[10px] text-gray-400 font-medium">{msg.model}</span>
+              )}
+              {msg.ragContextUsed && (
+                <span className="flex items-center gap-0.5 text-[10px] text-blue-500">
+                  <Database size={9} />RAG
+                </span>
+              )}
+            </div>
+            <InvestigateButtons content={msg.content} sessionTitle={sessionTitle} />
+          </>
         )}
       </div>
     </div>
@@ -1193,7 +1274,7 @@ export function AssistantPage() {
               </div>
             )}
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} msg={msg} />
+              <MessageBubble key={msg.id} msg={msg} sessionTitle={currentSession?.title} />
             ))}
             {loading && (
               <div className="flex gap-3">

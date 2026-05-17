@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Monitor, Search, Wifi, WifiOff, Loader2, Activity } from "lucide-react";
+import { useLocation } from "react-router-dom";
+import { Monitor, Search, Wifi, WifiOff, Loader2, Activity, Sparkles } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { InvestigationPanel } from "../components/investigation/InvestigationPanel";
 import { rmmApi, type RmmAgent as RmmAgentType } from "../api/rmm";
@@ -23,6 +24,8 @@ function AgentStatusBadge({ status }: { status: string }) {
 }
 
 export default function RmmAgent() {
+  const location = useLocation();
+  const handoffState = location.state as { context?: string; suggested_query?: string } | null;
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<string>("");
   const [selectedAgent, setSelectedAgent] = useState<RmmAgentType | null>(null);
 
@@ -50,6 +53,15 @@ export default function RmmAgent() {
 
   return (
     <PageWrapper title="Agente · Estações">
+      {handoffState?.context && (
+        <div className="mb-3 flex items-start gap-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-2.5">
+          <Sparkles size={13} className="text-brand-500 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-brand-700">Contexto importado do Assistente IA</p>
+            <p className="text-xs text-brand-600 truncate">{handoffState.context.slice(0, 120)}…</p>
+          </div>
+        </div>
+      )}
       <div className="h-[calc(100vh-7rem)] flex gap-4">
         {/* ── Left panel — integration + agent selector ── */}
         <div className="w-64 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden">

@@ -7,6 +7,7 @@ import {
   Check, X, Pencil, CheckSquare, Square,
 } from "lucide-react";
 import { investigationsApi, type InvestigationSession, type InvestigationPhase, type CommandState } from "../../api/investigations";
+import { compositeApi } from "../../api/composite";
 import { MarkdownText } from "../shared/MarkdownText";
 import { useNavigate } from "react-router-dom";
 
@@ -37,6 +38,10 @@ interface InvestigationPanelProps {
   availableDevices?: AvailableDevice[];
   sessionId?: string;
   onSessionCreated?: (sessionId: string) => void;
+  // Bloco 3 — investigação composta
+  compositeId?: string;
+  subInvestigationId?: string;
+  onFindingsSubmitted?: () => void;
 }
 
 // ── Command row ───────────────────────────────────────────────────────────────
@@ -311,6 +316,9 @@ export function InvestigationPanel({
   availableDevices,
   sessionId: externalSessionId,
   onSessionCreated,
+  compositeId,
+  subInvestigationId,
+  onFindingsSubmitted,
 }: InvestigationPanelProps) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -320,6 +328,22 @@ export function InvestigationPanel({
   const [problem, setProblem] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [tab, setTab] = useState<"phases" | "chat">("phases");
+  const [findingsText, setFindingsText] = useState("");
+  const [showFindingsForm, setShowFindingsForm] = useState(false);
+  const [findingsSubmitted, setFindingsSubmitted] = useState(false);
+
+  const submitFindingsMut = useMutation({
+    mutationFn: () =>
+      compositeApi.submitFindings(compositeId!, subInvestigationId!, {
+        findings: findingsText.trim() || session?.synthesis || "",
+        investigation_session_id: sessionId ?? undefined,
+      }),
+    onSuccess: () => {
+      setFindingsSubmitted(true);
+      setShowFindingsForm(false);
+      onFindingsSubmitted?.();
+    },
+  });
 
   // Multi-device selection — starts with target.device_ids if provided, else target.device_id
   const initialSelected = target.device_ids
@@ -705,6 +729,54 @@ export function InvestigationPanel({
                   ? <><Loader2 size={13} className="animate-spin" /> Exportando...</>
                   : <><Share2 size={13} /> Exportar Runbook para AI Assistant</>}
               </button>
+
+              {/* Bloco 3 — Enviar resultado para N3 */}
+              {compositeId && subInvestigationId && !findingsSubmitted && (
+                <>
+                  {!showFindingsForm ? (
+                    <button
+                      onClick={() => { setFindingsText(session?.synthesis ?? ""); setShowFindingsForm(true); }}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700"
+                    >
+                      <ArrowRight size={13} /> Enviar resultado para N3
+                    </button>
+                  ) : (
+                    <div className="space-y-2 border border-green-200 bg-green-50 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-green-800">Conclusão a enviar para o N3</p>
+                      <textarea
+                        value={findingsText}
+                        onChange={(e) => setFindingsText(e.target.value)}
+                        rows={4}
+                        placeholder="Descreva o que encontrou neste domínio…"
+                        className="w-full text-xs border border-green-300 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none bg-white"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowFindingsForm(false)}
+                          className="flex-1 text-xs border border-gray-200 rounded-lg py-1.5 text-gray-600 hover:bg-gray-50"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={() => submitFindingsMut.mutate()}
+                          disabled={!findingsText.trim() || submitFindingsMut.isPending}
+                          className="flex-1 flex items-center justify-center gap-1 text-xs bg-green-600 text-white rounded-lg py-1.5 hover:bg-green-700 disabled:opacity-50"
+                        >
+                          {submitFindingsMut.isPending
+                            ? <Loader2 size={11} className="animate-spin" />
+                            : <ArrowRight size={11} />}
+                          {submitFindingsMut.isPending ? "Enviando…" : "Confirmar envio"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              {findingsSubmitted && (
+                <div className="flex items-center gap-2 justify-center py-2 text-green-700 text-sm font-medium">
+                  <CheckCircle2 size={14} /> Resultado enviado para o N3
+                </div>
+              )}
             </div>
           )}
 

@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Brain, Send, Loader2, Database, Shield, History,
-  FileDown, Trash2, ChevronRight, Server as ServerIcon, ShieldCheck, Search,
+  FileDown, Trash2, ChevronRight, Server as ServerIcon, ShieldCheck, Search, Sparkles,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { serversApi } from "../api/servers";
@@ -218,8 +218,11 @@ function MessageBubble({
 export function ServerAnalysis() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const handoffState = location.state as { context?: string; suggested_query?: string } | null;
+
   const [messages, setMessages] = useState<Message[]>([]);
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(handoffState?.suggested_query?.slice(0, 500) ?? "");
   const [loading, setLoading] = useState(false);
   const [selectedServers, setSelectedServers] = useState<string[]>([]);
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
@@ -305,6 +308,15 @@ export function ServerAnalysis() {
 
   return (
     <PageWrapper title="Analista N3">
+      {handoffState?.context && (
+        <div className="mb-3 flex items-start gap-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-2.5">
+          <Sparkles size={13} className="text-brand-500 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-brand-700">Contexto importado do Assistente IA</p>
+            <p className="text-xs text-brand-600 truncate">{handoffState.context.slice(0, 120)}…</p>
+          </div>
+        </div>
+      )}
       <div className="flex gap-6 h-[calc(100vh-140px)]">
         {/* Left panel */}
         <div className="w-64 shrink-0 flex flex-col gap-0 bg-white border border-gray-200 rounded-xl overflow-hidden">

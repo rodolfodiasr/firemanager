@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Pencil, Layers, Square, CheckSquare, AlertCircle, Loader2, BookOpen, Search, MessageSquare, Microscope } from "lucide-react";
+import { Pencil, Layers, Square, CheckSquare, AlertCircle, Loader2, BookOpen, Search, MessageSquare, Microscope, Sparkles } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { ChatWindow } from "../components/agent/ChatWindow";
 import { useDevices } from "../hooks/useDevices";
@@ -148,6 +148,8 @@ function BulkPanel({ devices }: { devices: Device[] }) {
 
 export function Agent() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const handoffState = location.state as { context?: string; suggested_query?: string } | null;
   const editId = searchParams.get("edit");
   const deviceParam = searchParams.get("device");
   const seedParam = searchParams.get("seed");
@@ -156,7 +158,7 @@ export function Agent() {
   const devices = allDevices.filter((d) => d.category === "firewall");
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(deviceParam ?? null);
   const [bulkMode, setBulkMode] = useState(false);
-  const [mode, setMode] = useState<"operate" | "investigate">("operate");
+  const [mode, setMode] = useState<"operate" | "investigate">(handoffState?.context ? "investigate" : "operate");
   const [useBookstackContext, setUseBookstackContext] = useState(true);
 
   const { data: editOp } = useQuery({
@@ -192,6 +194,15 @@ export function Agent() {
 
   return (
     <PageWrapper title={editOp ? "Editar Operação" : "Agente de Firewall"}>
+      {handoffState?.context && (
+        <div className="mb-3 flex items-start gap-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-2.5">
+          <Sparkles size={13} className="text-brand-500 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-brand-700">Contexto importado do Assistente IA</p>
+            <p className="text-xs text-brand-600 truncate">{handoffState.context.slice(0, 120)}…</p>
+          </div>
+        </div>
+      )}
       <div className="h-[calc(100vh-7rem)] flex flex-col gap-3">
         {/* Mode toggle */}
         {!editOp && (
