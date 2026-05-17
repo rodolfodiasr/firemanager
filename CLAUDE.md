@@ -184,15 +184,27 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 23.ext | RMM Integrations | `rmm_integrations` + `rmm_devices` (migration 0068); NinjaRMM, Atera, ConnectWise Automate, Tactical RMM; `RmmPage.tsx` com CRUD de integrações e listagem de devices gerenciados | ✅ |
 | 36.ext | File Share Governance | `file_share_configs` + `file_shares` + `file_share_permissions` (migration 0070); auditoria de pastas compartilhadas AD via SMB/WinRM; detecção de permissões excessivas e compartilhamentos órfãos | ✅ |
 | 37.ext | SIEM CEF Syslog Forwarder | `siem_syslog_configs` (migration 0071); forwarder CEF universal (UDP/TCP/TLS) para qualquer SIEM; normalização de eventos do Eternity SecOps para formato CEF; configurável por tenant | ✅ |
-| 31.cont | SSO Role Mapping + Device Connection Mode | `sso_role_mappings` (migration 0069): mapeamento grupo IdP → role plataforma + JIT provisioning; `connection_mode` + `edge_agent_id` em devices (migration 0081): suporte a `direct` vs `edge` por device | ✅ (parcial — Edge Agent Python/Docker runtime, WebSocket gateway e dispatcher pendentes) |
-| 34.cont | Seccomp Blocklist | `infra/security/seccomp-default.json` convertido para SCMP_ACT_ALLOW (blocklist) + 21 syscalls perigosas bloqueadas (ptrace, kexec, módulos de kernel, reboot, iopl/ioperm, etc.); `docker-compose.yml` com `seccomp:./security/seccomp-default.json` | ✅ (parcial — mTLS/step-ca, Vault HA 3 nodes, sidecar OPA real pendentes) |
+| 31.cont | Edge Agent Real + OIDC + SSO | `sso_role_mappings` (migration 0069): JIT provisioning grupo IdP → role; `connection_mode`+`edge_agent_id` em devices (migration 0081); `edge_gateway.py` WebSocket hub `/edge-gateway/{token}`; `edge_dispatcher.py` detecta mode=edge; `edge_agent/` processo Python completo (main, executor, heartbeat, security, Dockerfile python:3.12-slim usuário não-root fmedge) | ✅ |
+| 34.cont | Infra Segurança — Docker + AppArmor + Seccomp + mTLS setup | Redes Docker isoladas (frontend/backend/worker/monitoring_net); `seccomp-default.json` blocklist SCMP_ACT_ALLOW + 21 syscalls bloqueadas; `apparmor-api.conf` nega raw sockets + escrita /app; `setup-mtls.sh` step-ca emite certs 6 serviços TTL 8760h; `HARDENING.md` guia completo | ✅ (parcial — Vault HA 3 nodes e sidecar OPA real pendentes) |
+| — | Auth Mista local/LDAP/OIDC/break_glass | `auth_source`+`ldap_dn`+`break_glass` em users (migration 0079); `auth_source` em invite_tokens (migration 0080); `ldap_auth_service.py` bind duplo com Fernet, mapeamento grupo AD → role; login branch por auth_source; AcceptInvite sem senha para LDAP/OIDC; `AuthSourceBadge` em membros (AD/LDAP=azul, SSO=roxo, break-glass=vermelho) | ✅ |
+| 46.ext | Auth Refresh Token Endpoint | `POST /auth/refresh` rolling: valida refresh JWT 7d, emite novo access token 15min + novo refresh token; previne session fixation; gap xfail removido dos testes | ✅ |
+| 50 | LLM Provider Manager | `llm_configs` (migration 0075); `LLMProviderManager`: hierarquia global (super admin) → tenant → default; UI em Organisation.tsx aba IA com CRUD de providers; seleção por tenant para operações de agente e assistant; fallback automático Haiku quando Sonnet retorna 529 | ✅ |
+| — | Investigação Iterativa IA — Framework Completo | Per-command approve/reject/edit em cada fase; "Continuar Investigação" (novas fases a partir de findings); audit hash-chain em todos os eventos de investigação; multi-device investigação paralela SSH; render markdown análise + chat; contexto de vendor/OS injetado para Claude usar CLI correta | ✅ |
+| — | Investigação RMM (Agente Estações) | `rmm_integration_id`+`rmm_agent_external_id` em investigation_sessions (migration 0089); `rmm_script_templates` (migration 0088); branch `rmm` em `execute_phase()` executando via PowerShell/bash com base64 EncodedCommand; `RmmAgent.tsx` página `/rmm-agent` com seletor integração + lista agents + InvestigationPanel | ✅ |
+| — | RMM — Script Runs + Site Filter + Templates | `rmm_script_runs` (migration 0086): histórico de execuções por agente com status/output; `site_filter` em rmm_integrations (migration 0087): filtro por site/cliente; `rmm_script_templates` (migration 0088): biblioteca de scripts reutilizáveis por tenant; `RmmPage.tsx` reformulado com inventário, run script/command, filtros, stats e detalhe por agente | ✅ |
+| — | Agente Estações — modos Operar/Histórico/Investigar | `RmmAgent.tsx`: botões de modo no painel; Operar = executor shell (PowerShell/cmd/bash) com output em terminal escuro; Histórico = execuções passadas com polling 5s; Investigar = InvestigationPanel integrado; botões desabilitados sem estação selecionada | ✅ |
+| — | Histórico nos Agentes Firewall e Redes | `Agent.tsx`: painel esquerdo com abas Dispositivo \| Histórico; lista operações por category=firewall com status badge; clicar carrega operação via `?edit=id`; `NetworkAgent.tsx`: mesmo padrão, filtra por categories=[switch,routing], adicionado suporte a `?edit=id` | ✅ |
+| — | Voice Input + Upload de Arquivo/Imagem no Chat | Web Speech API (reconhecimento nativo) + fallback Whisper (OpenAI); upload de imagem (base64 inline para Claude) e arquivo (texto extraído); botões de microfone e paperclip no chat do agente | ✅ |
+| — | Sistema de Ajuda Contextual + Central de Ajuda | `HelpDrawer.tsx`: painel lateral com overlay (fecha com Esc), descrição, passos, dica, link para /help; `PageWrapper.tsx`: detecta rota e exibe botão "? Ajuda" automaticamente; `HelpCenterPage.tsx` `/help` com busca em tempo real, 31 módulos cobertos; `helpContent.ts` indexado por rota; item "Central de Ajuda" fixado na sidebar acima do footer | ✅ |
+| — | Investigação Multi-Domínio (Cross-domain + Composite) | `CrossDomainPage.tsx` `/cross-domain`: seleção de domínios filtrada por category_roles, execução paralela, polling, correlação IA, navegação por agente; `CompositeInvestigationPage.tsx` `/composite-investigation`: dashboard N3 com criação, progresso por domínio, consolidação IA, plano de ação e resolução; handoff inteligente AssistantPage → Agentes por keywords de domínio | ✅ |
+| — | Permissões Granulares por Domínio + Matriz de Equipe | `Organisation.tsx`: aba Equipe com sub-tabs "Lista de Membros" \| "Matriz de Permissões"; Matriz exibe todos os usuários × todos os domínios com selects inline editáveis; step "Permissões por domínio" no wizard de convite; `PermissionMatrixDrawer` com presets rápidos DBA e Analista de SI | ✅ |
+| — | Frontend Melhorias (R1–R16) | **R1** VaultPage `/vault`: CRUD de segredos com badge expiração + rotação; **R3** ModuleRole expandido (alerts/playbooks/cross_investigation/ai_assistant/knowledge_base) + `useModulePermission` hook; **R4** PlaybooksPage aba Aprovações (fila SoD, criador não aprova próprio); **R5** TenantRole `analyst_sec`; **R6** Presets DBA + Analista SI no drawer; **R7** E2E: criar Remediação/Ticket IA de investigações cruzadas; **R8** Audit filtros tipo+módulo; **R9/R10** Alerts aba SLA & Manutenção (targets/escalação/janelas); **R12** Executive modal Agendar Relatório PDF; **R13** Sidebar minRole (itens filtrados por role/rank); **R14** CloudPosture aba Histórico + Migrations toggle Ativas/Histórico; **R16** Remediation "Abrir no GLPI" com GlpiChangeModal | ✅ |
 
 ### Próximas Fases (resumo)
 
 | Fase | Descrição | Entregáveis pendentes |
 |---|---|---|
-| 31.cont | Edge Agent Runtime + OIDC Completo | Edge Agent processo Python/Docker com WebSocket sainte (WSS 443 via Cloudflare); suporte CGNAT zero-inbound; WebSocket gateway `/edge-gateway/{token}` no backend; dispatcher `edge_dispatcher.py`; fluxo PKCE OIDC completo; JIT SSO de usuários |
-| 34.cont | Infra Segurança — mTLS + Vault HA | mTLS interno entre serviços (step-ca); Vault HA 3 nodes com AppRole auth; sidecar OPA real (em vez de simulação Python); AppArmor profiles; redes Docker já isoladas (frontend_net/backend_net/worker_net ✅) |
+| 34.cont | Infra Segurança — Vault HA + OPA real | Vault HA 3 nodes com AppRole auth por serviço (api/celery/beat têm `role_id`+`secret_id` distintos); sidecar OPA real em container separado substituindo `_evaluate_rego_simple` Python; mTLS ponta-a-ponta (step-ca + certs já gerados pelo setup-mtls.sh ✅, falta wiring no Redis/Celery) |
 
 ---
 
@@ -268,8 +280,8 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 
 ---
 
-### Fase 31.cont — Edge Agent Real + OIDC Completo ✅ (parcial)
-*SSO role mapping + device connection_mode implementados (migrations 0069+0081). Pendente: processo Python/Docker com WebSocket sainte, gateway backend e dispatcher.*
+### Fase 31.cont — Edge Agent Real + OIDC Completo ✅
+*Implementado: SSO role mapping (0069) + device connection_mode (0081) + Edge Agent processo Python/Docker completo + WebSocket gateway `/edge-gateway/{token}` + `edge_dispatcher.py`; `edge_agent/` com main/executor/heartbeat/security/Dockerfile.*
 
 #### Arquitetura
 
@@ -1419,6 +1431,46 @@ O agente coleta via WinRM, processa o SQLite do Chrome/Firefox, retorna análise
 
 #### F31.cont — SSO Role Mappings + Device Connection Mode
 `sso_role_mappings` (migration 0069): mapeamento de grupos do IdP (Azure AD/Okta/Google) para roles da plataforma com JIT provisioning — usuário novo via SSO recebe role automaticamente pelo grupo. `connection_mode` + `edge_agent_id` em devices (migration 0081): campo que determina se o device é acessado diretamente (`direct`) ou via Edge Agent (`edge`).
+
+#### Auth Mista local/LDAP/OIDC/break_glass por Usuário
+Migrations 0079+0080: `auth_source` + `ldap_dn` + `break_glass` em users; `auth_source` em invite_tokens. `ldap_auth_service.py`: bind duplo (service account → user) via ldap3, decrypt Fernet da bind_password, mapeamento grupo AD → role da plataforma. Login branch por `auth_source`: local/break_glass=bcrypt, ldap=LDAP bind, oidc=rejeita com mensagem SSO. AcceptInvite oculta campos de senha para LDAP/OIDC. `AuthSourceBadge` na listagem de membros (AD/LDAP=azul, SSO=roxo, break-glass=vermelho).
+
+#### POST /auth/refresh — Rolling Refresh Token
+`POST /auth/refresh`: valida refresh JWT 7d, emite novo access token (15min) + novo refresh token com rotação; previne session fixation; fecha o gap xfail documentado nos testes de fronteiras JWT.
+
+#### Fase 50 — LLM Provider Manager
+`llm_configs` (migration 0075): tabela de configuração hierárquica global (super admin) → tenant → default. UI em Organisation.tsx aba IA. Permite configurar modelo, temperatura, max_tokens por tenant sem alterar env vars. Fallback automático para Haiku quando Sonnet retorna 529. Seleção per-tenant em operações de agente e assistant.
+
+#### Investigação RMM — Agente Estações (endpoint RMM)
+`rmm_script_runs` (migration 0086), `site_filter` em rmm_integrations (migration 0087), `rmm_script_templates` (migration 0088), `rmm_integration_id`+`rmm_agent_external_id` em investigation_sessions (migration 0089). Branch `rmm` em `execute_phase()`: executa PowerShell/bash via base64 EncodedCommand (bypass do endpoint runscript/ que exige script ID). `RmmAgent.tsx` página `/rmm-agent`. `RmmPage.tsx` reformulado com inventário, run script/command, filtros de site/cliente, stats e templates.
+
+#### Investigação Iterativa — Features Avançadas
+Per-command approve/reject/edit (técnico controla cada comando antes de executar), "Continuar Investigação" (adiciona novas fases a partir de findings existentes), audit hash-chain em todos os eventos de investigação, render markdown nas análises e no chat, contexto vendor/OS injetado para Claude usar CLI correta, multi-device investigação paralela SSH.
+
+#### Sistema de Ajuda Contextual + Central de Ajuda
+`HelpDrawer.tsx`: painel lateral com overlay (fecha com Esc), descrição, passos numerados, dica, link para /help. `PageWrapper.tsx`: detecta rota via `useLocation()` e exibe botão "? Ajuda" em todas as páginas automaticamente (zero alterações nas páginas existentes). `HelpCenterPage.tsx` (`/help`): busca em tempo real, 31 módulos organizados por seção. `helpContent.ts`: conteúdo indexado por rota. Item "Central de Ajuda" fixado na sidebar acima do footer.
+
+#### Investigação Multi-Domínio
+`CrossDomainPage.tsx` (`/cross-domain`): seleção de domínios filtrada por category_roles, execução paralela, polling, correlação IA, navegação direta para o agente especialista. `CompositeInvestigationPage.tsx` (`/composite-investigation`): dashboard N3 com criação, progresso por domínio, "Enviar resultado para N3", consolidação IA, geração de plano de ação e resolução. Handoff inteligente `AssistantPage` → Agentes: detecta keywords de domínio e renderiza botões de navegação direta.
+
+#### Permissões Granulares + Matriz de Equipe
+`Organisation.tsx` aba Equipe: sub-tabs "Lista de Membros" | "Matriz de Permissões" — Matriz exibe todos os usuários × todos os domínios com selects inline sem abrir drawer. Step "Permissões por domínio" no wizard de convite. `PermissionMatrixDrawer` com presets rápidos: **DBA** (server/hypervisor=N2, firewall/switch=readonly), **Analista de SI** (infra toda=readonly, alerts/playbooks/compliance/remediation/cross_investigation=N2). TenantRole `analyst_sec` (Analista de Segurança da Informação) adicionado ao sistema.
+
+#### Frontend Melhorias R1–R16
+| Ref | Feature | Onde |
+|---|---|---|
+| R1 | `VaultPage` (`/vault`): gestão de segredos mascarada, rotação, badge expiração | Plataforma |
+| R3 | `ModuleRole` expandido (alerts/playbooks/cross_investigation/ai_assistant/knowledge_base) + hook `useModulePermission` | global |
+| R4 | PlaybooksPage aba "Aprovações": fila SoD, criador não aprova próprio playbook, comentário obrigatório | Playbooks |
+| R5 | TenantRole `analyst_sec` com ROLE_LABELS/COLORS/DESCRIPTIONS | global |
+| R6 | Presets rápidos "DBA" e "Analista de SI" no PermissionMatrixDrawer | Organização |
+| R7 | E2E flows: "Criar Remediação" e "Criar Ticket IA" após correlação cross-domain/composite | Cross-domain, Composite, Alerts |
+| R8 | Audit: filtros tipo de ação (read/write/execute/delete) + módulo (Devices/Firewall/Identity/…) com contador X/Y | Auditoria |
+| R9/R10 | Alerts aba "SLA & Manutenção": targets por severidade, escalação em 2 níveis, janelas com seletor de dias/horário | Alertas |
+| R12 | Executive modal "Agendar Relatório PDF": frequência semanal/mensal, destinatários múltiplos | Dashboard Executivo |
+| R13 | Sidebar `minRole` por item: sections sem items visíveis ocultadas; rank admin=5 → readonly=1 | global |
+| R14 | CloudPosture aba Histórico (read-only); Migrations toggle Ativas/Histórico | Cloud Posture, Migrações |
+| R16 | Remediation botão "Abrir no GLPI" com `GlpiChangeModal` (pré-preenchido + urgência 1-5 + link de retorno) | Remediações |
 
 ---
 
