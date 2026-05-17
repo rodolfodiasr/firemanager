@@ -12,6 +12,7 @@ interface DeviceCardProps {
   onEdit: (device: Device) => void;
   onDelete: (id: string) => void;
   isSelected?: boolean;
+  canWrite?: boolean;
 }
 
 const CATEGORY_ICON: Record<DeviceCategory, React.ElementType> = {
@@ -60,6 +61,7 @@ export function DeviceCard({
   onEdit,
   onDelete,
   isSelected = false,
+  canWrite = true,
 }: DeviceCardProps) {
   const category = device.category ?? "firewall";
   const style    = CATEGORY_STYLE[category];
@@ -109,20 +111,24 @@ export function DeviceCard({
       </div>
 
       <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={() => onHealthCheck(device.id)}
-          className="flex items-center gap-1 text-xs text-gray-600 hover:text-blue-600 transition-colors"
-        >
-          <RefreshCw size={12} />
-          Verificar
-        </button>
-        <button
-          onClick={() => onEdit(device)}
-          className="flex items-center gap-1 text-xs text-gray-600 hover:text-brand-600 transition-colors"
-        >
-          <Pencil size={12} />
-          Editar
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => onHealthCheck(device.id)}
+            className="flex items-center gap-1 text-xs text-gray-600 hover:text-blue-600 transition-colors"
+          >
+            <RefreshCw size={12} />
+            Verificar
+          </button>
+        )}
+        {canWrite && (
+          <button
+            onClick={() => onEdit(device)}
+            className="flex items-center gap-1 text-xs text-gray-600 hover:text-brand-600 transition-colors"
+          >
+            <Pencil size={12} />
+            Editar
+          </button>
+        )}
         <button
           onClick={handleSnapshot}
           disabled={snapshotting}
@@ -132,13 +138,15 @@ export function DeviceCard({
           <Camera size={12} />
           {snapshotting ? "..." : "Snapshot"}
         </button>
-        <button
-          onClick={() => onDelete(device.id)}
-          className="flex items-center gap-1 text-xs text-gray-600 hover:text-red-600 transition-colors ml-auto"
-        >
-          <Trash2 size={12} />
-          Remover
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => onDelete(device.id)}
+            className="flex items-center gap-1 text-xs text-gray-600 hover:text-red-600 transition-colors ml-auto"
+          >
+            <Trash2 size={12} />
+            Remover
+          </button>
+        )}
       </div>
     </div>
   );

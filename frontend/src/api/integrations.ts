@@ -16,4 +16,9 @@ export const integrationsApi = {
 
   test: (id: string) =>
     apiClient.post<TestResult>(`/integrations/${id}/test`).then((r) => r.data),
+
+  listBookstackBooks: (id: string) =>
+    apiClient.get<{ id: number; name: string; slug: string }[]>(
+      `/integrations/${id}/bookstack/books`,
+    ).then((r) => r.data),
 };

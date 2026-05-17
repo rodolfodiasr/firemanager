@@ -112,9 +112,9 @@ function VarModal({ initial = EMPTY_FORM, onSave, onClose, isLoading, title, nam
   );
 }
 
-function VarRow({ name, value, type, description, badge, onEdit, onDelete }: {
+function VarRow({ name, value, type, description, badge, onEdit, onDelete, canWrite = true }: {
   name: string; value: string; type: VariableType; description?: string | null;
-  badge?: React.ReactNode; onEdit: () => void; onDelete: () => void;
+  badge?: React.ReactNode; onEdit: () => void; onDelete: () => void; canWrite?: boolean;
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 rounded-lg group">
@@ -130,10 +130,12 @@ function VarRow({ name, value, type, description, badge, onEdit, onDelete }: {
           {description && <span className="text-xs text-gray-400 truncate">— {description}</span>}
         </div>
       </div>
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-md"><Pencil size={13} /></button>
-        <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md"><Trash2 size={13} /></button>
-      </div>
+      {canWrite && (
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-md"><Pencil size={13} /></button>
+          <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md"><Trash2 size={13} /></button>
+        </div>
+      )}
     </div>
   );
 }
@@ -477,6 +479,8 @@ const FILTER_TABS: { key: FilterCategory; label: string; icon: React.ElementType
 
 function DevicesTab() {
   const { devices, isLoading, create, update, remove, healthCheck } = useDevices();
+  const tenantRole = useAuthStore((s) => s.tenantRole);
+  const canWrite = tenantRole !== "readonly";
   const [showAdd, setShowAdd]       = useState(false);
   const [editDevice, setEditDevice] = useState<Device | null>(null);
   const [deleteId, setDeleteId]     = useState<string | null>(null);
@@ -554,10 +558,12 @@ function DevicesTab() {
               </button>
             </>
           )}
-          <button onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 transition-colors">
-            <Plus size={16} /> Adicionar
-          </button>
+          {canWrite && (
+            <button onClick={() => setShowAdd(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700 transition-colors">
+              <Plus size={16} /> Adicionar
+            </button>
+          )}
         </div>
       </div>
 
@@ -571,7 +577,7 @@ function DevicesTab() {
         <EmptyState
           title={filter === "all" ? "Nenhum dispositivo cadastrado" : `Nenhum ${FILTER_TABS.find(t => t.key === filter)?.label} cadastrado`}
           description="Adicione um dispositivo para começar."
-          action={<button onClick={() => setShowAdd(true)} className="px-4 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700">Adicionar dispositivo</button>}
+          action={canWrite ? <button onClick={() => setShowAdd(true)} className="px-4 py-2 bg-brand-600 text-white text-sm rounded-lg hover:bg-brand-700">Adicionar dispositivo</button> : undefined}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -597,6 +603,7 @@ function DevicesTab() {
                   onHealthCheck={selectMode ? () => {} : healthCheck}
                   onEdit={selectMode ? () => {} : setEditDevice}
                   onDelete={selectMode ? () => {} : (id) => setDeleteId(id)}
+                  canWrite={canWrite}
                   isSelected={selectedIds.has(device.id)}
                 />
               </div>
@@ -816,6 +823,8 @@ function TemplatesTab() {
 }
 
 function TenantVarsTab() {
+  const tenantRole = useAuthStore((s) => s.tenantRole);
+  const canWrite = tenantRole !== "readonly";
   const qc = useQueryClient();
   const [modal, setModal] = useState<{ open: boolean; editing?: TenantVariable }>({ open: false });
   const { data: vars = [], isLoading } = useQuery({ queryKey: ["tenant-variables"], queryFn: variablesApi.listTenant });
@@ -840,9 +849,11 @@ function TenantVarsTab() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-gray-500">Valem para todos os dispositivos. Podem ser sobrescritas por variável específica do device.</p>
-        <button onClick={() => setModal({ open: true })} className="flex items-center gap-2 px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg font-medium">
-          <Plus size={14} /> Nova variável global
-        </button>
+        {canWrite && (
+          <button onClick={() => setModal({ open: true })} className="flex items-center gap-2 px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg font-medium">
+            <Plus size={14} /> Nova variável global
+          </button>
+        )}
       </div>
       {isLoading ? <p className="text-sm text-gray-400 py-8 text-center">Carregando...</p>
         : vars.length === 0 ? (
@@ -854,6 +865,7 @@ function TenantVarsTab() {
           <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
             {vars.map((v) => (
               <VarRow key={v.id} name={v.name} value={v.value} type={v.variable_type} description={v.description}
+                canWrite={canWrite}
                 onEdit={() => setModal({ open: true, editing: v })}
                 onDelete={() => { if (confirm(`Remover variável {{${v.name}}}?`)) deleteMut.mutate(v.id); }} />
             ))}
@@ -869,6 +881,8 @@ function TenantVarsTab() {
 }
 
 function DeviceVarsTab() {
+  const tenantRole = useAuthStore((s) => s.tenantRole);
+  const canWrite = tenantRole !== "readonly";
   const qc = useQueryClient();
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [modal, setModal] = useState<{ open: boolean; editing?: DeviceVariable }>({ open: false });
@@ -921,9 +935,11 @@ function DeviceVarsTab() {
             <p className="text-sm text-gray-500">
               Variáveis de <span className="font-medium text-gray-700">{selectedDev?.name}</span>. Sobrescrevem variáveis globais de mesmo nome.
             </p>
-            <button onClick={() => setModal({ open: true })} className="flex items-center gap-2 px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg font-medium">
-              <Plus size={14} /> Nova variável
-            </button>
+            {canWrite && (
+              <button onClick={() => setModal({ open: true })} className="flex items-center gap-2 px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm rounded-lg font-medium">
+                <Plus size={14} /> Nova variável
+              </button>
+            )}
           </div>
           {isLoading ? <p className="text-sm text-gray-400 py-8 text-center">Carregando...</p>
             : vars.length === 0 ? (
@@ -935,6 +951,7 @@ function DeviceVarsTab() {
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
                 {vars.map((v) => (
                   <VarRow key={v.id} name={v.name} value={v.value} type={v.variable_type} description={v.description}
+                    canWrite={canWrite}
                     badge={v.overrides_tenant ? (
                       <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">sobrescreve global</span>
                     ) : undefined}

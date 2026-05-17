@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import TenantContext, get_tenant_context, require_tenant_admin
+from app.api.auth import TenantContext, get_tenant_context, require_tenant_admin, require_reviewer
 from app.models.user_tenant_role import TenantRole
 from app.database import get_db
 from app.schemas.device import BookstackPageInfo, DeviceBookstackLink, DeviceCreate, DeviceRead, DeviceUpdate, DocDraftResult
@@ -39,7 +39,7 @@ async def get_devices(
 @router.post("", response_model=DeviceRead, status_code=201)
 async def add_device(
     data: DeviceCreate,
-    ctx:  Annotated[TenantContext, Depends(get_tenant_context)] = None,
+    ctx:  Annotated[TenantContext, Depends(require_reviewer)] = None,
     db:   Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> DeviceRead:
     device = await create_device(db, data, tenant_id=ctx.tenant.id)
@@ -63,7 +63,7 @@ async def get_device_by_id(
 async def update_device_by_id(
     device_id: UUID,
     data: DeviceUpdate,
-    ctx:  Annotated[TenantContext, Depends(get_tenant_context)] = None,
+    ctx:  Annotated[TenantContext, Depends(require_reviewer)] = None,
     db:   Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> DeviceRead:
     device = await update_device(db, device_id, data, tenant_id=ctx.tenant.id)
@@ -73,7 +73,7 @@ async def update_device_by_id(
 @router.delete("/{device_id}", status_code=204)
 async def delete_device_by_id(
     device_id: UUID,
-    ctx: Annotated[TenantContext, Depends(get_tenant_context)] = None,
+    ctx: Annotated[TenantContext, Depends(require_reviewer)] = None,
     db:  Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> None:
     await delete_device(db, device_id, tenant_id=ctx.tenant.id)
@@ -82,7 +82,7 @@ async def delete_device_by_id(
 @router.post("/{device_id}/health-check", response_model=DeviceRead)
 async def run_health_check(
     device_id: UUID,
-    ctx: Annotated[TenantContext, Depends(get_tenant_context)] = None,
+    ctx: Annotated[TenantContext, Depends(require_reviewer)] = None,
     db:  Annotated[AsyncSession, Depends(get_db)] = None,
 ) -> DeviceRead:
     try:

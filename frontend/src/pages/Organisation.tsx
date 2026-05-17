@@ -5,7 +5,7 @@ import {
   Building2, Plus, UserPlus, Trash2, Edit2, Check, X,
   KeyRound, ToggleLeft, ToggleRight, Users, ShieldCheck,
   Globe, ChevronDown, ChevronUp, Loader2, CheckCircle2, XCircle,
-  ShieldAlert, AlertTriangle, Lock, HardDrive, Cloud, Server, Play, RefreshCw, Clock,
+  ShieldAlert, AlertTriangle, Lock, HardDrive, Cloud, Server, Play, RefreshCw, Clock, BookOpen,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
@@ -1246,12 +1246,34 @@ function IntegrationCard({ type, existing, tenantId, isSuperAdmin }: {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency_ms?: number } | null>(null);
   const [testing, setTesting] = useState(false);
 
-  const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm({
+  const { register, handleSubmit, reset, setValue, formState: { isSubmitting } } = useForm({
     defaultValues: meta.fields.reduce((acc, f) => ({ ...acc, [f.key]: f.defaultValue ?? "" }), {} as Record<string, string>),
   });
 
+  const [bsBooks, setBsBooks] = useState<{ id: number; name: string; slug: string }[] | null>(null);
+  const [bsBooksLoading, setBsBooksLoading] = useState(false);
+  const [bsBooksError, setBsBooksError] = useState(false);
+
+  const loadBsBooks = async () => {
+    if (!existing) return;
+    setBsBooksLoading(true);
+    setBsBooksError(false);
+    try {
+      const books = await integrationsApi.listBookstackBooks(existing.id);
+      setBsBooks(books);
+    } catch {
+      setBsBooksError(true);
+    } finally {
+      setBsBooksLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setBsBooks(null);
+      setBsBooksError(false);
+      return;
+    }
     const preview = existing?.config_preview ?? {};
     const values: Record<string, string> = {};
     meta.fields.forEach((f) => {
@@ -1338,6 +1360,50 @@ function IntegrationCard({ type, existing, tenantId, isSuperAdmin }: {
                 <select {...register(f.key)} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
                   {f.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
+              </div>
+            ) : type === "bookstack" && f.key === "book_id" ? (
+              <div key={f.key}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-gray-600">{f.label}</label>
+                  {existing && (
+                    <button
+                      type="button"
+                      onClick={loadBsBooks}
+                      disabled={bsBooksLoading}
+                      className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 disabled:opacity-50 transition-colors"
+                    >
+                      {bsBooksLoading
+                        ? <Loader2 size={10} className="animate-spin" />
+                        : <BookOpen size={10} />}
+                      {bsBooksLoading ? "Carregando..." : bsBooks ? "Recarregar" : "Selecionar livro"}
+                    </button>
+                  )}
+                </div>
+                {bsBooks ? (
+                  <select
+                    {...register(f.key)}
+                    onChange={(e) => setValue("book_id", e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  >
+                    <option value="">Selecione um livro...</option>
+                    {bsBooks.map((b) => (
+                      <option key={b.id} value={String(b.id)}>{b.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text" {...register(f.key)} placeholder={f.placeholder}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                )}
+                {bsBooksError && (
+                  <p className="text-xs text-red-500 mt-1">
+                    Não foi possível carregar os livros. Verifique as credenciais e teste a integração.
+                  </p>
+                )}
+                {!existing && (
+                  <p className="text-xs text-gray-400 mt-1">Salve a integração primeiro para poder selecionar o livro.</p>
+                )}
               </div>
             ) : (
               <div key={f.key}>
