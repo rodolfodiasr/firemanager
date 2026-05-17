@@ -29,20 +29,28 @@ import type { TenantMember, TenantRead, TenantRole } from "../types/tenant";
 
 // ── Role constants ────────────────────────────────────────────────────────────
 
-const ROLES: TenantRole[] = ["admin", "analyst_n2", "analyst_n1", "readonly"];
+const ROLES: TenantRole[] = ["admin", "analyst_sec", "analyst_n2", "analyst_n1", "readonly"];
 const ROLE_LABELS: Record<TenantRole, string> = {
-  admin:      "Admin",
-  analyst_n2: "Analista N2",
-  analyst_n1: "Analista N1",
-  readonly:   "Leitor",
-  analyst:    "Analista (legado)",
+  admin:       "Admin",
+  analyst_sec: "Analista de SI",
+  analyst_n2:  "Analista N2",
+  analyst_n1:  "Analista N1",
+  readonly:    "Leitor",
+  analyst:     "Analista (legado)",
 };
 const ROLE_COLORS: Record<TenantRole, string> = {
-  admin:      "bg-brand-100 text-brand-700",
-  analyst_n2: "bg-blue-100 text-blue-700",
-  analyst_n1: "bg-cyan-100 text-cyan-700",
-  readonly:   "bg-gray-100 text-gray-600",
-  analyst:    "bg-blue-100 text-blue-600",
+  admin:       "bg-brand-100 text-brand-700",
+  analyst_sec: "bg-rose-100 text-rose-700",
+  analyst_n2:  "bg-blue-100 text-blue-700",
+  analyst_n1:  "bg-cyan-100 text-cyan-700",
+  readonly:    "bg-gray-100 text-gray-600",
+  analyst:     "bg-blue-100 text-blue-600",
+};
+const ROLE_DESCRIPTIONS: Partial<Record<TenantRole, string>> = {
+  analyst_sec: "Leitura total + escrita em Alertas, Playbooks, Compliance e Remediações. Sem operações diretas em dispositivos.",
+  analyst_n2:  "Executa operações de baixo risco diretamente. Operações críticas vão para fila.",
+  analyst_n1:  "Todas as operações passam por fila de revisão N2.",
+  readonly:    "Apenas visualização. Sem execução, remediação ou planos.",
 };
 
 function RoleBadge({ role }: { role: TenantRole }) {
@@ -164,6 +172,52 @@ function PermissionMatrixDrawer({
               As permissões são resolvidas em cascata:{" "}
               <span className="font-semibold">override de módulo/categoria &gt; perfil global do tenant</span>.
               Se nenhum override estiver definido, o usuário herda o perfil global.
+            </div>
+
+            {/* ── Presets rápidos ── */}
+            <div>
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Presets Rápidos</p>
+              <div className="grid grid-cols-2 gap-2">
+                {/* DBA */}
+                <button
+                  className="flex flex-col items-start p-3 border border-gray-200 rounded-xl hover:border-brand-400 hover:bg-brand-50 transition-colors text-left"
+                  onClick={() => {
+                    const cats: [DeviceCategory, TenantRole][] = [
+                      ["server",     "analyst_n2"],
+                      ["hypervisor", "analyst_n2"],
+                      ["firewall",   "readonly"],
+                      ["switch",     "readonly"],
+                    ];
+                    const mods: [FunctionalModule, TenantRole][] = [
+                      ["server_analysis", "analyst_n2"],
+                    ];
+                    cats.forEach(([cat, role]) => upsertCat.mutate({ cat, role }));
+                    mods.forEach(([mod, role]) => upsertMod.mutate({ mod, role }));
+                  }}
+                >
+                  <span className="text-xs font-semibold text-gray-800">DBA</span>
+                  <span className="text-[10px] text-gray-400 mt-0.5">Servidor N2, resto Leitor</span>
+                </button>
+                {/* Analista de SI */}
+                <button
+                  className="flex flex-col items-start p-3 border border-gray-200 rounded-xl hover:border-rose-400 hover:bg-rose-50 transition-colors text-left"
+                  onClick={() => {
+                    const cats: DeviceCategory[] = ["firewall", "switch", "server", "hypervisor"];
+                    cats.forEach((cat) => upsertCat.mutate({ cat, role: "readonly" }));
+                    const mods: [FunctionalModule, TenantRole][] = [
+                      ["alerts",             "analyst_n2"],
+                      ["playbooks",          "analyst_n2"],
+                      ["compliance",         "analyst_n2"],
+                      ["remediation",        "analyst_n2"],
+                      ["cross_investigation","analyst_n2"],
+                    ];
+                    mods.forEach(([mod, role]) => upsertMod.mutate({ mod, role }));
+                  }}
+                >
+                  <span className="text-xs font-semibold text-gray-800">Analista de SI</span>
+                  <span className="text-[10px] text-gray-400 mt-0.5">Alertas/Playbooks N2, Infra Leitor</span>
+                </button>
+              </div>
             </div>
 
             {profile && (

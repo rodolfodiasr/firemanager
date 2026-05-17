@@ -38,17 +38,31 @@ import {
   Store,
   Sparkles,
   HelpCircle,
+  WifiOff,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
+import { rmmApi } from "../../api/rmm";
+
+// Role rank — used to filter minRole items
+const ROLE_RANK: Record<string, number> = {
+  admin:       5,
+  analyst_n2:  4,
+  analyst_sec: 4, // same visibility as N2
+  analyst:     3,
+  analyst_n1:  2,
+  readonly:    1,
+};
 
 interface NavItem {
   to: string;
   icon: LucideIcon;
   label: string;
-  badge?: boolean;
-  upcoming?: string; // ex: "F28" — renderiza como item bloqueado
-  beta?: boolean;    // módulo validado parcialmente — navegável mas em maturação
+  badge?: boolean;      // mostra contagem de auditoria pendente (admin only)
+  rmmBadge?: boolean;   // mostra indicador de RMM desconectado
+  upcoming?: string;    // ex: "F28" — renderiza como item bloqueado
+  beta?: boolean;
+  minRole?: string;     // oculta o item para ranks abaixo deste role
 }
 
 interface NavSection {
@@ -62,7 +76,7 @@ const navSections: NavSection[] = [
     title: "",
     items: [
       { to: "/",          icon: LayoutDashboard, label: "Dashboard"           },
-      { to: "/executive", icon: BarChart2,        label: "Dashboard Executivo" }, // Onda 1
+      { to: "/executive", icon: BarChart2,        label: "Dashboard Executivo", minRole: "analyst_n2" },
     ],
   },
 
@@ -72,7 +86,7 @@ const navSections: NavSection[] = [
     items: [
       { to: "/devices",   icon: Server, label: "Dispositivos"    },
       { to: "/inspector", icon: Radar,  label: "Inspetor"        },
-      { to: "/agent",     icon: Bot,    label: "Agente · Firewall" }, // Onda 3: renomeado; CLI Direto removido
+      { to: "/agent",     icon: Bot,    label: "Agente · Firewall", minRole: "analyst_n1" },
     ],
   },
 
@@ -80,9 +94,9 @@ const navSections: NavSection[] = [
   {
     title: "Automação",
     items: [
-      { to: "/golden-templates",    icon: BookMarked, label: "Templates"       },
-      { to: "/golden-bundles",      icon: Package2,   label: "Kits · Bundles"  },
-      { to: "/firewall-migrations", icon: FileInput,  label: "Importar Regras" },
+      { to: "/golden-templates",    icon: BookMarked, label: "Templates",       minRole: "analyst_n1" },
+      { to: "/golden-bundles",      icon: Package2,   label: "Kits · Bundles",  minRole: "analyst_n2" },
+      { to: "/firewall-migrations", icon: FileInput,  label: "Importar Regras", minRole: "analyst_n1" },
     ],
   },
 
@@ -91,8 +105,8 @@ const navSections: NavSection[] = [
     title: "Redes & Conectividade",
     items: [
       { to: "/connectivity",  icon: Network,        label: "Topologia & Rotas"    },
-      { to: "/migrations",    icon: ArrowRightLeft, label: "Migração de Switches" },
-      { to: "/network-agent", icon: Bot,            label: "Agente · Redes"       }, // Onda 3: renomeado
+      { to: "/migrations",    icon: ArrowRightLeft, label: "Migração de Switches", minRole: "analyst_n1" },
+      { to: "/network-agent", icon: Bot,            label: "Agente · Redes",       minRole: "analyst_n1" },
     ],
   },
 
@@ -101,12 +115,11 @@ const navSections: NavSection[] = [
     title: "Infraestrutura",
     items: [
       { to: "/servers",             icon: HardDrive,   label: "Servidores"          },
-      { to: "/server-analysis",     icon: Brain,       label: "Agente · Servidores" }, // Onda 1+3: era Agente N3; Console SSH removido
+      { to: "/server-analysis",     icon: Brain,       label: "Agente · Servidores", minRole: "analyst_n1" },
       { to: "/database-connectors", icon: DatabaseZap, label: "Bancos de Dados"     },
-      { to: "/vm-migration",        icon: Monitor,     label: "Migração de VMs"     },
-      { to: "/rmm",                 icon: Server,      label: "RMM",                 beta: true }, // Onda 1: movido de Segurança
-      { to: "/rmm-agent",           icon: Laptop,      label: "Agente · Estações",   beta: true },
-      { to: "/cloud-posture",       icon: Globe,       label: "Cloud Posture"        },             // Onda 1: movido de Segurança
+      { to: "/vm-migration",        icon: Monitor,     label: "Migração de VMs",     minRole: "analyst_n1" },
+      { to: "/rmm-agent",           icon: Laptop,      label: "Agente · Estações",   beta: true, rmmBadge: true, minRole: "analyst_n1" },
+      { to: "/cloud-posture",       icon: Globe,       label: "Cloud Posture"        },
     ],
   },
 
@@ -115,8 +128,8 @@ const navSections: NavSection[] = [
     title: "Identidade & Acesso",
     items: [
       { to: "/identity",           icon: Users,    label: "Identidade"           },
-      { to: "/selfservice-portal", icon: Store,    label: "Self-Service Portal",  beta: true },
-      { to: "/edge-agents",        icon: Cpu,      label: "Edge Agents & SSO",    beta: true },
+      { to: "/selfservice-portal", icon: Store,    label: "Self-Service Portal",  beta: true, minRole: "analyst_n1" },
+      { to: "/edge-agents",        icon: Cpu,      label: "Edge Agents & SSO",    beta: true, minRole: "analyst_n1" },
     ],
   },
 
@@ -124,22 +137,18 @@ const navSections: NavSection[] = [
   {
     title: "Segurança & Resposta",
     items: [
-      { to: "/alerts",     icon: Bell,       label: "Alertas & SIEM"  }, // Onda 2: unifica Alertas + SIEM
-      { to: "/remediation", icon: ShieldCheck, label: "Remediações"   },
-      { to: "/playbooks",  icon: ShieldHalf, label: "SOAR Playbooks"  },
-      // RMM e Cloud Posture movidos para Infraestrutura — Onda 1
-      // Integrações SIEM removido da sidebar — Onda 2 (redirect /siem → /alerts)
+      { to: "/alerts",    icon: Bell,       label: "Alertas & SIEM"                },
+      { to: "/remediation",icon: ShieldCheck,label: "Remediações",  minRole: "analyst_n2" },
+      { to: "/playbooks", icon: ShieldHalf, label: "SOAR Playbooks", minRole: "analyst_n2" },
       { to: "#", icon: Brain, label: "Threat Intelligence", upcoming: "F35" },
     ],
   },
 
   // ── Conformidade ──────────────────────────────────────────────────────────
   {
-    title: "Conformidade",  // Onda 2: era "Conformidade & Governança"
+    title: "Conformidade",
     items: [
-      { to: "/compliance", icon: ClipboardCheck, label: "Compliance" }, // Onda 2: unifica 3→1
-      // Governança removido da sidebar — Onda 2 (redirect /governance → /compliance)
-      // Packs CIS removido da sidebar — Onda 2 (redirect /compliance-enterprise → /compliance)
+      { to: "/compliance", icon: ClipboardCheck, label: "Compliance" },
     ],
   },
 
@@ -149,27 +158,23 @@ const navSections: NavSection[] = [
     items: [
       { to: "/knowledge",               icon: Database,      label: "Base de Conhecimento"      },
       { to: "/assistant",               icon: Sparkles,      label: "Assistente IA"              },
-      { to: "/cross-domain",            icon: Layers,        label: "Investigação Cruzada",  beta: true },
-      { to: "/composite-investigation", icon: GitMerge,      label: "Investigação Composta", beta: true },
-      { to: "/glpi",                    icon: MessageSquare, label: "Tickets IA"                }, // Onda 1: movido de Relatórios
+      { to: "/cross-domain",            icon: Layers,        label: "Investigação Cruzada",  beta: true, minRole: "analyst_n1" },
+      { to: "/composite-investigation", icon: GitMerge,      label: "Investigação Composta", beta: true, minRole: "analyst_n1" },
+      { to: "/glpi",                    icon: MessageSquare, label: "Tickets IA"                },
       { to: "#", icon: Radar, label: "Análise de Regras IA", upcoming: "F29" },
     ],
   },
 
-  // Relatórios removida — Onda 1: Dashboard Executivo → raiz; Tickets IA → Inteligência IA
-
   // ── Plataforma ────────────────────────────────────────────────────────────
   {
-    title: "Plataforma",  // Onda 2: 7 → 4 itens
+    title: "Plataforma",
     items: [
-      { to: "/audit",          icon: Shield,      label: "Auditoria",               badge: true },
-      { to: "/vault",          icon: KeyRound,    label: "Vault de Segredos"                     },
-      { to: "/security-infra", icon: ShieldHalf,  label: "Segurança da Plataforma", beta: true  }, // Onda 2: unifica IA Safety + Infra Seg
-      { to: "/settings",       icon: Settings,    label: "Configurações"                         }, // Onda 2: unifica Config + Enterprise + Settings
-      { to: "/product",        icon: Coins,       label: "Produto & Billing",        beta: true  },
-      // Enterprise removido da sidebar — Onda 2 (redirect /enterprise → /settings)
-      // IA Safety removido da sidebar — Onda 2 (redirect /ai-safety → /security-infra)
-      // Config. Plataforma removido — Onda 2 (redirect /platform-config → /settings)
+      { to: "/audit",          icon: Shield,      label: "Auditoria",               badge: true, minRole: "analyst_n2" },
+      { to: "/vault",          icon: KeyRound,    label: "Vault de Segredos",                    minRole: "admin"      },
+      { to: "/rmm",            icon: Server,      label: "Integrações RMM",          beta: true,  minRole: "admin"      },
+      { to: "/security-infra", icon: ShieldHalf,  label: "Segurança da Plataforma",  beta: true,  minRole: "admin"      },
+      { to: "/settings",       icon: Settings,    label: "Configurações",                        minRole: "analyst_n2" },
+      { to: "/product",        icon: Coins,       label: "Produto & Billing",        beta: true,  minRole: "admin"      },
     ],
   },
 
@@ -198,8 +203,12 @@ function SectionLabel({ title }: { title: string }) {
 export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const tenantRole = useAuthStore((s) => s.tenantRole);
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || tenantRole === "admin";
   const showTenants = user?.is_super_admin || tenantRole === "admin";
+
+  // User's effective rank for sidebar visibility
+  const effectiveRole = user?.role ?? tenantRole ?? "readonly";
+  const userRank = ROLE_RANK[effectiveRole] ?? 1;
 
   const { data: pendingCount = 0 } = useQuery({
     queryKey: ["audit-pending-count"],
@@ -207,6 +216,21 @@ export function Sidebar() {
     refetchInterval: 30000,
     enabled: isAdmin,
   });
+
+  // RMM connection status — only fetched when user can see the agent page
+  const { data: rmmIntegrations = [] } = useQuery({
+    queryKey: ["rmm-list-sidebar"],
+    queryFn: rmmApi.list,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+    enabled: userRank >= (ROLE_RANK["analyst_n1"] ?? 2),
+  });
+  const hasActiveRmm = rmmIntegrations.some((r: { is_active: boolean }) => r.is_active);
+
+  const isVisible = (item: NavItem) => {
+    if (!item.minRole) return true;
+    return userRank >= (ROLE_RANK[item.minRole] ?? 0);
+  };
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -225,53 +249,64 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav aria-label="Navegação principal" className="flex-1 px-3 py-2 overflow-y-auto">
-        {navSections.map((section) => (
-          <div key={section.title || "__root__"}>
-            <SectionLabel title={section.title} />
-            <div className="space-y-0.5">
-              {section.items.map(({ to, icon: Icon, label, badge, upcoming, beta }) =>
-                upcoming ? (
-                  // Item bloqueado — fase futura
-                  <div
-                    key={label}
-                    aria-label={`${label} — Disponível na ${upcoming}`}
-                    aria-disabled="true"
-                    title={`Disponível na ${upcoming}`}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 opacity-45 cursor-not-allowed select-none"
-                  >
-                    <Icon size={18} aria-hidden="true" />
-                    <span className="flex-1">{label}</span>
-                    <Lock size={11} aria-hidden="true" />
-                    <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded font-mono">
-                      {upcoming}
-                    </span>
-                  </div>
-                ) : (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    end={to === "/"}
-                    className={navLinkClass}
-                    aria-label={badge && isAdmin && pendingCount > 0 ? `${label} — ${pendingCount} pendentes` : label}
-                  >
-                    <Icon size={18} aria-hidden="true" />
-                    <span className="flex-1">{label}</span>
-                    {beta && (
-                      <span className="text-[9px] font-bold bg-indigo-600/70 text-indigo-100 px-1.5 py-0.5 rounded uppercase tracking-wide">
-                        Beta
+        {navSections.map((section) => {
+          const visibleItems = section.items.filter(isVisible);
+          if (visibleItems.length === 0) return null;
+          return (
+            <div key={section.title || "__root__"}>
+              <SectionLabel title={section.title} />
+              <div className="space-y-0.5">
+                {visibleItems.map(({ to, icon: Icon, label, badge, upcoming, beta, rmmBadge }) =>
+                  upcoming ? (
+                    <div
+                      key={label}
+                      aria-label={`${label} — Disponível na ${upcoming}`}
+                      aria-disabled="true"
+                      title={`Disponível na ${upcoming}`}
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 opacity-45 cursor-not-allowed select-none"
+                    >
+                      <Icon size={18} aria-hidden="true" />
+                      <span className="flex-1">{label}</span>
+                      <Lock size={11} aria-hidden="true" />
+                      <span className="text-[10px] bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded font-mono">
+                        {upcoming}
                       </span>
-                    )}
-                    {badge && isAdmin && pendingCount > 0 && (
-                      <span aria-hidden="true" className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center leading-none">
-                        {pendingCount > 99 ? "99+" : pendingCount}
-                      </span>
-                    )}
-                  </NavLink>
-                )
-              )}
+                    </div>
+                  ) : (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      end={to === "/"}
+                      className={navLinkClass}
+                      aria-label={badge && isAdmin && pendingCount > 0 ? `${label} — ${pendingCount} pendentes` : label}
+                    >
+                      <Icon size={18} aria-hidden="true" />
+                      <span className="flex-1">{label}</span>
+                      {beta && (
+                        <span className="text-[9px] font-bold bg-indigo-600/70 text-indigo-100 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                          Beta
+                        </span>
+                      )}
+                      {rmmBadge && !hasActiveRmm && (
+                        <span
+                          title="Nenhuma integração RMM ativa — configure em Plataforma › Integrações RMM"
+                          className="flex items-center gap-1 text-[9px] font-semibold text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded"
+                        >
+                          <WifiOff size={9} />
+                        </span>
+                      )}
+                      {badge && isAdmin && pendingCount > 0 && (
+                        <span aria-hidden="true" className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center leading-none">
+                          {pendingCount > 99 ? "99+" : pendingCount}
+                        </span>
+                      )}
+                    </NavLink>
+                  )
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Organização e MSSP — itens condicionais ao final de Plataforma */}
         {(showTenants || user?.is_super_admin) && (
