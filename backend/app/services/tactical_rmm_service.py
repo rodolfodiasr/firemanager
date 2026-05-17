@@ -65,19 +65,45 @@ async def run_script(
     shell: str = "powershell",
     timeout: int = 90,
 ) -> dict:
-    """Executa um script no agente via Tactical RMM."""
-    base = _base_url(config)
-    payload = {
-        "code": script_body,
-        "interpreter": shell,
-        "timeout": timeout,
-        "run_as_user": False,
-        "env_vars": [],
-    }
-    async with httpx.AsyncClient(verify=config.get("verify_ssl", True), timeout=timeout + 20) as client:
-        r = await client.post(f"{base}/agents/{agent_id}/runscript/", json=payload, headers=_headers(config))
-        r.raise_for_status()
-        return _normalize_run_response(r)
+    """Executa um script multi-linha no agente via Tactical RMM.
+
+    Tactical RMM's /runscript/ endpoint requires a stored script ID, so inline
+    scripts are sent via /cmd/ using PowerShell -EncodedCommand (UTF-16LE base64)
+    for PowerShell, or via a temp-file trick for bash.
+    """
+    if shell in ("powershell", "ps"):
+        return await _run_script_encoded_ps(config, agent_id, script_body, timeout)
+    return await _run_script_bash(config, agent_id, script_body, timeout)
+
+
+async def _run_script_encoded_ps(
+    config: dict,
+    agent_id: str,
+    script_body: str,
+    timeout: int,
+) -> dict:
+    """Run a multi-line PowerShell script via cmd/ using -EncodedCommand (base64 UTF-16LE)."""
+    import base64
+    encoded = base64.b64encode(script_body.encode("utf-16-le")).decode("ascii")
+    command = f"powershell.exe -NoProfile -NonInteractive -EncodedCommand {encoded}"
+    return await run_command(config, agent_id, command, shell="cmd", timeout=timeout)
+
+
+async def _run_script_bash(
+    config: dict,
+    agent_id: str,
+    script_body: str,
+    timeout: int,
+) -> dict:
+    """Run a multi-line bash script via cmd/ by writing to a temp file and executing."""
+    import base64
+    b64 = base64.b64encode(script_body.encode()).decode("ascii")
+    command = (
+        f'TF=$(mktemp /tmp/rmm_XXXXXX.sh) && '
+        f'echo "{b64}" | base64 -d > "$TF" && '
+        f'chmod +x "$TF" && bash "$TF"; RC=$?; rm -f "$TF"; exit $RC'
+    )
+    return await run_command(config, agent_id, command, shell="bash", timeout=timeout)
 
 
 async def run_command(
