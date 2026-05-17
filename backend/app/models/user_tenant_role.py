@@ -11,12 +11,13 @@ from app.database import Base
 
 
 class TenantRole(str, enum.Enum):
-    admin       = "admin"
-    analyst_n2  = "analyst_n2"
-    analyst_n1  = "analyst_n1"
-    readonly    = "readonly"
+    admin        = "admin"
+    analyst_sec  = "analyst_sec"
+    analyst_n2   = "analyst_n2"
+    analyst_n1   = "analyst_n1"
+    readonly     = "readonly"
     # Legacy alias kept for old rows; use analyst_n2 for new grants
-    analyst     = "analyst"
+    analyst      = "analyst"
 
 
 class UserTenantRole(Base):
