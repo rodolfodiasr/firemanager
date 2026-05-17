@@ -255,6 +255,102 @@ function PermissionMatrixDrawer({
   );
 }
 
+// ── Permission Matrix Table (todos usuários × todos domínios) ─────────────────
+
+const CAT_COLORS: Record<TenantRole, string> = {
+  admin:      "bg-brand-100 text-brand-700 border-brand-200",
+  analyst_n2: "bg-blue-100 text-blue-700 border-blue-200",
+  analyst_n1: "bg-cyan-100 text-cyan-700 border-cyan-200",
+  readonly:   "bg-gray-100 text-gray-600 border-gray-200",
+  analyst:    "bg-blue-50 text-blue-500 border-blue-100",
+};
+const CAT_SHORT: Record<TenantRole, string> = {
+  admin:      "Admin",
+  analyst_n2: "N2",
+  analyst_n1: "N1",
+  readonly:   "Leitor",
+  analyst:    "N2",
+};
+
+function PermissionMatrixTable({ tenantId }: { tenantId: string }) {
+  const qc = useQueryClient();
+  const { data: profiles = [], isLoading } = useQuery({
+    queryKey: ["perm-all-profiles", tenantId],
+    queryFn: permissionsApi.listCategoryProfiles,
+  });
+
+  const upsertCat = useMutation({
+    mutationFn: ({ userId, cat, role }: { userId: string; cat: DeviceCategory; role: TenantRole }) =>
+      permissionsApi.upsertCategoryRole(userId, cat, role),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["perm-all-profiles", tenantId] }),
+  });
+  const deleteCat = useMutation({
+    mutationFn: ({ userId, cat }: { userId: string; cat: DeviceCategory }) =>
+      permissionsApi.deleteCategoryRole(userId, cat),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["perm-all-profiles", tenantId] }),
+  });
+
+  const handleChange = (userId: string, cat: DeviceCategory, val: TenantRole | "") => {
+    if (val === "") deleteCat.mutate({ userId, cat });
+    else upsertCat.mutate({ userId, cat, role: val });
+  };
+
+  if (isLoading) return <p className="text-sm text-gray-400 text-center py-8">Carregando matriz...</p>;
+  if (profiles.length === 0) return <p className="text-sm text-gray-400 text-center py-8">Nenhum usuário com permissões configuradas.</p>;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-48">Usuário</th>
+            <th className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase text-center">Base</th>
+            {DEVICE_CATS.map(({ key, label }) => (
+              <th key={key} className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase text-center">{label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {profiles.map((p) => (
+            <tr key={p.user_id} className="hover:bg-gray-50">
+              <td className="px-4 py-2.5">
+                <p className="text-sm font-medium text-gray-900 truncate max-w-[160px]">{p.user_name}</p>
+                <p className="text-[11px] text-gray-400 truncate max-w-[160px]">{p.user_email}</p>
+              </td>
+              <td className="px-3 py-2.5 text-center">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${CAT_COLORS[p.tenant_role] ?? CAT_COLORS.readonly}`}>
+                  {CAT_SHORT[p.tenant_role] ?? p.tenant_role}
+                </span>
+              </td>
+              {DEVICE_CATS.map(({ key }) => {
+                const override = p.category_roles.find((cr) => cr.category === key)?.role;
+                return (
+                  <td key={key} className="px-3 py-2.5 text-center">
+                    <select
+                      value={override ?? ""}
+                      onChange={(e) => handleChange(p.user_id, key, e.target.value as TenantRole | "")}
+                      className={`border rounded px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 ${
+                        override ? `${CAT_COLORS[override]} font-semibold` : "border-gray-200 text-gray-400"
+                      }`}
+                    >
+                      {PERM_ROLES.map((r) => (
+                        <option key={r.value} value={r.value}>{r.value === "" ? "— herdar" : CAT_SHORT[r.value as TenantRole] ?? r.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-[11px] text-gray-400 mt-2 px-1">
+        "— herdar" usa o perfil base do tenant. Alterações são salvas imediatamente.
+      </p>
+    </div>
+  );
+}
+
 // ── Members Panel ─────────────────────────────────────────────────────────────
 
 function MembersPanel({ tenantId, tenantName, currentUserId }: {
@@ -267,6 +363,8 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<TenantRole>("analyst_n2");
   const [inviteAuthSource, setInviteAuthSource] = useState("local");
+  const [inviteCatOverrides, setInviteCatOverrides] = useState<Partial<Record<DeviceCategory, TenantRole | "">>>({});
+  const [showDomainStep, setShowDomainStep] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -282,7 +380,16 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
   const inviteMut = useMutation({
     mutationFn: async () => {
       if (inviteMode === "direct") {
-        return tenantsApi.inviteByEmail(tenantId, { email: inviteEmail, name: inviteName || undefined, role: inviteRole });
+        const res = await tenantsApi.inviteByEmail(tenantId, { email: inviteEmail, name: inviteName || undefined, role: inviteRole });
+        const userId = res.member?.user_id ?? (res as unknown as TenantMember)?.user_id;
+        if (userId) {
+          await Promise.all(
+            (Object.entries(inviteCatOverrides) as [DeviceCategory, TenantRole | ""][])
+              .filter(([, role]) => role !== "")
+              .map(([cat, role]) => permissionsApi.upsertCategoryRole(userId, cat, role as TenantRole))
+          );
+        }
+        return res;
       }
       await inviteApi.create({ email: inviteEmail, tenant_id: tenantId, role: inviteRole, auth_source: inviteAuthSource, frontend_url: window.location.origin });
       setEmailSent(true);
@@ -293,7 +400,8 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
       if (res?.temp_password) setTempPassword(res.temp_password);
       if (inviteMode === "direct") {
         setShowInvite(false);
-        setInviteEmail(""); setInviteName(""); setInviteRole("analyst_n2"); setInviteAuthSource("local");
+        setInviteEmail(""); setInviteName(""); setInviteRole("analyst_n2");
+        setInviteAuthSource("local"); setInviteCatOverrides({}); setShowDomainStep(false);
       }
     },
   });
@@ -389,6 +497,44 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
           >
             {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
           </select>
+
+          {inviteMode === "direct" && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowDomainStep((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck size={12} className="text-brand-500" />
+                  Permissões por domínio <span className="text-gray-400 font-normal">(opcional)</span>
+                </span>
+                {showDomainStep ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+              {showDomainStep && (
+                <div className="px-3 pb-3 pt-1 space-y-1 border-t border-gray-100 bg-gray-50">
+                  <p className="text-[11px] text-gray-400 mb-2">
+                    Deixe em "— herdar" para usar o perfil base acima. Overrides definem acesso granular por tipo de equipamento.
+                  </p>
+                  {DEVICE_CATS.map(({ key, label }) => (
+                    <div key={key} className="flex items-center justify-between py-1">
+                      <span className="text-xs text-gray-700">{label}</span>
+                      <select
+                        value={inviteCatOverrides[key] ?? ""}
+                        onChange={(e) => setInviteCatOverrides((prev) => ({ ...prev, [key]: e.target.value as TenantRole | "" }))}
+                        className={`border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 ${
+                          inviteCatOverrides[key] ? "border-brand-300 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-500"
+                        }`}
+                      >
+                        {PERM_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {inviteMode === "email" && (
             <select
               value={inviteAuthSource} onChange={(e) => setInviteAuthSource(e.target.value)}
@@ -457,10 +603,11 @@ function MembersPanel({ tenantId, tenantName, currentUserId }: {
                     <AuthSourceBadge source={m.auth_source} />
                     <button
                       onClick={() => { setPermUserId(m.user_id); setPermUserName(m.name); }}
-                      className="text-gray-400 hover:text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Matriz de permissões"
+                      className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600 border border-gray-200 hover:border-brand-300 bg-white px-2 py-0.5 rounded transition-colors"
+                      title="Editar permissões por domínio"
                     >
-                      <ShieldCheck size={13} />
+                      <ShieldCheck size={11} />
+                      Permissões
                     </button>
                     <button
                       onClick={() => { setEditingUserId(m.user_id); setEditRole(m.role); }}
@@ -658,6 +805,7 @@ function EquipeTab() {
   const [selectedTenantId, setSelectedTenantId] = useState<string>(
     isSuperAdmin ? "" : (tenant?.id ?? "")
   );
+  const [view, setView] = useState<"lista" | "matriz">("lista");
 
   const { data: tenants = [] } = useQuery({
     queryKey: ["tenants"],
@@ -673,7 +821,7 @@ function EquipeTab() {
   return (
     <div>
       {isSuperAdmin && (
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-4">
           <label className="text-sm font-medium text-gray-700 shrink-0">Tenant:</label>
           <select
             value={selectedTenantId}
@@ -689,11 +837,30 @@ function EquipeTab() {
       )}
 
       {activeTenantId ? (
-        <MembersPanel
-          tenantId={activeTenantId}
-          tenantName={activeTenantName}
-          currentUserId={user?.id ?? ""}
-        />
+        <>
+          <div className="flex gap-1 mb-5 bg-gray-100 rounded-lg p-1 w-fit">
+            {(["lista", "matriz"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  view === v ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {v === "lista" ? "Lista de Membros" : "Matriz de Permissões"}
+              </button>
+            ))}
+          </div>
+          {view === "lista" ? (
+            <MembersPanel
+              tenantId={activeTenantId}
+              tenantName={activeTenantName}
+              currentUserId={user?.id ?? ""}
+            />
+          ) : (
+            <PermissionMatrixTable tenantId={activeTenantId} />
+          )}
+        </>
       ) : (
         <div className="text-center py-14 text-gray-400">
           <Users size={36} className="mx-auto mb-3 text-gray-200" />
@@ -706,10 +873,11 @@ function EquipeTab() {
 
 // ── Política Tab ──────────────────────────────────────────────────────────────
 
-const POLICY_ROLES = ["operator", "viewer"] as const;
+const POLICY_ROLES = ["analyst_n2", "analyst_n1", "readonly"] as const;
 const POLICY_ROLE_LABELS: Record<string, string> = {
-  operator: "Operador (N1)",
-  viewer:   "Visualizador",
+  analyst_n2: "Analista N2",
+  analyst_n1: "Analista N1",
+  readonly:   "Leitor",
 };
 const GROUPS = Array.from(new Set(AUDIT_INTENTS.map((i) => i.group)));
 const DEFAULT_APPROVAL: Record<string, boolean> = Object.fromEntries(
