@@ -151,7 +151,7 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 26 | Golden Config Bundles REST | GoldenBundle + BundleSection + BundleApply; BundleRenderer; FortinetRestApply; Celery worker | ✅ |
 | 27 | VM Migration Planner | VMware vCenter + Proxmox read-only; inventory sync; runbook IA (Claude) | ✅ |
 | 28 | Segurança Avançada e Resiliência | Denylist catastróficos, pre-snapshot, preview CLI, read_only_agent, JWT 15 min, audit hash-chain, SSRF guard; suite 70 testes (JWT/guardrails/RBAC/tenant isolation/multi-sig) | ✅ |
-| 43 | Integração GLPI com IA | `glpi_integrations` + `glpi_ticket_analyses`; GlpiClient 11.0.4; Celery worker análise Claude (diagnóstico/ações/causa_raiz); enriquecimento Zabbix/Wazuh/device logs; correlação automática com devices; bridge AI Assistant via `open-session` | ✅ |
+| 43 | Integração GLPI com IA | `glpi_integrations` + `glpi_ticket_analyses`; GlpiClient 11.0.4; Celery worker análise Claude; enriquecimento Zabbix/Wazuh/device logs; correlação automática; bridge AI Assistant; **Loop KB/KR** (migration 0094): `kb_status`+`kr_ticket_id`+`kr_draft_id`; `auto_create_kr`+`kr_category_id`+`kr_bookstack_book_id`+`kr_bookstack_chapter_id`; aba "Registros KB" + `PublishKrModal`; destino BookStack flexível (migration 0095): override por integração e por publicação; `GlpiAnalysisStatus.cancelled`; cleanup Celery 15min/cutoff 30min | ✅ |
 | 44 | Firmware Intelligence e CVEs | `device_firmware_versions` (histórico); `firmware_cves` (NVD: CVSS v2/v3, CPE); `device_firmware_vulnerabilities` (device×CVE, status open/accepted/patched); `firmware_service` + `nvd_service` | ✅ |
 | 45 | Clarification Loop | `clarification_questions` + `clarification_answers` (JSONB) + `confidence_score` (FLOAT) em operations; agente pede esclarecimento quando confiança < threshold antes de executar | ✅ |
 | 46 | Auth Avançada — Refresh Tokens, MFA e Support Mode | Refresh token JWT 7 dias; pre-token 5 min (multi-tenant flow); MFA/TOTP via pyotp (`/mfa/setup`, `/mfa/verify`); `POST /auth/assume-tenant` (super admin entra no tenant); `SupportBanner` + `TenantSwitcher`; testes de fronteiras JWT (`test_auth_boundaries`) com gaps documentados via `pytest.xfail` | ✅ |
@@ -196,7 +196,8 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | — | Histórico nos Agentes Firewall e Redes | `Agent.tsx`: painel esquerdo com abas Dispositivo \| Histórico; lista operações por category=firewall com status badge; clicar carrega operação via `?edit=id`; `NetworkAgent.tsx`: mesmo padrão, filtra por categories=[switch,routing], adicionado suporte a `?edit=id` | ✅ |
 | — | Voice Input + Upload de Arquivo/Imagem no Chat | Web Speech API (reconhecimento nativo) + fallback Whisper (OpenAI); upload de imagem (base64 inline para Claude) e arquivo (texto extraído); botões de microfone e paperclip no chat do agente | ✅ |
 | — | Sistema de Ajuda Contextual + Central de Ajuda | `HelpDrawer.tsx`: painel lateral com overlay (fecha com Esc), descrição, passos, dica, link para /help; `PageWrapper.tsx`: detecta rota e exibe botão "? Ajuda" automaticamente; `HelpCenterPage.tsx` `/help` com busca em tempo real, 31 módulos + seção "Integrações" com 31 guias passo a passo (credenciais + config + teste); `helpContent.ts` indexado por rota; `integrationGuides.ts` com 9 categorias; item "Central de Ajuda" fixado na sidebar | ✅ |
-| — | Investigação Multi-Domínio (Cross-domain + Composite) | `CrossDomainPage.tsx` `/cross-domain`: seleção de domínios filtrada por category_roles, execução paralela, polling, correlação IA, navegação por agente; `CompositeInvestigationPage.tsx` `/composite-investigation`: dashboard N3 com criação, progresso por domínio, consolidação IA, plano de ação e resolução; handoff inteligente AssistantPage → Agentes por keywords de domínio | ✅ |
+| — | Investigação Multi-Domínio — Fase 1: iterações CrossDomain + Composite | Re-executar domínio com contexto extra; sempre-correlacionar/re-correlacionar; chat inline por domínio; reopen sub-investigação; sempre-consolidar/re-consolidar; chat N3 sempre visível | ✅ |
+| — | Investigação Multi-Domínio — Fase 2: página unificada `/multi-domain` | `MultiDomainPage.tsx` + migration 0093 (3 tabelas) + backend completo (cross_domain_service, composite_service, api/cross_domain, api/composite_investigation); tabs Automático/Coordenado/Histórico; modal de modo; histórico unificado com badges; /cross-domain e /composite-investigation redirecionam para /multi-domain | ✅ |
 | — | Permissões Granulares por Domínio + Matriz de Equipe | `Organisation.tsx`: aba Equipe com sub-tabs "Lista de Membros" \| "Matriz de Permissões"; Matriz exibe todos os usuários × todos os domínios com selects inline editáveis; step "Permissões por domínio" no wizard de convite; `PermissionMatrixDrawer` com presets rápidos DBA e Analista de SI | ✅ |
 | — | Frontend Melhorias (R1–R16) | **R1** VaultPage `/vault`: CRUD de segredos com badge expiração + rotação; **R3** ModuleRole expandido (alerts/playbooks/cross_investigation/ai_assistant/knowledge_base) + `useModulePermission` hook; **R4** PlaybooksPage aba Aprovações (fila SoD, criador não aprova próprio); **R5** TenantRole `analyst_sec`; **R6** Presets DBA + Analista SI no drawer; **R7** E2E: criar Remediação/Ticket IA de investigações cruzadas; **R8** Audit filtros tipo+módulo; **R9/R10** Alerts aba SLA & Manutenção (targets/escalação/janelas); **R12** Executive modal Agendar Relatório PDF; **R13** Sidebar minRole (itens filtrados por role/rank); **R14** CloudPosture aba Histórico + Migrations toggle Ativas/Histórico; **R16** Remediation "Abrir no GLPI" com GlpiChangeModal | ✅ |
 
@@ -1450,8 +1451,40 @@ Per-command approve/reject/edit (técnico controla cada comando antes de executa
 #### Sistema de Ajuda Contextual + Central de Ajuda
 `HelpDrawer.tsx`: painel lateral com overlay (fecha com Esc), descrição, passos numerados, dica, link para /help. `PageWrapper.tsx`: detecta rota via `useLocation()` e exibe botão "? Ajuda" em todas as páginas automaticamente (zero alterações nas páginas existentes). `HelpCenterPage.tsx` (`/help`): busca em tempo real cobrindo módulos e integrações; 31 módulos organizados por seção; seção "Integrações" com `IntegrationCard` expandível (subsections: Pré-requisitos, Como obter as credenciais, Como configurar no FireManager, Como testar, O que fornece). `helpContent.ts`: conteúdo indexado por rota. `integrationGuides.ts`: 31 guias em 9 categorias (Monitoramento & Inteligência, Tickets & ITSM, Notificações, Identidade & Diretório, SIEM, RMM, Cloud, Infraestrutura de Segurança, Edge & SSO) — cada guia detalha como obter credenciais no sistema externo (Zabbix, Wazuh, GLPI, Azure AD, Slack, etc.) e como configurar no FireManager. Item "Central de Ajuda" fixado na sidebar acima do footer.
 
-#### Investigação Multi-Domínio
-`CrossDomainPage.tsx` (`/cross-domain`): seleção de domínios filtrada por category_roles, execução paralela, polling, correlação IA, navegação direta para o agente especialista. `CompositeInvestigationPage.tsx` (`/composite-investigation`): dashboard N3 com criação, progresso por domínio, "Enviar resultado para N3", consolidação IA, geração de plano de ação e resolução. Handoff inteligente `AssistantPage` → Agentes: detecta keywords de domínio e renderiza botões de navegação direta.
+#### Investigação Multi-Domínio — Fase 1 (iterações sobre módulos existentes)
+
+**CrossDomainPage** — 3 adições iterativas:
+- **Re-executar domínio**: botão por card de domínio; abre painel com textarea de contexto adicional; chama `POST /{id}/rerun/{domain}`
+- **Sempre-correlacionar**: botão sempre visível quando qualquer domínio tem resultado (`anyDone`); texto muda para "Re-correlacionar domínios" se correlação já existe
+- **Chat inline por domínio**: input de texto por card de domínio; envia para `POST /{id}/chat/{domain}`; resposta exibida inline no card
+
+**CompositeInvestigationPage** — 3 adições iterativas:
+- **Reopen sub-investigação**: botão RotateCcw nos subs com status `submitted`; chama `POST /{id}/sub/{sub_id}/reopen`; volta para status `pending`
+- **Sempre-consolidar**: botão sempre visível quando qualquer sub tem findings (`hasAnyFindings`); texto muda para "Re-consolidar com achados atualizados"
+- **Chat N3 sempre visível**: seção de chat para o coordenador N3 sempre renderizada no detalhe da investigação composta
+
+#### Investigação Multi-Domínio — Fase 2 (unificação em página única)
+
+**Migration 0093** — 3 tabelas novas: `cross_domain_sessions`, `composite_investigations`, `sub_investigations`
+
+**Backend completo:**
+
+| Arquivo | Descrição |
+|---|---|
+| `app/models/multi_domain.py` | ORM: `CrossDomainSession` (sub_results JSONB), `CompositeInvestigation`, `SubInvestigation` (FK CASCADE) |
+| `app/services/cross_domain_service.py` | `start_session()` (background tasks por domínio), `_analyze_domain_background()` (Claude + últimas 3 sínteses do tenant), `correlate()`, `rerun_domain()`, `chat_in_domain()` |
+| `app/services/composite_service.py` | `create_composite()`, `get_composite()`, `submit_findings()`, `reopen_sub()`, `consolidate()`, `generate_action_plan()`, `resolve()`, `chat_composite()` |
+| `app/api/cross_domain.py` | Router separado em `/investigations/cross-domain` (evita conflito com `/{session_id}`) |
+| `app/api/composite_investigation.py` | Router separado em `/investigations/composite`; rota `my-sub-investigations` antes de `/{composite_id}` |
+
+**Frontend — `MultiDomainPage.tsx`** (`/multi-domain`):
+- Tab **Automático** → CrossDomain (IA analisa domínios em paralelo via background tasks)
+- Tab **Coordenado** → Composite (especialistas por domínio, N3 consolida)
+- Tab **Histórico** → lista unificada com badges "Auto"/"Coord"; clique navega para tab correta e ativa detalhe
+- **ModeModal**: "Nova investigação" pede modo antes de criar; Coordenado desabilitado sem permissão N3/admin
+- Permissões: `allowedDomains` via `getUserCategoryProfile`, `isN3OrAdmin` gate na criação Coordenado
+- `/cross-domain` e `/composite-investigation` redirecionam para `/multi-domain` (Navigate replace)
+- Sidebar: dois itens substituídos por "Investigação Multi-domínio" (icon Layers, minRole analyst_n1)
 
 #### Permissões Granulares + Matriz de Equipe
 `Organisation.tsx` aba Equipe: sub-tabs "Lista de Membros" | "Matriz de Permissões" — Matriz exibe todos os usuários × todos os domínios com selects inline sem abrir drawer. Step "Permissões por domínio" no wizard de convite. `PermissionMatrixDrawer` com presets rápidos: **DBA** (server/hypervisor=N2, firewall/switch=readonly), **Analista de SI** (infra toda=readonly, alerts/playbooks/compliance/remediation/cross_investigation=N2). TenantRole `analyst_sec` (Analista de Segurança da Informação) adicionado ao sistema.
