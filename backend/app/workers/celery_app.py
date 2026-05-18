@@ -54,7 +54,7 @@ celery_app.conf.update(
         },
         "glpi-cleanup-stale": {
             "task": "app.workers.glpi_sync.clean_stale_glpi_analyses",
-            "schedule": crontab(minute=0),                  # every hour
+            "schedule": crontab(minute="*/15"),              # every 15 min
         },
         "firmware-nvd-sync": {
             "task": "app.workers.firmware_tasks.sync_nvd_all_vendors",

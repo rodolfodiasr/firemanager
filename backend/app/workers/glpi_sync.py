@@ -847,7 +847,7 @@ async def _call_claude_for_draft(analysis) -> str:
 
 # ── Stale analysis cleanup task ───────────────────────────────────────────────
 
-_STALE_CUTOFF_HOURS = 2  # analyses older than this are eligible for cleanup
+_STALE_CUTOFF_MINUTES = 30  # analyses older than this are eligible for cleanup
 
 
 @celery_app.task(
@@ -874,7 +874,7 @@ async def _async_clean_stale_analyses() -> dict:
     from app.utils.crypto import decrypt_credentials
     from sqlalchemy import select, and_
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=_STALE_CUTOFF_HOURS)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=_STALE_CUTOFF_MINUTES)
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
