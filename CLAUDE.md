@@ -136,7 +136,7 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | 11 | Dell N-Series (DNOS6) | Suporte CLI Dell N-Series via Netmiko | ✅ |
 | 12 | HP V1910 (Comware) | Suporte CLI HP Comware via Netmiko | ✅ |
 | 13 | Variáveis de template | Herança tenant → device, substituição em templates CLI | ✅ |
-| 14 | Analista de Servidores | SSH Linux, WinRM Windows, Zabbix v6/v7, Wazuh — módulo analítico N3 | ✅ |
+| 14 | Analista de Servidores | SSH Linux (+ `use_sudo`/`sudo_password` — migration 0090), WinRM Windows, Zabbix v6/v7, Wazuh — módulo analítico N3 | ✅ |
 | 15 | Migração de Switches | Juniper EX, Aruba, Intelbras; BookStack; Zabbix dual-version; snapshot scheduling | ✅ |
 | 16 | Migração de Regras | Parser + renderer Fortinet/SonicWall/Sophos; IR normalizado; Celery worker | ✅ |
 | 17 | Golden Config | Templates com variáveis tipadas, biblioteca por vendor, divergência device×template | ✅ |
@@ -200,6 +200,9 @@ grep -n "texto_do_codigo_novo" /home/admeternity/firemanager/backend/app/service
 | — | Investigação Multi-Domínio — Fase 2: página unificada `/multi-domain` | `MultiDomainPage.tsx` + migration 0093 (3 tabelas) + backend completo (cross_domain_service, composite_service, api/cross_domain, api/composite_investigation); tabs Automático/Coordenado/Histórico; modal de modo; histórico unificado com badges; /cross-domain e /composite-investigation redirecionam para /multi-domain | ✅ |
 | — | Permissões Granulares por Domínio + Matriz de Equipe | `Organisation.tsx`: aba Equipe com sub-tabs "Lista de Membros" \| "Matriz de Permissões"; Matriz exibe todos os usuários × todos os domínios com selects inline editáveis; step "Permissões por domínio" no wizard de convite; `PermissionMatrixDrawer` com presets rápidos DBA e Analista de SI | ✅ |
 | — | Frontend Melhorias (R1–R16) | **R1** VaultPage `/vault`: CRUD de segredos com badge expiração + rotação; **R3** ModuleRole expandido (alerts/playbooks/cross_investigation/ai_assistant/knowledge_base) + `useModulePermission` hook; **R4** PlaybooksPage aba Aprovações (fila SoD, criador não aprova próprio); **R5** TenantRole `analyst_sec`; **R6** Presets DBA + Analista SI no drawer; **R7** E2E: criar Remediação/Ticket IA de investigações cruzadas; **R8** Audit filtros tipo+módulo; **R9/R10** Alerts aba SLA & Manutenção (targets/escalação/janelas); **R12** Executive modal Agendar Relatório PDF; **R13** Sidebar minRole (itens filtrados por role/rank); **R14** CloudPosture aba Histórico + Migrations toggle Ativas/Histórico; **R16** Remediation "Abrir no GLPI" com GlpiChangeModal | ✅ |
+| — | Devices RBAC — Hardening de permissões | Backend: `require_reviewer` adicionado a POST/PUT/DELETE devices e POST health-check (bloqueava `readonly` de executar escrita); Frontend: `canWrite = tenantRole !== "readonly"` em DevicesTab, TenantVarsTab, DeviceVarsTab e DeviceCard — botões Adicionar/Editar/Remover/Verificar ocultados para readonly | ✅ |
+| — | BookStack — Seletor de livro na integração | `integrationsApi.listBookstackBooks(id)` em `integrations.ts`; Organisation.tsx: botão "Selecionar livro" no campo `book_id` chama `GET /integrations/{id}/bookstack/books` e exibe dropdown com os livros do BookStack; fallback para input texto antes de salvar a integração | ✅ |
+| — | CrossDomain → Composite: escalação direta | `CrossDomainPage`: botão "Escalar para Investigação Composta N3" após correlação IA — navega para `/composite-investigation` com `{symptom, correlation, fromCrossDomain, crossDomainSessionId}` via `location.state`; `CompositeInvestigationPage`: auto-abre modal de criação com sintoma pré-preenchido e banner "Escalado de Investigação Cruzada" | ✅ |
 
 ### Próximas Fases (resumo)
 
