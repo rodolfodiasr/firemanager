@@ -230,8 +230,13 @@ async def list_glpi_analyses(
     security_only: bool = Query(False),
     recurrent_only: bool = Query(False),
     itemtype: str | None = Query(None),
+    include_cancelled: bool = Query(False),
 ) -> list[GlpiAnalysisListItem]:
-    """List ticket analyses for the current tenant, newest first."""
+    """List ticket analyses for the current tenant, newest first.
+
+    By default, cancelled analyses are hidden. Pass include_cancelled=true or
+    filter by status=cancelled to see them explicitly.
+    """
     stmt = (
         select(GlpiTicketAnalysis, GlpiIntegration.glpi_url)
         .join(GlpiIntegration, GlpiTicketAnalysis.glpi_integration_id == GlpiIntegration.id)
@@ -242,6 +247,8 @@ async def list_glpi_analyses(
     )
     if status:
         stmt = stmt.where(GlpiTicketAnalysis.status == status)
+    elif not include_cancelled:
+        stmt = stmt.where(GlpiTicketAnalysis.status != GlpiAnalysisStatus.cancelled)
     if security_only:
         stmt = stmt.where(GlpiTicketAnalysis.is_security_incident == True)
     if recurrent_only:

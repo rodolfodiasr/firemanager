@@ -22,6 +22,7 @@ import asyncio
 import json
 import logging
 import re
+from datetime import datetime, timezone
 
 from app.workers.celery_app import celery_app
 
@@ -186,6 +187,13 @@ async def _sync_integration(integration) -> dict:
     return stats
 
 
+def _is_glpi_item_closed(status: int, itemtype: str) -> bool:
+    """Return True if the GLPI status value indicates the item is solved or closed."""
+    if itemtype == "Ticket":
+        return status >= 5   # Solved(5) or Closed(6)
+    return status >= 6       # Closed — Problems/Changes: statuses 1-5 are open
+
+
 async def _process_ticket(integration, ticket_data: dict, client, itemtype: str = "Ticket") -> str:
     """Analyse a single ticket/problem/change. Returns 'analysed', 'queued', or 'skipped'."""
     from app.database import AsyncSessionLocal
@@ -195,6 +203,16 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
     glpi_ticket_id = int(ticket_data.get("2", 0))
     if not glpi_ticket_id:
         return "skipped"
+
+    # Part A: skip if item status is already solved/closed (race-condition guard)
+    raw_status = ticket_data.get("12")
+    if raw_status is not None:
+        try:
+            if _is_glpi_item_closed(int(raw_status), itemtype):
+                log.debug("item_already_closed ticket=%d type=%s status=%s", glpi_ticket_id, itemtype, raw_status)
+                return "skipped"
+        except (ValueError, TypeError):
+            pass
 
     title   = str(ticket_data.get("1", ""))
     content = GlpiClient_strip_html(ticket_data.get("21", ""))
@@ -825,6 +843,115 @@ async def _call_claude_for_draft(analysis) -> str:
         messages=[{"role": "user", "content": user_prompt}],
     )
     return msg.content[0].text if msg.content else ""
+
+
+# ── Stale analysis cleanup task ───────────────────────────────────────────────
+
+_STALE_CUTOFF_HOURS = 2  # analyses older than this are eligible for cleanup
+
+
+@celery_app.task(
+    name="app.workers.glpi_sync.clean_stale_glpi_analyses",
+    bind=True,
+    soft_time_limit=300,
+    time_limit=360,
+)
+def clean_stale_glpi_analyses(self: object) -> dict:
+    """Mark pending/pending_manual analyses as cancelled if the GLPI item is now closed."""
+    from app.database import engine
+    engine.dispose()
+    return asyncio.run(_async_clean_stale_analyses())
+
+
+async def _async_clean_stale_analyses() -> dict:
+    import app.models  # noqa: F401
+    from datetime import timedelta
+    from uuid import UUID
+    from app.database import AsyncSessionLocal
+    from app.models.glpi_integration import GlpiIntegration
+    from app.models.glpi_ticket_analysis import GlpiTicketAnalysis, GlpiAnalysisStatus
+    from app.services.glpi_service import GlpiClient
+    from app.utils.crypto import decrypt_credentials
+    from sqlalchemy import select, and_
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=_STALE_CUTOFF_HOURS)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(GlpiTicketAnalysis).where(
+                and_(
+                    GlpiTicketAnalysis.status.in_([
+                        GlpiAnalysisStatus.pending,
+                        GlpiAnalysisStatus.pending_manual,
+                    ]),
+                    GlpiTicketAnalysis.created_at < cutoff,
+                )
+            )
+        )
+        analyses = list(result.scalars().all())
+
+    if not analyses:
+        return {"cancelled": 0, "errors": 0, "checked": 0}
+
+    # Group by integration to reuse GLPI sessions
+    by_integration: dict[str, list] = {}
+    for analysis in analyses:
+        key = str(analysis.glpi_integration_id)
+        by_integration.setdefault(key, []).append(analysis)
+
+    cancelled = 0
+    errors    = 0
+
+    for integration_id_str, group in by_integration.items():
+        try:
+            async with AsyncSessionLocal() as db:
+                integration = await db.get(GlpiIntegration, UUID(integration_id_str))
+                if not integration or not integration.is_active:
+                    continue
+
+            creds    = decrypt_credentials(integration.encrypted_password)
+            password = creds.get("password", "")
+
+            async with GlpiClient(
+                glpi_url=integration.glpi_url,
+                app_token=integration.app_token,
+                username=integration.username,
+                password=password,
+                verify_ssl=integration.verify_ssl,
+            ) as client:
+                for analysis in group:
+                    try:
+                        status = await client.get_item_status(
+                            analysis.glpi_ticket_id,
+                            analysis.glpi_itemtype,
+                        )
+                        if status is not None and _is_glpi_item_closed(status, analysis.glpi_itemtype):
+                            async with AsyncSessionLocal() as updb:
+                                rec = await updb.get(GlpiTicketAnalysis, analysis.id)
+                                if rec and rec.status in (
+                                    GlpiAnalysisStatus.pending,
+                                    GlpiAnalysisStatus.pending_manual,
+                                ):
+                                    rec.status = GlpiAnalysisStatus.cancelled
+                                    await updb.commit()
+                                    cancelled += 1
+                                    log.info(
+                                        "analysis_cancelled analysis=%s ticket=%d glpi_status=%d",
+                                        analysis.id, analysis.glpi_ticket_id, status,
+                                    )
+                    except Exception as exc:
+                        errors += 1
+                        log.debug("cleanup_item_failed analysis=%s error=%s", analysis.id, exc)
+
+        except Exception as exc:
+            errors += 1
+            log.warning("cleanup_integration_failed integration=%s error=%s", integration_id_str, exc)
+
+    log.info(
+        "glpi_cleanup_done cancelled=%d errors=%d checked=%d",
+        cancelled, errors, len(analyses),
+    )
+    return {"cancelled": cancelled, "errors": errors, "checked": len(analyses)}
 
 
 # ── Manual analysis task ──────────────────────────────────────────────────────

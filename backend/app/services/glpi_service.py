@@ -386,6 +386,17 @@ class GlpiClient:
         logger.warning("create_ticket failed %s: %s", resp.status_code, resp.text[:200])
         return None
 
+    async def get_item_status(self, item_id: int, itemtype: str = "Ticket") -> int | None:
+        """Return the current GLPI status integer for any item type, or None on error."""
+        resp = await self._http.get(
+            f"{self._base}/{itemtype}/{item_id}",
+            headers=self._headers(),
+            params={"get_hateoas": "false"},
+        )
+        if resp.status_code == 200:
+            return resp.json().get("status")
+        return None
+
     async def set_ticket_status(self, ticket_id: int, status: int) -> bool:
         payload = {"input": {"id": ticket_id, "status": status}}
         resp = await self._http.put(

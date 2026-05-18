@@ -16,6 +16,7 @@ class GlpiAnalysisStatus(str, enum.Enum):
     analyzing       = "analyzing"
     completed       = "completed"
     failed          = "failed"
+    cancelled       = "cancelled"        # GLPI item was already closed/solved — no analysis needed
 
 
 class GlpiTicketAnalysis(Base):

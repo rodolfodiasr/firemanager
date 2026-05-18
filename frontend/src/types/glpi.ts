@@ -1,4 +1,4 @@
-export type GlpiAnalysisStatus = "pending" | "pending_manual" | "analyzing" | "completed" | "failed";
+export type GlpiAnalysisStatus = "pending" | "pending_manual" | "analyzing" | "completed" | "failed" | "cancelled";
 
 export interface GlpiIntegration {
   id: string;

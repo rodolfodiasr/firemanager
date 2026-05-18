@@ -33,6 +33,7 @@ const STATUS_LABEL: Record<GlpiAnalysisStatus, string> = {
   analyzing:      "Analisando",
   completed:      "Concluído",
   failed:         "Falhou",
+  cancelled:      "Cancelado",
 };
 
 const STATUS_STYLE: Record<GlpiAnalysisStatus, string> = {
@@ -41,6 +42,7 @@ const STATUS_STYLE: Record<GlpiAnalysisStatus, string> = {
   analyzing:      "bg-blue-100 text-blue-700",
   completed:      "bg-green-100 text-green-700",
   failed:         "bg-red-100 text-red-700",
+  cancelled:      "bg-gray-100 text-gray-400 line-through",
 };
 
 const ITEMTYPE_LABEL: Record<string, string> = {
@@ -577,10 +579,11 @@ export function GlpiAnalyses() {
     queryKey: ["glpi-analyses", statusFilter, itemtypeFilter, securityOnly, recurrentOnly],
     queryFn: () =>
       glpiApi.listAnalyses({
-        status:         statusFilter || undefined,
-        itemtype:       itemtypeFilter || undefined,
-        security_only:  securityOnly || undefined,
-        recurrent_only: recurrentOnly || undefined,
+        status:            statusFilter || undefined,
+        itemtype:          itemtypeFilter || undefined,
+        security_only:     securityOnly || undefined,
+        recurrent_only:    recurrentOnly || undefined,
+        include_cancelled: statusFilter === "cancelled" ? true : undefined,
         limit: 200,
       }),
   });
@@ -683,6 +686,9 @@ export function GlpiAnalyses() {
         </FilterPill>
         <FilterPill active={statusFilter === "failed"} onClick={() => setStatusFilter(statusFilter === "failed" ? "" : "failed")}>
           <XCircle size={11} /> Falhou
+        </FilterPill>
+        <FilterPill active={statusFilter === "cancelled"} onClick={() => setStatusFilter(statusFilter === "cancelled" ? "" : "cancelled")}>
+          <XCircle size={11} /> Cancelados
         </FilterPill>
         <FilterPill active={securityOnly} onClick={() => setSecurityOnly((v) => !v)}>
           <AlertTriangle size={11} />

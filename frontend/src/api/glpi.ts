@@ -37,6 +37,7 @@ export const glpiApi = {
     itemtype?: string;
     skip?: number;
     limit?: number;
+    include_cancelled?: boolean;
   }) =>
     apiClient
       .get<GlpiAnalysisListItem[]>("/glpi/analyses", { params })
