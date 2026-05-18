@@ -106,6 +106,7 @@ const navSections: NavSection[] = [
       { to: "/connectivity",  icon: Network,        label: "Topologia & Rotas"    },
       { to: "/migrations",    icon: ArrowRightLeft, label: "Migração de Switches", minRole: "analyst_n1" },
       { to: "/network-agent", icon: Bot,            label: "Agente · Redes",       minRole: "analyst_n1" },
+      { to: "/direct-mode",   icon: Terminal,       label: "CLI Direto",           minRole: "analyst_n1" },
     ],
   },
 
