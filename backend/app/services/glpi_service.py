@@ -357,6 +357,35 @@ class GlpiClient:
         logger.warning("add_followup failed %s: %s", resp.status_code, resp.text[:200])
         return None
 
+    async def create_ticket(
+        self,
+        name: str,
+        content: str,
+        type_: int = 2,
+        priority: int = 3,
+        category_id: int | None = None,
+    ) -> int | None:
+        """Create a new ticket in GLPI. Returns the created ticket ID or None on failure."""
+        input_payload: dict[str, Any] = {
+            "name": name,
+            "content": content,
+            "type": type_,
+            "priority": priority,
+            "status": STATUS_NEW,
+        }
+        if category_id:
+            input_payload["itilcategories_id"] = category_id
+
+        resp = await self._http.post(
+            f"{self._base}/Ticket",
+            headers=self._headers(),
+            json={"input": input_payload},
+        )
+        if resp.status_code in (200, 201):
+            return resp.json().get("id")
+        logger.warning("create_ticket failed %s: %s", resp.status_code, resp.text[:200])
+        return None
+
     async def set_ticket_status(self, ticket_id: int, status: int) -> bool:
         payload = {"input": {"id": ticket_id, "status": status}}
         resp = await self._http.put(

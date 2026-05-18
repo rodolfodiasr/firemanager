@@ -14,9 +14,9 @@ class AssistantDocDraft(Base):
     __tablename__ = "assistant_doc_drafts"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    session_id: Mapped[UUID] = mapped_column(
+    session_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("assistant_sessions.id", ondelete="CASCADE"),
-        nullable=False, index=True
+        nullable=True, index=True
     )
     tenant_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"),
@@ -41,6 +41,9 @@ class AssistantDocDraft(Base):
     similar_docs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     bookstack_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bookstack_page_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    glpi_analysis_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

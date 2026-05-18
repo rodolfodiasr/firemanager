@@ -57,6 +57,17 @@ class GlpiTicketAnalysis(Base):
     glpi_followup_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # KB coverage classification (populated by Claude analysis)
+    # documentado | parcialmente_documentado | sem_documentacao | nao_verificado
+    kb_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    kb_docs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    # KR (Knowledge Registration) loop
+    kr_ticket_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kr_draft_id: Mapped["UUID | None"] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

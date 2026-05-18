@@ -50,6 +50,10 @@ class GlpiIntegration(Base):
     force_analysis_on_security: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     force_analysis_on_recurrent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # KR (Knowledge Registration) loop
+    auto_create_kr: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    kr_category_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
     )

@@ -133,6 +133,10 @@ async def update_glpi_integration(
         intg.poll_interval_minutes = data.poll_interval_minutes
     if data.lookback_hours is not None:
         intg.lookback_hours = data.lookback_hours
+    if data.auto_create_kr is not None:
+        intg.auto_create_kr = data.auto_create_kr
+    if data.kr_category_id is not None:
+        intg.kr_category_id = data.kr_category_id
 
     await db.flush()
     await db.refresh(intg)
@@ -332,6 +336,134 @@ async def open_chat_from_glpi(
         await db.commit()
 
     return {"session_id": str(session.id)}
+
+
+@router.get("/kr-drafts", response_model=list[dict])
+async def list_kr_drafts(
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> list[dict]:
+    """List pending KR drafts generated from GLPI analyses (not yet published or rejected)."""
+    from app.models.doc_draft import AssistantDocDraft
+
+    stmt = (
+        select(AssistantDocDraft, GlpiTicketAnalysis)
+        .join(GlpiTicketAnalysis, AssistantDocDraft.glpi_analysis_id == GlpiTicketAnalysis.id)
+        .where(
+            AssistantDocDraft.tenant_id == ctx.tenant.id,
+            AssistantDocDraft.glpi_analysis_id.is_not(None),
+            AssistantDocDraft.status.in_(["draft", "approved"]),
+        )
+        .order_by(AssistantDocDraft.created_at.desc())
+    )
+    rows = (await db.execute(stmt)).all()
+    out = []
+    for draft, analysis in rows:
+        out.append({
+            "draft_id":            str(draft.id),
+            "title":               draft.title,
+            "status":              draft.status,
+            "doc_type":            draft.doc_type,
+            "created_at":          draft.created_at.isoformat(),
+            "glpi_analysis_id":    str(analysis.id),
+            "glpi_ticket_id":      analysis.glpi_ticket_id,
+            "glpi_ticket_title":   analysis.glpi_ticket_title,
+            "kr_ticket_id":        analysis.kr_ticket_id,
+            "kb_status":           analysis.kb_status,
+            "bookstack_page_url":  draft.bookstack_page_url,
+        })
+    return out
+
+
+@router.post("/analyses/{analysis_id}/resolve-kr", status_code=200)
+async def resolve_kr(
+    analysis_id: UUID,
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Publish the KR draft to BookStack, post a GLPI followup, and close the KR ticket.
+
+    Workflow:
+    1. Publish draft to BookStack
+    2. Post followup on original GLPI ticket with the BookStack link
+    3. Close the KR ticket (set status = solved)
+    """
+    from app.models.doc_draft import AssistantDocDraft
+    from app.services import doc_publisher
+    from app.services.glpi_service import GlpiClient
+    from app.utils.crypto import decrypt_credentials
+
+    result = await db.execute(
+        select(GlpiTicketAnalysis).where(GlpiTicketAnalysis.id == analysis_id)
+    )
+    analysis = result.scalar_one_or_none()
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Análise não encontrada")
+    if analysis.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=403, detail="Sem acesso a esta análise")
+    if not analysis.kr_draft_id:
+        raise HTTPException(status_code=400, detail="Esta análise não possui rascunho KR gerado.")
+
+    draft_result = await db.execute(
+        select(AssistantDocDraft).where(AssistantDocDraft.id == analysis.kr_draft_id)
+    )
+    draft = draft_result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado.")
+    if draft.status == "published":
+        raise HTTPException(status_code=409, detail="Rascunho já publicado.")
+
+    # 1. Publish to BookStack
+    try:
+        draft = await doc_publisher.publish_draft(db, draft.id, ctx.tenant.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # 2. Post followup on original GLPI ticket
+    intg_result = await db.execute(
+        select(GlpiIntegration).where(GlpiIntegration.id == analysis.glpi_integration_id)
+    )
+    intg = intg_result.scalar_one_or_none()
+    followup_posted = False
+    kr_closed = False
+
+    if intg and draft.bookstack_page_url:
+        creds = decrypt_credentials(intg.encrypted_password)
+        password = creds.get("password", "")
+        try:
+            async with GlpiClient(
+                glpi_url=intg.glpi_url,
+                app_token=intg.app_token,
+                username=intg.username,
+                password=password,
+                verify_ssl=intg.verify_ssl,
+            ) as client:
+                followup_text = (
+                    f"<p>✅ <b>Documentação técnica publicada pela equipe de N3.</b></p>"
+                    f"<p>Artigo disponível em: <a href='{draft.bookstack_page_url}'>{draft.title}</a></p>"
+                    f"<p><i>Publicado via Eternity SecOps — Knowledge Registration Loop.</i></p>"
+                )
+                await client.add_followup(
+                    analysis.glpi_ticket_id,
+                    followup_text,
+                    itemtype=analysis.glpi_itemtype,
+                )
+                followup_posted = True
+
+                # 3. Close the KR ticket
+                if analysis.kr_ticket_id:
+                    from app.services.glpi_service import STATUS_SOLVED
+                    kr_closed = await client.set_ticket_status(analysis.kr_ticket_id, STATUS_SOLVED)
+        except Exception as exc:
+            pass  # followup/close failure doesn't block the publish success response
+
+    await db.commit()
+    return {
+        "published": True,
+        "bookstack_page_url": draft.bookstack_page_url,
+        "followup_posted":   followup_posted,
+        "kr_closed":         kr_closed,
+    }
 
 
 @router.get("/analyses/{analysis_id}", response_model=GlpiTicketAnalysisRead)

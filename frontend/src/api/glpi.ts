@@ -5,6 +5,7 @@ import type {
   GlpiTestResult,
   GlpiAnalysisListItem,
   GlpiTicketAnalysis,
+  GlpiKrDraft,
 } from "../types/glpi";
 import apiClient from "./client";
 
@@ -50,5 +51,16 @@ export const glpiApi = {
   openChatFromGlpi: (analysisId: string) =>
     apiClient
       .post<{ session_id: string }>(`/glpi/analyses/${analysisId}/open-chat`)
+      .then((r) => r.data),
+
+  // KR loop
+  listKrDrafts: () =>
+    apiClient.get<GlpiKrDraft[]>("/glpi/kr-drafts").then((r) => r.data),
+
+  resolveKr: (analysisId: string) =>
+    apiClient
+      .post<{ published: boolean; bookstack_page_url: string | null; followup_posted: boolean; kr_closed: boolean }>(
+        `/glpi/analyses/${analysisId}/resolve-kr`
+      )
       .then((r) => r.data),
 };

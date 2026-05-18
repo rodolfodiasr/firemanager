@@ -28,6 +28,9 @@ class GlpiIntegrationCreate(BaseModel):
     unmatched_to_manual_queue: bool = True
     force_analysis_on_security: bool = True
     force_analysis_on_recurrent: bool = False
+    # KR loop
+    auto_create_kr: bool = False
+    kr_category_id: int | None = None
 
     @field_validator("glpi_url")
     @classmethod
@@ -72,6 +75,9 @@ class GlpiIntegrationUpdate(BaseModel):
     unmatched_to_manual_queue: bool | None = None
     force_analysis_on_security: bool | None = None
     force_analysis_on_recurrent: bool | None = None
+    # KR loop
+    auto_create_kr: bool | None = None
+    kr_category_id: int | None = None
 
     @field_validator("glpi_url")
     @classmethod
@@ -103,6 +109,9 @@ class GlpiIntegrationRead(BaseModel):
     unmatched_to_manual_queue: bool
     force_analysis_on_security: bool
     force_analysis_on_recurrent: bool
+    # KR loop
+    auto_create_kr: bool
+    kr_category_id: int | None
     created_at: datetime
     updated_at: datetime
 
@@ -130,6 +139,9 @@ class GlpiAnalysisListItem(BaseModel):
     is_security_incident: bool | None
     is_recurrent: bool | None
     recurrence_count: int | None
+    kb_status: str | None = None
+    kr_ticket_id: int | None = None
+    kr_draft_id: UUID | None = None
     created_at: datetime
     glpi_url: str | None = None
 
@@ -157,6 +169,10 @@ class GlpiTicketAnalysisRead(BaseModel):
     related_ticket_ids: list | None
     glpi_followup_id: int | None
     error_message: str | None
+    kb_status: str | None = None
+    kb_docs: list | None = None
+    kr_ticket_id: int | None = None
+    kr_draft_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
     glpi_url: str | None = None

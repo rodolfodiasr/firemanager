@@ -3,16 +3,19 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  BookOpen,
   Bot,
   CheckCircle2,
   ChevronRight,
   Clock,
   ExternalLink,
+  FileText,
   Loader2,
   MessageSquare,
   Play,
   RefreshCw,
   RotateCcw,
+  Send,
   X,
   XCircle,
 } from "lucide-react";
@@ -20,7 +23,7 @@ import toast from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { glpiApi } from "../api/glpi";
 import { RunAnalysisModal } from "../components/glpi/RunAnalysisModal";
-import type { GlpiAnalysisStatus, GlpiAnalysisListItem, GlpiTicketAnalysis } from "../types/glpi";
+import type { GlpiAnalysisStatus, GlpiAnalysisListItem, GlpiKrDraft, GlpiTicketAnalysis } from "../types/glpi";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -50,6 +53,20 @@ const ITEMTYPE_STYLE: Record<string, string> = {
   Ticket:  "bg-blue-50 text-blue-700",
   Problem: "bg-red-50 text-red-700",
   Change:  "bg-purple-50 text-purple-700",
+};
+
+const KB_STATUS_LABEL: Record<string, string> = {
+  documentado:               "Documentado",
+  parcialmente_documentado:  "Parcialmente doc.",
+  sem_documentacao:          "Sem documentação",
+  nao_verificado:            "Não verificado",
+};
+
+const KB_STATUS_STYLE: Record<string, string> = {
+  documentado:               "bg-green-100 text-green-700",
+  parcialmente_documentado:  "bg-amber-100 text-amber-700",
+  sem_documentacao:          "bg-red-100 text-red-700",
+  nao_verificado:            "bg-gray-100 text-gray-500",
 };
 
 function glpiItemUrl(baseUrl: string, itemtype: string, id: number): string {
@@ -305,10 +322,119 @@ function FilterPill({
   );
 }
 
+// ── KR Drafts tab ─────────────────────────────────────────────────────────────
+
+function KrDraftsTab() {
+  const qc = useQueryClient();
+
+  const { data: drafts = [], isLoading } = useQuery({
+    queryKey: ["glpi-kr-drafts"],
+    queryFn: glpiApi.listKrDrafts,
+    refetchInterval: 30_000,
+  });
+
+  const resolveMut = useMutation({
+    mutationFn: (analysisId: string) => glpiApi.resolveKr(analysisId),
+    onSuccess: (result, analysisId) => {
+      qc.invalidateQueries({ queryKey: ["glpi-kr-drafts"] });
+      qc.invalidateQueries({ queryKey: ["glpi-analyses"] });
+      toast.success("Documentação publicada e chamado KR fechado.");
+      if (result.bookstack_page_url) {
+        window.open(result.bookstack_page_url, "_blank");
+      }
+    },
+    onError: () => toast.error("Falha ao publicar a documentação"),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-48 gap-2 text-gray-400">
+        <Loader2 size={20} className="animate-spin" />
+        <span className="text-sm">Carregando rascunhos KR...</span>
+      </div>
+    );
+  }
+
+  if (drafts.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-48 gap-3 text-gray-400">
+        <BookOpen size={36} className="opacity-25" />
+        <p className="text-sm font-medium">Nenhum rascunho KR pendente</p>
+        <p className="text-xs text-gray-300 text-center max-w-xs">
+          Quando o agente detectar documentação ausente ou incompleta em chamados analisados,
+          um rascunho aparecerá aqui para revisão.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {drafts.map((draft) => (
+        <div
+          key={draft.draft_id}
+          className="bg-white border border-gray-200 rounded-xl p-4 flex items-start gap-4"
+        >
+          <div className="shrink-0 w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center">
+            <FileText size={16} className="text-brand-600" />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="text-sm font-semibold text-gray-900 truncate">{draft.title}</span>
+              {draft.kb_status && (
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${KB_STATUS_STYLE[draft.kb_status] ?? "bg-gray-100 text-gray-500"}`}>
+                  {KB_STATUS_LABEL[draft.kb_status] ?? draft.kb_status}
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-gray-500 mb-2 truncate">
+              Origem: {draft.glpi_ticket_title} (#{draft.glpi_ticket_id})
+              {draft.kr_ticket_id && (
+                <span className="ml-2 text-gray-400">· KR #{draft.kr_ticket_id}</span>
+              )}
+            </p>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                draft.status === "approved" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+              }`}>
+                {draft.status === "approved" ? "Aprovado" : "Rascunho"}
+              </span>
+              <span className="text-xs text-gray-400">{fmtDate(draft.created_at)}</span>
+            </div>
+          </div>
+
+          <div className="shrink-0 flex flex-col gap-2 items-end">
+            <button
+              onClick={() => {
+                if (window.confirm("Publicar no BookStack e fechar o chamado KR no GLPI?")) {
+                  resolveMut.mutate(draft.glpi_analysis_id);
+                }
+              }}
+              disabled={resolveMut.isPending}
+              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+            >
+              {resolveMut.isPending ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Send size={12} />
+              )}
+              Publicar e Fechar Chamado
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function GlpiAnalyses() {
   const qc = useQueryClient();
+  const [activeTab, setActiveTab]         = useState<"analyses" | "kr-drafts">("analyses");
   const [statusFilter, setStatusFilter]   = useState<GlpiAnalysisStatus | "">("");
   const [itemtypeFilter, setItemtypeFilter] = useState<string>("");
   const [securityOnly, setSecurityOnly]   = useState(false);
@@ -357,7 +483,7 @@ export function GlpiAnalyses() {
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-gray-900">Tickets IA</h1>
-          {analyses.length > 0 && (
+          {activeTab === "analyses" && analyses.length > 0 && (
             <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full font-medium">
               {analyses.length} {analyses.length === 1 ? "item" : "itens"}
             </span>
@@ -374,6 +500,36 @@ export function GlpiAnalyses() {
         </button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 mb-5 border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab("analyses")}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            activeTab === "analyses"
+              ? "border-brand-600 text-brand-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <MessageSquare size={14} />
+          Análises
+        </button>
+        <button
+          onClick={() => setActiveTab("kr-drafts")}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            activeTab === "kr-drafts"
+              ? "border-brand-600 text-brand-600"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <BookOpen size={14} />
+          Registros KB
+        </button>
+      </div>
+
+      {/* KR Drafts tab */}
+      {activeTab === "kr-drafts" && <KrDraftsTab />}
+
+      {activeTab === "analyses" && <>
       {/* No integration configured */}
       {!integration && !isLoading && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm text-amber-800 mb-5">
@@ -522,6 +678,8 @@ export function GlpiAnalyses() {
           </table>
         )}
       </div>
+
+      </>}
 
       {/* Slide-over detail */}
       {selectedId && (

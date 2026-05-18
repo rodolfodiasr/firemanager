@@ -43,7 +43,9 @@ Responda SOMENTE com JSON válido, sem texto adicional:
   "prevencao": "Uma medida preventiva objetiva.",
   "confianca": 0.85,
   "is_security_incident": false,
-  "is_recurrent": false
+  "is_recurrent": false,
+  "kb_status": "sem_documentacao",
+  "kb_docs": []
 }
 
 Regras:
@@ -55,7 +57,13 @@ Regras:
 - is_security_incident: true se envolver ataque, vazamento, acesso não autorizado ou comprometimento
 - is_recurrent: true se o problema parece estrutural ou já ocorreu antes
 - Se dados de monitoramento (Zabbix/Wazuh/logs) estiverem disponíveis, use-os para enriquecer a análise
-- Se as informações forem insuficientes, diga isso no diagnóstico e sugira o que coletar"""
+- Se as informações forem insuficientes, diga isso no diagnóstico e sugira o que coletar
+- kb_status: avalie a base de conhecimento fornecida e classifique:
+    "documentado" — o problema e solução já estão bem documentados na KB
+    "parcialmente_documentado" — existe documentação mas está incompleta ou desatualizada
+    "sem_documentacao" — não há documentação para este tipo de problema
+    "nao_verificado" — não foi possível verificar (KB não disponível)
+- kb_docs: lista de títulos dos documentos da KB relevantes encontrados (vazia se nenhum)"""
 
 
 @celery_app.task(
@@ -308,6 +316,9 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
         log.warning("glpi_followup_failed ticket=%d error=%s", glpi_ticket_id, exc)
 
     # ── Persist completed analysis ────────────────────────────────────────────
+    kb_status = ai_result.get("kb_status") or "nao_verificado"
+    kb_docs   = ai_result.get("kb_docs") or []
+
     async with AsyncSessionLocal() as db:
         rec = await db.get(GlpiTicketAnalysis, analysis_id)
         if rec:
@@ -321,6 +332,8 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
             rec.is_security_incident = bool(ai_result.get("is_security_incident", False))
             rec.is_recurrent         = is_recurrent or bool(ai_result.get("is_recurrent", False))
             rec.glpi_followup_id     = followup_id
+            rec.kb_status            = kb_status
+            rec.kb_docs              = kb_docs if isinstance(kb_docs, list) else []
             await db.commit()
 
     # ── Criar RemediationPlan a partir do plano_remediacao ────────────────────
@@ -350,13 +363,21 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
         except Exception as exc:
             log.warning("glpi_remediation_plan_failed ticket=%d error=%s", glpi_ticket_id, exc)
 
+    # ── KR (Knowledge Registration) loop ─────────────────────────────────────
+    if integration.auto_create_kr and kb_status in ("sem_documentacao", "parcialmente_documentado"):
+        try:
+            await _maybe_open_kr(integration, analysis_id, client)
+        except Exception as exc:
+            log.warning("kr_loop_failed ticket=%d error=%s", glpi_ticket_id, exc)
+
     log.info(
-        "ticket_analysed ticket=%d security=%s recurrent=%s confidence=%.2f enriched=%s",
+        "ticket_analysed ticket=%d security=%s recurrent=%s confidence=%.2f enriched=%s kb_status=%s",
         glpi_ticket_id,
         ai_result.get("is_security_incident"),
         rec.is_recurrent if rec else is_recurrent,
         float(ai_result.get("confianca", 0.0)),
         list(enrichment.keys()),
+        kb_status,
     )
     return "analysed"
 
@@ -693,6 +714,117 @@ def _build_followup(
 def GlpiClient_strip_html(html: str | None) -> str:
     from app.services.glpi_service import GlpiClient
     return GlpiClient.strip_html(html)
+
+
+# ── KR (Knowledge Registration) loop ─────────────────────────────────────────
+
+async def _maybe_open_kr(integration, analysis_id, client) -> None:
+    """Open a KR ticket in GLPI and generate a draft if KB coverage is insufficient."""
+    from uuid import UUID
+    from app.database import AsyncSessionLocal
+    from app.models.glpi_ticket_analysis import GlpiTicketAnalysis
+
+    async with AsyncSessionLocal() as db:
+        analysis = await db.get(GlpiTicketAnalysis, analysis_id)
+        if not analysis or analysis.kr_ticket_id:
+            # already has a KR ticket — skip
+            return
+
+        kb_status = analysis.kb_status or "nao_verificado"
+        kr_type   = "Criação" if kb_status == "sem_documentacao" else "Melhoria"
+        name      = f"[KR - {kr_type}] {analysis.glpi_ticket_title[:180]}"
+        content   = (
+            f"<p><b>Chamado de Registro de Conhecimento</b> gerado automaticamente pelo Eternity SecOps.</p>"
+            f"<p><b>Origem:</b> {analysis.glpi_itemtype} #{analysis.glpi_ticket_id} — {analysis.glpi_ticket_title}</p>"
+            f"<p><b>Status da base de conhecimento:</b> {kb_status}</p>"
+            f"<p><b>Diagnóstico:</b> {analysis.diagnostico or ''}</p>"
+            f"<p><b>Ação requerida:</b> {'Criar documentação técnica para este problema.' if kb_status == 'sem_documentacao' else 'Atualizar/complementar documentação existente.'}</p>"
+        )
+
+        kr_ticket_id = await client.create_ticket(
+            name=name,
+            content=content,
+            type_=2,
+            priority=3,
+            category_id=integration.kr_category_id,
+        )
+        if not kr_ticket_id:
+            log.warning("kr_ticket_create_failed analysis=%s", analysis_id)
+            return
+
+        analysis.kr_ticket_id = kr_ticket_id
+        await db.flush()
+        await db.refresh(analysis)
+
+        # Generate doc draft from the analysis context
+        draft_id = await _generate_kr_draft(db, analysis)
+        if draft_id:
+            analysis.kr_draft_id = draft_id
+
+        await db.commit()
+        log.info("kr_loop_done analysis=%s kr_ticket=%d draft=%s", analysis_id, kr_ticket_id, draft_id)
+
+
+async def _generate_kr_draft(db, analysis) -> "UUID | None":
+    """Generate an AssistantDocDraft from a GLPI analysis (no session required)."""
+    from app.models.doc_draft import AssistantDocDraft
+    from app.services import doc_sanitizer
+
+    try:
+        content_md = await _call_claude_for_draft(analysis)
+    except Exception as exc:
+        log.warning("kr_draft_claude_failed analysis=%s error=%s", analysis.id, exc)
+        return None
+
+    sanitized, warnings = doc_sanitizer.sanitize(content_md)
+
+    draft = AssistantDocDraft(
+        session_id=None,
+        tenant_id=analysis.tenant_id,
+        created_by=None,
+        title=f"Documentação — {analysis.glpi_ticket_title[:200]}",
+        content=sanitized,
+        status="draft",
+        doc_type="knowledge",
+        sanitizer_warnings=warnings,
+        similar_docs=[],
+        glpi_analysis_id=analysis.id,
+    )
+    db.add(draft)
+    await db.flush()
+    await db.refresh(draft)
+    return draft.id
+
+
+async def _call_claude_for_draft(analysis) -> str:
+    """Ask Claude to produce a structured Markdown knowledge article from the analysis."""
+    from anthropic import AsyncAnthropic
+    from app.config import settings
+
+    _DRAFT_SYSTEM = (
+        "Você é um redator técnico especializado em TI. "
+        "Com base na análise de chamado fornecida, escreva um artigo de conhecimento técnico em Markdown. "
+        "Use as seções: ## Sintoma, ## Diagnóstico, ## Solução, ## Prevenção. "
+        "Seja objetivo, use listas quando possível. Não inclua IPs ou senhas reais."
+    )
+    user_prompt = (
+        f"**Título do chamado:** {analysis.glpi_ticket_title}\n\n"
+        f"**Diagnóstico:** {analysis.diagnostico or ''}\n\n"
+        f"**Ações imediatas:** {analysis.acoes_imediatas or ''}\n\n"
+        f"**Plano de remediação:** {analysis.plano_remediacao or ''}\n\n"
+        f"**Causa raiz:** {analysis.causa_raiz or ''}\n\n"
+        f"**Prevenção:** {analysis.prevencao or ''}\n\n"
+        "Gere agora o artigo de conhecimento técnico completo em Markdown."
+    )
+
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    msg = await client.messages.create(
+        model=settings.anthropic_model,
+        max_tokens=2048,
+        system=_DRAFT_SYSTEM,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+    return msg.content[0].text if msg.content else ""
 
 
 # ── Manual analysis task ──────────────────────────────────────────────────────
