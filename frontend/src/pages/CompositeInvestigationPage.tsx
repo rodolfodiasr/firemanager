@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Flame, Network, Server, Monitor, Plus, Loader2,
   CheckCircle2, Clock, AlertTriangle, ArrowRight,
   Sparkles, ChevronDown, ChevronRight, Trash2, Users,
   Send, RefreshCw, ClipboardList, Wrench, MessageSquare,
+  RotateCcw, Layers,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import {
@@ -38,19 +39,27 @@ const STATUS_LABELS: Record<SubInvestigation["status"], { label: string; icon: t
 
 function SubRow({
   sub,
+  compositeId,
   compositeSymptom,
-  isN3,
 }: {
   sub: SubInvestigation;
+  compositeId: string;
   compositeSymptom: string;
-  isN3: boolean;
 }) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
+
   const cfg = DOMAIN_CFG[sub.domain];
   const statusCfg = STATUS_LABELS[sub.status];
   const Icon = cfg.icon;
   const StatusIcon = statusCfg.icon;
+
+  const reopenMut = useMutation({
+    mutationFn: () => compositeApi.reopen(compositeId, sub.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["composite", compositeId] }),
+    onError: () => toast.error("Erro ao reabrir sub-investigação."),
+  });
 
   return (
     <div className={`border rounded-xl overflow-hidden ${cfg.color}`}>
@@ -82,7 +91,18 @@ function SubRow({
               {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             </button>
           )}
-          {/* Navegar para agente com contexto da investigação */}
+          {/* Reopen submitted sub */}
+          {sub.status === "submitted" && (
+            <button
+              onClick={() => reopenMut.mutate()}
+              disabled={reopenMut.isPending}
+              title="Reabrir para complementar"
+              className="text-gray-400 hover:text-amber-600 transition-colors"
+            >
+              {reopenMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+            </button>
+          )}
+          {/* Navigate to agent with investigation context */}
           <button
             onClick={() => navigate(cfg.agentRoute, {
               state: {
@@ -114,6 +134,9 @@ function SubRow({
 function CompositeDetail({ inv, onBack }: { inv: CompositeInvestigation; onBack: () => void }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [chatMsg, setChatMsg] = useState("");
+  const [chatResponse, setChatResponse] = useState<string | null>(null);
+  const [chatLoading, setChatLoading] = useState(false);
 
   const consolidateMut = useMutation({
     mutationFn: () => compositeApi.consolidate(inv.id),
@@ -123,7 +146,12 @@ function CompositeDetail({ inv, onBack }: { inv: CompositeInvestigation; onBack:
 
   const actionPlanMut = useMutation({
     mutationFn: () => compositeApi.generateActionPlan(inv.id),
-    onSuccess: (r) => navigate(`/assistant?session=${r.assistant_session_id}`),
+    onSuccess: (updated) => {
+      qc.setQueryData(["composite", inv.id], updated);
+      if (updated.action_plan_session_id) {
+        navigate(`/assistant?session=${updated.action_plan_session_id}`);
+      }
+    },
     onError: () => toast.error("Erro ao gerar plano de ação."),
   });
 
@@ -133,9 +161,23 @@ function CompositeDetail({ inv, onBack }: { inv: CompositeInvestigation; onBack:
     onError: () => toast.error("Erro ao resolver investigação."),
   });
 
-  const submitted = inv.sub_investigations.filter((s) => s.status === "submitted").length;
+  const handleChat = async () => {
+    if (!chatMsg.trim()) return;
+    setChatLoading(true);
+    try {
+      const res = await compositeApi.chat(inv.id, chatMsg.trim());
+      setChatResponse(res.response);
+      setChatMsg("");
+    } catch {
+      toast.error("Erro ao enviar mensagem.");
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const submitted = inv.sub_investigations.filter((s) => s.status === "submitted" || s.findings).length;
   const total = inv.sub_investigations.length;
-  const allSubmitted = submitted === total && total > 0;
+  const hasAnyFindings = inv.sub_investigations.some((s) => s.findings);
 
   return (
     <div className="space-y-4">
@@ -166,7 +208,7 @@ function CompositeDetail({ inv, onBack }: { inv: CompositeInvestigation; onBack:
         <div className="flex-1">
           <div className="flex justify-between text-xs text-gray-500 mb-1">
             <span>Progresso dos domínios</span>
-            <span className="font-medium">{submitted}/{total} enviados</span>
+            <span className="font-medium">{submitted}/{total} com achados</span>
           </div>
           <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
             <div
@@ -180,7 +222,7 @@ function CompositeDetail({ inv, onBack }: { inv: CompositeInvestigation; onBack:
       {/* Sub-investigations */}
       <div className="space-y-2">
         {inv.sub_investigations.map((sub) => (
-          <SubRow key={sub.id} sub={sub} compositeSymptom={inv.symptom} isN3 />
+          <SubRow key={sub.id} sub={sub} compositeId={inv.id} compositeSymptom={inv.symptom} />
         ))}
       </div>
 
@@ -195,9 +237,38 @@ function CompositeDetail({ inv, onBack }: { inv: CompositeInvestigation; onBack:
         </div>
       )}
 
+      {/* N3 Chat */}
+      <div className="border border-gray-200 rounded-xl p-3 space-y-2">
+        <p className="text-xs font-semibold text-gray-600 flex items-center gap-1.5">
+          <MessageSquare size={12} /> Chat N3 — consulta contextualizada
+        </p>
+        {chatResponse && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5">
+            <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{chatResponse}</p>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <input
+            value={chatMsg}
+            onChange={(e) => setChatMsg(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleChat(); } }}
+            placeholder="Pergunte algo sobre a investigação…"
+            className="flex-1 border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          <button
+            onClick={handleChat}
+            disabled={!chatMsg.trim() || chatLoading}
+            className="flex items-center gap-1 px-3 py-1.5 bg-brand-600 text-white text-xs rounded-lg hover:bg-brand-700 disabled:opacity-50"
+          >
+            {chatLoading ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+          </button>
+        </div>
+      </div>
+
       {/* Ações N3 */}
       <div className="space-y-2 pt-1">
-        {allSubmitted && !inv.consolidation && inv.status !== "resolved" && (
+        {/* Consolidar — always show when there are any findings */}
+        {hasAnyFindings && inv.status !== "resolved" && (
           <button
             onClick={() => consolidateMut.mutate()}
             disabled={consolidateMut.isPending}
@@ -205,6 +276,8 @@ function CompositeDetail({ inv, onBack }: { inv: CompositeInvestigation; onBack:
           >
             {consolidateMut.isPending
               ? <><Loader2 size={13} className="animate-spin" /> Consolidando…</>
+              : inv.consolidation
+              ? <><RefreshCw size={13} /> Re-consolidar com achados atualizados</>
               : <><Sparkles size={13} /> Consolidar e identificar causa raiz</>}
           </button>
         )}
@@ -257,8 +330,18 @@ function CompositeDetail({ inv, onBack }: { inv: CompositeInvestigation; onBack:
 
 // ── Create modal ──────────────────────────────────────────────────────────────
 
-function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (inv: CompositeInvestigation) => void }) {
-  const [symptom, setSymptom] = useState("");
+function CreateModal({
+  onClose,
+  onCreate,
+  initialSymptom = "",
+  fromCrossDomain = false,
+}: {
+  onClose: () => void;
+  onCreate: (inv: CompositeInvestigation) => void;
+  initialSymptom?: string;
+  fromCrossDomain?: boolean;
+}) {
+  const [symptom, setSymptom] = useState(initialSymptom);
   const [domains, setDomains] = useState<Set<CompositeDomain>>(new Set(["firewall", "network", "n3", "rmm"]));
 
   const toggle = (d: CompositeDomain) =>
@@ -274,6 +357,13 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (in
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
       <div className="bg-white rounded-2xl shadow-2xl w-[480px] p-6 space-y-4">
         <h3 className="text-sm font-semibold text-gray-800">Nova Investigação Composta</h3>
+
+        {fromCrossDomain && (
+          <div className="flex items-start gap-2 bg-violet-50 border border-violet-200 rounded-xl px-3 py-2.5">
+            <Layers size={12} className="text-violet-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-violet-700">Escalado de Investigação Cruzada — problema pré-preenchido.</p>
+          </div>
+        )}
 
         <div>
           <label className="text-xs font-medium text-gray-600">Sintoma / problema</label>
@@ -333,7 +423,7 @@ function CreateModal({ onClose, onCreate }: { onClose: () => void; onCreate: (in
 
 function CompositeListItem({ inv, onSelect }: { inv: CompositeInvestigation; onSelect: () => void }) {
   const qc = useQueryClient();
-  const submitted = inv.sub_investigations.filter((s) => s.status === "submitted").length;
+  const submitted = inv.sub_investigations.filter((s) => s.status === "submitted" || s.findings).length;
   const total = inv.sub_investigations.length;
 
   const deleteMut = useMutation({
@@ -350,7 +440,7 @@ function CompositeListItem({ inv, onSelect }: { inv: CompositeInvestigation; onS
             {new Date(inv.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} ·{" "}
             {inv.created_by_name}
           </p>
-          <div className="flex gap-1.5 mt-2">
+          <div className="flex gap-1.5 mt-2 flex-wrap">
             {inv.domains.map((d) => {
               const cfg = DOMAIN_CFG[d];
               const Icon = cfg.icon;
@@ -392,10 +482,18 @@ function CompositeListItem({ inv, onSelect }: { inv: CompositeInvestigation; onS
 
 export function CompositeInvestigationPage() {
   const qc = useQueryClient();
+  const location = useLocation();
   const tenantRole = useAuthStore((s) => s.tenantRole);
   const isN3OrAdmin = tenantRole === "admin" || tenantRole === "analyst_n2";
 
-  const [showCreate, setShowCreate] = useState(false);
+  const escalation = location.state as {
+    symptom?: string;
+    correlation?: string;
+    fromCrossDomain?: boolean;
+    crossDomainSessionId?: string;
+  } | null;
+
+  const [showCreate, setShowCreate] = useState(!!escalation?.fromCrossDomain && isN3OrAdmin);
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const { data: list = [], isLoading } = useQuery({
@@ -403,7 +501,6 @@ export function CompositeInvestigationPage() {
     queryFn: compositeApi.list,
   });
 
-  // Polling das ativas
   const { data: activeInv } = useQuery({
     queryKey: ["composite", activeId],
     queryFn: () => compositeApi.get(activeId!),
@@ -439,7 +536,6 @@ export function CompositeInvestigationPage() {
       subtitle="Coordene especialistas de múltiplos domínios em uma investigação unificada"
     >
       <div className="max-w-2xl mx-auto space-y-4">
-        {/* Header actions */}
         {isN3OrAdmin && (
           <div className="flex justify-end">
             <button
@@ -451,7 +547,6 @@ export function CompositeInvestigationPage() {
           </div>
         )}
 
-        {/* Lista */}
         {isLoading && (
           <div className="flex items-center justify-center h-32 gap-2 text-gray-400 text-sm">
             <Loader2 size={15} className="animate-spin" /> Carregando…
@@ -471,7 +566,14 @@ export function CompositeInvestigationPage() {
         ))}
       </div>
 
-      {showCreate && <CreateModal onClose={() => setShowCreate(false)} onCreate={handleCreated} />}
+      {showCreate && (
+        <CreateModal
+          onClose={() => setShowCreate(false)}
+          onCreate={handleCreated}
+          initialSymptom={escalation?.symptom ?? ""}
+          fromCrossDomain={!!escalation?.fromCrossDomain}
+        />
+      )}
     </PageWrapper>
   );
 }

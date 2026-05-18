@@ -5,6 +5,7 @@ import {
   Layers, Flame, Network, Server, Monitor, Play, Loader2,
   CheckCircle2, AlertTriangle, Clock, RefreshCw, Sparkles, ArrowRight,
   ChevronDown, ChevronRight, History, Trash2, Wrench, MessageSquare,
+  RotateCcw, Send, GitMerge,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import {
@@ -13,7 +14,6 @@ import {
   type CrossDomainSession,
   type CrossDomainSubResult,
 } from "../api/crossDomain";
-import { useAuthStore } from "../store/authStore";
 import { permissionsApi } from "../api/permissions";
 import { useQuery as useQ } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -27,15 +27,47 @@ const DOMAIN_CONFIG: Record<CrossDomainAgentType, { label: string; icon: typeof 
   rmm:      { label: "Estações",   icon: Monitor,  color: "text-green-600 bg-green-50 border-green-200",    route: "/rmm-agent" },
 };
 
-// ── SubResult card ────────────────────────────────────────────────────────────
+// ── SubResult card with iterative features ────────────────────────────────────
 
-function SubResultCard({ sub, onNavigate }: { sub: CrossDomainSubResult; onNavigate: () => void }) {
+function SubResultCard({
+  sub,
+  sessionId,
+  onNavigate,
+  onRerun,
+}: {
+  sub: CrossDomainSubResult;
+  sessionId: string;
+  onNavigate: () => void;
+  onRerun: (domain: CrossDomainAgentType, additionalContext?: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [showRerun, setShowRerun] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [rerunCtx, setRerunCtx] = useState("");
+  const [chatMsg, setChatMsg] = useState("");
+  const [chatResponse, setChatResponse] = useState<string | null>(null);
+  const [chatLoading, setChatLoading] = useState(false);
+
   const cfg = DOMAIN_CONFIG[sub.domain];
   const Icon = cfg.icon;
 
+  const handleChat = async () => {
+    if (!chatMsg.trim()) return;
+    setChatLoading(true);
+    try {
+      const res = await crossDomainApi.chat(sessionId, sub.domain, chatMsg.trim());
+      setChatResponse(res.response);
+      setChatMsg("");
+    } catch {
+      toast.error("Erro ao enviar mensagem.");
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
   return (
     <div className={`border rounded-xl overflow-hidden ${cfg.color}`}>
+      {/* Header row */}
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
         onClick={() => sub.synthesis && setExpanded((v) => !v)}
@@ -48,15 +80,9 @@ function SubResultCard({ sub, onNavigate }: { sub: CrossDomainSubResult; onNavig
           {sub.status === "done" && sub.synthesis && (
             <p className="text-xs text-gray-600 truncate">{sub.synthesis.slice(0, 80)}…</p>
           )}
-          {sub.status === "running" && (
-            <p className="text-xs text-gray-500">Investigando…</p>
-          )}
-          {sub.status === "pending" && (
-            <p className="text-xs text-gray-400">Aguardando…</p>
-          )}
-          {sub.status === "error" && (
-            <p className="text-xs text-red-500">{sub.error ?? "Erro na investigação"}</p>
-          )}
+          {sub.status === "running" && <p className="text-xs text-gray-500">Investigando…</p>}
+          {sub.status === "pending" && <p className="text-xs text-gray-400">Aguardando…</p>}
+          {sub.status === "error"   && <p className="text-xs text-red-500">{sub.error ?? "Erro na investigação"}</p>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {sub.status === "running" && <Loader2 size={14} className="animate-spin text-gray-500" />}
@@ -71,6 +97,26 @@ function SubResultCard({ sub, onNavigate }: { sub: CrossDomainSubResult; onNavig
               Abrir
             </button>
           )}
+          {/* Re-run button */}
+          {(sub.status === "done" || sub.status === "error") && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowRerun((v) => !v); setShowChat(false); }}
+              title="Re-executar domínio"
+              className="opacity-60 hover:opacity-100 transition-opacity"
+            >
+              <RotateCcw size={12} />
+            </button>
+          )}
+          {/* Chat button */}
+          {sub.status === "done" && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowChat((v) => !v); setShowRerun(false); }}
+              title="Chat com este domínio"
+              className="opacity-60 hover:opacity-100 transition-opacity"
+            >
+              <MessageSquare size={12} />
+            </button>
+          )}
           {sub.synthesis && (
             expanded
               ? <ChevronDown size={13} className="text-gray-400" />
@@ -78,9 +124,64 @@ function SubResultCard({ sub, onNavigate }: { sub: CrossDomainSubResult; onNavig
           )}
         </div>
       </div>
+
+      {/* Synthesis content */}
       {expanded && sub.synthesis && (
         <div className="px-4 pb-4 border-t border-current/20 pt-3">
           <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{sub.synthesis}</p>
+        </div>
+      )}
+
+      {/* Re-run panel */}
+      {showRerun && (
+        <div className="px-4 pb-4 border-t border-current/20 pt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
+          <p className="text-xs font-semibold text-gray-700">Re-executar análise</p>
+          <textarea
+            value={rerunCtx}
+            onChange={(e) => setRerunCtx(e.target.value)}
+            rows={2}
+            placeholder="Contexto adicional (opcional) — ex: verifique também as regras de NAT"
+            className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 resize-none bg-white"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => { onRerun(sub.domain, rerunCtx.trim() || undefined); setShowRerun(false); setRerunCtx(""); }}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700"
+            >
+              <RotateCcw size={11} /> Re-executar
+            </button>
+            <button onClick={() => setShowRerun(false)} className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Chat panel */}
+      {showChat && (
+        <div className="px-4 pb-4 border-t border-current/20 pt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
+          <p className="text-xs font-semibold text-gray-700">Chat com {cfg.label}</p>
+          {chatResponse && (
+            <div className="bg-white border border-gray-200 rounded-lg p-2.5">
+              <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{chatResponse}</p>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              value={chatMsg}
+              onChange={(e) => setChatMsg(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleChat(); } }}
+              placeholder={`Pergunte algo sobre ${cfg.label}…`}
+              className="flex-1 border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500 bg-white"
+            />
+            <button
+              onClick={handleChat}
+              disabled={!chatMsg.trim() || chatLoading}
+              className="flex items-center gap-1 px-3 py-1.5 bg-violet-600 text-white text-xs rounded-lg hover:bg-violet-700 disabled:opacity-50"
+            >
+              {chatLoading ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -109,6 +210,16 @@ function SessionDetail({ sessionId, onBack }: { sessionId: string; onBack: () =>
     onError: () => toast.error("Erro ao correlacionar resultados."),
   });
 
+  const rerunMut = useMutation({
+    mutationFn: ({ domain, ctx }: { domain: CrossDomainAgentType; ctx?: string }) =>
+      crossDomainApi.rerunDomain(sessionId, domain, ctx),
+    onSuccess: (s) => {
+      qc.setQueryData(["cross-domain", sessionId], s);
+      toast.success("Re-análise iniciada.");
+    },
+    onError: () => toast.error("Erro ao re-executar domínio."),
+  });
+
   const deleteMut = useMutation({
     mutationFn: () => crossDomainApi.delete(sessionId),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cross-domain-list"] }); onBack(); },
@@ -122,7 +233,6 @@ function SessionDetail({ sessionId, onBack }: { sessionId: string; onBack: () =>
     );
   }
 
-  const allDone = session.sub_results.every((s) => s.status === "done" || s.status === "error");
   const anyDone = session.sub_results.some((s) => s.status === "done");
 
   return (
@@ -159,15 +269,31 @@ function SessionDetail({ sessionId, onBack }: { sessionId: string; onBack: () =>
           <SubResultCard
             key={sub.domain}
             sub={sub}
+            sessionId={sessionId}
             onNavigate={() => {
               const cfg = DOMAIN_CONFIG[sub.domain];
               navigate(cfg.route, { state: { context: session.problem_description } });
             }}
+            onRerun={(domain, ctx) => rerunMut.mutate({ domain, ctx })}
           />
         ))}
       </div>
 
-      {/* Correlation */}
+      {/* Correlation — always show button when any domain done */}
+      {anyDone && (
+        <button
+          onClick={() => correlateMut.mutate()}
+          disabled={correlateMut.isPending}
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-600 text-white text-sm font-medium rounded-xl hover:bg-violet-700 disabled:opacity-50"
+        >
+          {correlateMut.isPending
+            ? <><Loader2 size={13} className="animate-spin" /> Correlacionando…</>
+            : session.correlation
+            ? <><RefreshCw size={13} /> Re-correlacionar domínios</>
+            : <><Sparkles size={13} /> Correlacionar e identificar causa raiz</>}
+        </button>
+      )}
+
       {session.correlation && (
         <div className="border border-violet-200 bg-violet-50 rounded-xl p-4 space-y-2">
           <div className="flex items-center gap-2">
@@ -176,19 +302,6 @@ function SessionDetail({ sessionId, onBack }: { sessionId: string; onBack: () =>
           </div>
           <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{session.correlation}</p>
         </div>
-      )}
-
-      {/* Actions */}
-      {allDone && anyDone && !session.correlation && (
-        <button
-          onClick={() => correlateMut.mutate()}
-          disabled={correlateMut.isPending}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-600 text-white text-sm font-medium rounded-xl hover:bg-violet-700 disabled:opacity-50"
-        >
-          {correlateMut.isPending
-            ? <><Loader2 size={13} className="animate-spin" /> Correlacionando…</>
-            : <><Sparkles size={13} /> Correlacionar e identificar causa raiz</>}
-        </button>
       )}
 
       {session.correlation && (
@@ -217,6 +330,19 @@ function SessionDetail({ sessionId, onBack }: { sessionId: string; onBack: () =>
               <MessageSquare size={13} /> Criar Ticket IA
             </button>
           </div>
+          <button
+            onClick={() => navigate("/composite-investigation", {
+              state: {
+                symptom: session.problem_description,
+                correlation: session.correlation,
+                fromCrossDomain: true,
+                crossDomainSessionId: session.id,
+              },
+            })}
+            className="w-full flex items-center justify-center gap-2 py-2 border border-violet-300 text-violet-700 text-sm font-medium rounded-xl hover:bg-violet-50"
+          >
+            <GitMerge size={13} /> Escalar para Investigação Composta N3
+          </button>
         </div>
       )}
     </div>
@@ -237,7 +363,6 @@ export function CrossDomainPage() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [view, setView] = useState<"new" | "history">("new");
 
-  // Fetch user's allowed categories (best-effort — falls back to all)
   const { data: myProfile } = useQ({
     queryKey: ["my-perm-profile"],
     queryFn: async () => {
@@ -260,7 +385,6 @@ export function CrossDomainPage() {
     const allowed = new Set<CrossDomainAgentType>(
       cats.map((c) => map[c]).filter(Boolean) as CrossDomainAgentType[]
     );
-    // admin: all
     if (myProfile.tenant_role === "admin") return ["firewall", "network", "n3", "rmm"];
     return allowed.size > 0 ? Array.from(allowed) : ["firewall", "network", "n3", "rmm"];
   })();
@@ -307,7 +431,6 @@ export function CrossDomainPage() {
       subtitle="Investigue um problema em múltiplos domínios simultaneamente"
     >
       <div className="max-w-2xl mx-auto space-y-5">
-        {/* Context banner from Assistente IA */}
         {handoffState?.context && (
           <div className="flex items-start gap-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-3">
             <Sparkles size={13} className="text-brand-500 shrink-0 mt-0.5" />
@@ -320,31 +443,23 @@ export function CrossDomainPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-gray-200">
-          <button
-            onClick={() => setView("new")}
-            className={`flex items-center gap-1.5 text-xs px-3 py-2 border-b-2 transition-colors ${
-              view === "new"
-                ? "border-violet-500 text-violet-700 font-medium"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            <Layers size={12} /> Nova investigação
-          </button>
-          <button
-            onClick={() => setView("history")}
-            className={`flex items-center gap-1.5 text-xs px-3 py-2 border-b-2 transition-colors ${
-              view === "history"
-                ? "border-violet-500 text-violet-700 font-medium"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            <History size={12} /> Histórico
-          </button>
+          {(["new", "history"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setView(tab)}
+              className={`flex items-center gap-1.5 text-xs px-3 py-2 border-b-2 transition-colors ${
+                view === tab
+                  ? "border-violet-500 text-violet-700 font-medium"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {tab === "new" ? <><Layers size={12} /> Nova investigação</> : <><History size={12} /> Histórico</>}
+            </button>
+          ))}
         </div>
 
         {view === "new" && (
           <div className="space-y-5">
-            {/* Problem description */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-gray-700">Descreva o problema</label>
               <textarea
@@ -356,7 +471,6 @@ export function CrossDomainPage() {
               />
             </div>
 
-            {/* Domain selector */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-700">
                 Domínios a investigar
@@ -391,7 +505,6 @@ export function CrossDomainPage() {
               </div>
             </div>
 
-            {/* Start button */}
             <button
               onClick={() => startMut.mutate()}
               disabled={!problem.trim() || selectedDomains.size === 0 || startMut.isPending}
