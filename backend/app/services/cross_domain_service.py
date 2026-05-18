@@ -140,17 +140,153 @@ async def _get_rag_context(
     db: AsyncSession,
     tenant_id: uuid.UUID,
     domain: str,
+    page_ids: list[int] | None = None,
 ) -> tuple[str, list[str]]:
     """Search the tenant KB for domain-relevant content.
 
-    Returns (rag_text, title_list). Both empty when no OpenAI key or no KB indexed.
+    When page_ids provided, fetches those pages directly instead of semantic search.
+    Returns (rag_text, title_list). Both empty when no content found.
     """
+    if page_ids:
+        from app.models.bookstack_embedding import BookstackEmbedding
+
+        rows_result = await db.execute(
+            select(BookstackEmbedding)
+            .where(
+                BookstackEmbedding.tenant_id == tenant_id,
+                BookstackEmbedding.bs_page_id.in_(page_ids),
+            )
+            .order_by(BookstackEmbedding.bs_page_id, BookstackEmbedding.chunk_index)
+        )
+        chunks = rows_result.scalars().all()
+        if not chunks:
+            return "", []
+
+        sections: dict[int, dict] = {}
+        for chunk in chunks:
+            if chunk.bs_page_id not in sections:
+                sections[chunk.bs_page_id] = {"name": chunk.bs_page_name, "texts": []}
+            sections[chunk.bs_page_id]["texts"].append(chunk.chunk_text)
+
+        parts: list[str] = []
+        titles: list[str] = []
+        total_chars = 0
+        for page_info in sections.values():
+            title = page_info["name"]
+            text  = "\n\n".join(page_info["texts"])
+            block = f"## {title}\n\n{text}"
+            if total_chars + len(block) > 3000:
+                break
+            parts.append(block)
+            titles.append(title)
+            total_chars += len(block)
+
+        return "\n\n---\n\n".join(parts), titles
+
     from app.services.embedding_service import semantic_search
 
     query    = _DOMAIN_RAG_QUERIES.get(domain, domain)
     rag_text = await semantic_search(db, tenant_id, query, top_k=5)
     titles   = _extract_rag_titles(rag_text) if rag_text else []
     return rag_text, titles
+
+
+async def preview_kb_docs(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    problem_description: str,
+    domains: list[str],
+) -> dict[str, list[dict]]:
+    """Semantic search per domain — returns page suggestions (id, title, url)."""
+    import os
+
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    if not openai_key:
+        return {}
+
+    from app.models.bookstack_embedding import BookstackEmbedding
+
+    result: dict[str, list[dict]] = {}
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=openai_key)
+
+        for domain in domains:
+            query = f"{_DOMAIN_RAG_QUERIES.get(domain, domain)} {problem_description}"
+            embed_resp = await client.embeddings.create(
+                model="text-embedding-3-small",
+                input=query[:8000],
+            )
+            query_vector = embed_resp.data[0].embedding
+
+            rows_result = await db.execute(
+                select(
+                    BookstackEmbedding.bs_page_id,
+                    BookstackEmbedding.bs_page_name,
+                    BookstackEmbedding.bs_page_url,
+                )
+                .where(BookstackEmbedding.tenant_id == tenant_id)
+                .order_by(BookstackEmbedding.embedding.cosine_distance(query_vector))
+                .limit(15)
+            )
+            rows = rows_result.all()
+
+            seen: set[int] = set()
+            pages: list[dict] = []
+            for row in rows:
+                if row.bs_page_id not in seen and len(pages) < 5:
+                    seen.add(row.bs_page_id)
+                    pages.append({
+                        "page_id": row.bs_page_id,
+                        "title":   row.bs_page_name,
+                        "url":     row.bs_page_url or "",
+                    })
+            if pages:
+                result[domain] = pages
+
+    except Exception as exc:
+        log.warning("preview_kb_docs error: %s", exc)
+
+    return result
+
+
+async def list_kb_pages(
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    query: str | None = None,
+) -> list[dict]:
+    """List distinct KB pages for manual selection, optionally filtered by title."""
+    from app.models.bookstack_embedding import BookstackEmbedding
+
+    stmt = (
+        select(
+            BookstackEmbedding.bs_page_id,
+            BookstackEmbedding.bs_page_name,
+            BookstackEmbedding.bs_page_url,
+        )
+        .where(BookstackEmbedding.tenant_id == tenant_id)
+        .order_by(BookstackEmbedding.bs_page_id, BookstackEmbedding.chunk_index)
+        .limit(500)
+    )
+    if query:
+        stmt = stmt.where(BookstackEmbedding.bs_page_name.ilike(f"%{query}%"))
+
+    rows_result = await db.execute(stmt)
+    rows = rows_result.all()
+
+    seen: set[int] = set()
+    pages: list[dict] = []
+    for row in rows:
+        if row.bs_page_id not in seen:
+            seen.add(row.bs_page_id)
+            pages.append({
+                "page_id": row.bs_page_id,
+                "title":   row.bs_page_name,
+                "url":     row.bs_page_url or "",
+            })
+            if len(pages) >= 50:
+                break
+    return pages
 
 
 async def _get_device_context(
@@ -321,6 +457,7 @@ def _build_sub_result(
     rag_doc_titles: list[str] | None = None,
     device_ids: list[str] | None = None,
     mode: str = "diagnostico",
+    kb_page_ids: list[int] | None = None,
 ) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     return {
@@ -335,6 +472,7 @@ def _build_sub_result(
         "rag_doc_titles": rag_doc_titles or [],
         "device_ids": device_ids or [],
         "mode": mode,
+        "kb_page_ids": kb_page_ids or [],
     }
 
 
@@ -347,9 +485,11 @@ async def _analyze_domain_background(
     problem_description: str,
     device_ids: list[str] | None = None,
     mode: str = "diagnostico",
+    kb_page_ids: list[int] | None = None,
 ) -> None:
     """Background task: analyze one domain and update sub_results in the DB."""
-    device_ids = device_ids or []
+    device_ids  = device_ids or []
+    kb_page_ids = kb_page_ids or []
 
     async with AsyncSessionLocal() as db:
         try:
@@ -380,8 +520,11 @@ async def _analyze_domain_background(
                     for i, s in enumerate(recent, 1):
                         context_block += f"\n**Investigação {i}:**\n{s}\n"
 
-            # ── RAG from Knowledge Base (always, silently ignored if no key) ─
-            rag_text, rag_titles = await _get_rag_context(db, tenant_id, domain)
+            # ── RAG from Knowledge Base (page_ids = analyst selection, else semantic search) ─
+            rag_text, rag_titles = await _get_rag_context(
+                db, tenant_id, domain,
+                page_ids=kb_page_ids if kb_page_ids else None,
+            )
             rag_block = ""
             if rag_text:
                 rag_block = f"\n\n### Documentação da Base de Conhecimento\n\n{rag_text}"
@@ -468,15 +611,18 @@ async def start_session(
     domains: list[str],
     domain_devices: dict[str, list[str]] | None = None,
     mode: str = "diagnostico",
+    domain_kb_pages: dict[str, list[int]] | None = None,
 ) -> CrossDomainSession:
     """Create a new cross-domain session and launch background analysis tasks."""
-    domain_devices = domain_devices or {}
+    domain_devices  = domain_devices or {}
+    domain_kb_pages = domain_kb_pages or {}
 
     initial_sub_results = [
         _build_sub_result(
             d, "pending",
             device_ids=domain_devices.get(d, []),
             mode=mode,
+            kb_page_ids=domain_kb_pages.get(d, []),
         )
         for d in domains
     ]
@@ -505,6 +651,7 @@ async def start_session(
                 session_id, tenant_id, domain, problem_description,
                 device_ids=domain_devices.get(domain, []),
                 mode=mode,
+                kb_page_ids=domain_kb_pages.get(domain, []),
             )
         )
 
@@ -578,10 +725,11 @@ async def rerun_domain(
     if not found:
         return session
 
-    # Preserve device_ids and mode from the stored sub_result
+    # Preserve device_ids, mode, and kb_page_ids from the stored sub_result
     prior_sr    = next((sr for sr in sub_results if sr["domain"] == domain), {})
     device_ids  = prior_sr.get("device_ids", [])
     mode        = prior_sr.get("mode", "diagnostico")
+    kb_page_ids = prior_sr.get("kb_page_ids", [])
 
     for sr in sub_results:
         if sr["domain"] == domain:
@@ -607,6 +755,7 @@ async def rerun_domain(
             session.id, session.tenant_id, domain, problem,
             device_ids=device_ids,
             mode=mode,
+            kb_page_ids=kb_page_ids,
         )
     )
 

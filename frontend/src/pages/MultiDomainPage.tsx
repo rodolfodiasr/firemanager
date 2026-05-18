@@ -15,6 +15,7 @@ import {
   type CrossDomainMode,
   type CrossDomainSession,
   type CrossDomainSubResult,
+  type KbPageInfo,
 } from "../api/crossDomain";
 import {
   compositeApi,
@@ -658,6 +659,13 @@ export function MultiDomainPage() {
   const [showDevicePanel, setShowDevicePanel] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
 
+  // KB selection state
+  const [kbSelectedPages, setKbSelectedPages] = useState<Partial<Record<CrossDomainAgentType, KbPageInfo[]>>>({});
+  const [suggestedKbPages, setSuggestedKbPages] = useState<Partial<Record<CrossDomainAgentType, KbPageInfo[]>>>({});
+  const [showKbPanel, setShowKbPanel] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [kbSearchQuery, setKbSearchQuery] = useState("");
+
   // Composite (Coordenado) state
   const [showCompositeCreate, setShowCompositeCreate] = useState(false);
   const [compositeActiveId, setCompositeActiveId] = useState<string | null>(null);
@@ -685,6 +693,13 @@ export function MultiDomainPage() {
     queryFn: serversApi.list,
     staleTime: 120_000,
     enabled: showDevicePanel,
+  });
+
+  const { data: kbSearchResults = { pages: [] } } = useQuery({
+    queryKey: ["kb-pages-search", kbSearchQuery],
+    queryFn: () => crossDomainApi.listKbPages(kbSearchQuery || undefined),
+    enabled: showKbPanel && kbSearchQuery.trim().length >= 2,
+    staleTime: 30_000,
   });
 
   const firewallDevices = allDevices.filter((d) => FIREWALL_VENDORS.has(d.vendor));
@@ -721,6 +736,51 @@ export function MultiDomainPage() {
     }
   };
 
+  const toggleKbPageForDomain = (domain: CrossDomainAgentType, page: KbPageInfo) => {
+    setKbSelectedPages((prev) => {
+      const current = prev[domain] ?? [];
+      const isSelected = current.some((p) => p.page_id === page.page_id);
+      return {
+        ...prev,
+        [domain]: isSelected
+          ? current.filter((p) => p.page_id !== page.page_id)
+          : [...current, page],
+      };
+    });
+  };
+
+  const addKbPageToDomain = (domain: CrossDomainAgentType, page: KbPageInfo) => {
+    setKbSelectedPages((prev) => {
+      const current = prev[domain] ?? [];
+      if (current.some((p) => p.page_id === page.page_id)) return prev;
+      return { ...prev, [domain]: [...current, page] };
+    });
+  };
+
+  const handlePreviewKb = async () => {
+    if (!cdProblem.trim() || cdSelectedDomains.size === 0) return;
+    setIsPreviewing(true);
+    setShowKbPanel(true);
+    try {
+      const res = await crossDomainApi.previewKb({
+        problem_description: cdProblem.trim(),
+        domains: Array.from(cdSelectedDomains),
+      });
+      setSuggestedKbPages(res.suggestions as Partial<Record<CrossDomainAgentType, KbPageInfo[]>>);
+      setKbSelectedPages(res.suggestions as Partial<Record<CrossDomainAgentType, KbPageInfo[]>>);
+      const total = Object.values(res.suggestions).flat().length;
+      if (total === 0) {
+        toast("Nenhum documento encontrado na base de conhecimento.", { icon: "📚" });
+      } else {
+        toast.success(`${total} documento(s) sugerido(s) da Base de Conhecimento.`);
+      }
+    } catch {
+      toast.error("Erro ao buscar documentos da KB.");
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
   const allowedDomains: CrossDomainAgentType[] = (() => {
     if (!myProfile) return ["firewall", "network", "n3", "rmm"];
     const cats = myProfile.category_roles.map((cr: { category: string }) => cr.category);
@@ -743,6 +803,11 @@ export function MultiDomainPage() {
         Object.entries(domainDevices).filter(([, ids]) => ids && ids.length > 0)
       ),
       mode: cdMode,
+      domain_kb_pages: Object.fromEntries(
+        Object.entries(kbSelectedPages)
+          .filter(([, pages]) => pages && pages.length > 0)
+          .map(([domain, pages]) => [domain, pages!.map((p) => p.page_id)])
+      ),
     }),
     onSuccess: (s) => {
       qc.setQueryData(["cross-domain", s.id], s);
@@ -1043,6 +1108,151 @@ export function MultiDomainPage() {
                     {showDevicePanel && firewallDevices.length === 0 && networkDevices.length === 0 && allServers.length === 0 && (
                       <div className="px-3 py-3 text-xs text-gray-400 text-center">Nenhum dispositivo cadastrado ainda.</div>
                     )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── KB selection panel ─────────────────────────── */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-gray-700">
+                    Base de Conhecimento
+                    <span className="ml-1 font-normal text-gray-400">(opcional)</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handlePreviewKb}
+                      disabled={!cdProblem.trim() || cdSelectedDomains.size === 0 || isPreviewing}
+                      title="Buscar documentos relevantes automaticamente"
+                      className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50 disabled:opacity-40 transition-colors"
+                    >
+                      {isPreviewing ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                      Sugerir da KB
+                    </button>
+                    <button
+                      onClick={() => setShowKbPanel((v) => !v)}
+                      className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                    >
+                      {showKbPanel ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                      {showKbPanel ? "Ocultar" : "Gerenciar"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Summary chips when panel is collapsed */}
+                {!showKbPanel && Object.values(kbSelectedPages).some((pages) => pages && pages.length > 0) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(["firewall", "network", "n3", "rmm"] as CrossDomainAgentType[]).map((domain) => {
+                      const count = kbSelectedPages[domain]?.length ?? 0;
+                      if (!count) return null;
+                      const cfg = DOMAIN_CONFIG[domain];
+                      const Icon = cfg.icon;
+                      return (
+                        <span key={domain} className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium ${cfg.color}`}>
+                          <Icon size={9} /> <BookOpen size={8} className="ml-0.5" /> {cfg.label}: {count}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {showKbPanel && (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    {/* Per-domain KB sections */}
+                    {(["firewall", "network", "n3", "rmm"] as CrossDomainAgentType[]).map((domain) => {
+                      if (!cdSelectedDomains.has(domain)) return null;
+                      const cfg = DOMAIN_CONFIG[domain];
+                      const Icon = cfg.icon;
+                      const suggested   = suggestedKbPages[domain] ?? [];
+                      const selected    = kbSelectedPages[domain] ?? [];
+                      const suggestedIds = new Set(suggested.map((p) => p.page_id));
+                      const manualExtra  = selected.filter((p) => !suggestedIds.has(p.page_id));
+                      const allToShow    = [...suggested, ...manualExtra];
+
+                      return (
+                        <div key={domain} className="border-b border-gray-100 last:border-b-0">
+                          <div className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold ${cfg.color}`}>
+                            <Icon size={11} /> {cfg.label}
+                            {selected.length > 0 && (
+                              <span className="ml-auto font-normal text-[10px]">
+                                {selected.length} selecionado{selected.length !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
+                          {allToShow.length === 0 ? (
+                            <div className="px-3 pb-2">
+                              <p className="text-[11px] text-gray-400">Busque documentos abaixo para adicionar.</p>
+                            </div>
+                          ) : (
+                            <div className="px-3 pb-2 space-y-1 max-h-28 overflow-y-auto">
+                              {allToShow.map((page) => {
+                                const isSel   = selected.some((p) => p.page_id === page.page_id);
+                                const isAuto  = suggestedIds.has(page.page_id);
+                                return (
+                                  <label key={page.page_id} className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSel}
+                                      onChange={() => toggleKbPageForDomain(domain, page)}
+                                      className="accent-violet-600 shrink-0"
+                                    />
+                                    <span className={`text-xs flex-1 truncate ${isSel ? "text-gray-800 font-medium" : "text-gray-500"}`}>
+                                      {page.title}
+                                    </span>
+                                    <span className={`text-[9px] px-1 py-0.5 rounded font-medium shrink-0 ${isAuto ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-500"}`}>
+                                      {isAuto ? "auto" : "manual"}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Manual search */}
+                    <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
+                      <p className="text-[11px] font-medium text-gray-500 flex items-center gap-1">
+                        <ScanSearch size={9} /> Buscar e adicionar documentos
+                      </p>
+                      <input
+                        value={kbSearchQuery}
+                        onChange={(e) => setKbSearchQuery(e.target.value)}
+                        placeholder="Digite para buscar na base de conhecimento…"
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      />
+                      {kbSearchQuery.trim().length >= 2 && kbSearchResults.pages.length > 0 && (
+                        <div className="border border-gray-100 rounded-lg divide-y divide-gray-100 max-h-36 overflow-y-auto">
+                          {kbSearchResults.pages.map((page) => (
+                            <div key={page.page_id} className="flex items-center gap-2 px-2 py-1.5">
+                              <span className="flex-1 text-xs text-gray-700 truncate">{page.title}</span>
+                              <div className="flex gap-1 shrink-0">
+                                {(["firewall", "network", "n3", "rmm"] as CrossDomainAgentType[]).map((domain) => {
+                                  if (!cdSelectedDomains.has(domain)) return null;
+                                  const dcfg = DOMAIN_CONFIG[domain];
+                                  const DomIcon = dcfg.icon;
+                                  const isAdded = kbSelectedPages[domain]?.some((p) => p.page_id === page.page_id) ?? false;
+                                  return (
+                                    <button
+                                      key={domain}
+                                      onClick={() => isAdded ? toggleKbPageForDomain(domain, page) : addKbPageToDomain(domain, page)}
+                                      title={isAdded ? `Remover de ${dcfg.label}` : `Adicionar a ${dcfg.label}`}
+                                      className={`p-0.5 rounded-sm transition-colors ${isAdded ? "text-green-500" : "text-gray-300 hover:text-violet-600"}`}
+                                    >
+                                      {isAdded ? <CheckCircle2 size={11} /> : <DomIcon size={11} />}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {kbSearchQuery.trim().length >= 2 && kbSearchResults.pages.length === 0 && (
+                        <p className="text-[11px] text-gray-400 text-center py-1">Nenhum documento encontrado.</p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

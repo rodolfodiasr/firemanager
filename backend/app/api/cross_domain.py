@@ -24,6 +24,26 @@ class CrossDomainStart(BaseModel):
     domains: list[str]  # firewall | network | n3 | rmm
     domain_devices: dict[str, list[str]] = Field(default_factory=dict)
     mode: str = "diagnostico"  # consulta | diagnostico | completo
+    domain_kb_pages: dict[str, list[int]] = Field(default_factory=dict)
+
+
+class KbPageInfo(BaseModel):
+    page_id: int
+    title: str
+    url: str
+
+
+class PreviewKbRequest(BaseModel):
+    problem_description: str
+    domains: list[str]
+
+
+class PreviewKbResponse(BaseModel):
+    suggestions: dict[str, list[KbPageInfo]]
+
+
+class KbPagesResponse(BaseModel):
+    pages: list[KbPageInfo]
 
 
 class CrossDomainChatRequest(BaseModel):
@@ -54,6 +74,7 @@ class SubResultRead(BaseModel):
     rag_doc_titles: list[str] = Field(default_factory=list)
     device_ids: list[str] = Field(default_factory=list)
     mode: str = "diagnostico"
+    kb_page_ids: list[int] = Field(default_factory=list)
 
 
 class CrossDomainSessionRead(BaseModel):
@@ -87,6 +108,7 @@ def _session_read(s) -> CrossDomainSessionRead:
             rag_doc_titles=sr.get("rag_doc_titles", []),
             device_ids=sr.get("device_ids", []),
             mode=sr.get("mode", "diagnostico"),
+            kb_page_ids=sr.get("kb_page_ids", []),
         ))
     return CrossDomainSessionRead(
         id=s.id,
@@ -131,6 +153,7 @@ async def start_cross_domain(
         domains=data.domains,
         domain_devices=data.domain_devices,
         mode=data.mode,
+        domain_kb_pages=data.domain_kb_pages,
     )
     return _session_read(session)
 
@@ -146,6 +169,34 @@ async def suggest_devices(
         return SuggestDevicesResponse(suggestions={})
     suggestions = await svc.identify_devices(db, ctx.tenant.id, data.problem_description)
     return SuggestDevicesResponse(suggestions=suggestions)
+
+
+@router.post("/preview-kb", response_model=PreviewKbResponse)
+async def preview_kb(
+    data: PreviewKbRequest,
+    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> PreviewKbResponse:
+    """Run semantic search per domain and suggest KB pages for selection."""
+    if not data.problem_description.strip():
+        return PreviewKbResponse(suggestions={})
+    raw = await svc.preview_kb_docs(db, ctx.tenant.id, data.problem_description, data.domains)
+    suggestions = {
+        domain: [KbPageInfo(**p) for p in pages]
+        for domain, pages in raw.items()
+    }
+    return PreviewKbResponse(suggestions=suggestions)
+
+
+@router.get("/kb-pages", response_model=KbPagesResponse)
+async def list_kb_pages(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+    q:   str | None = None,
+) -> KbPagesResponse:
+    """List distinct KB pages (optionally filtered by title) for manual selection."""
+    raw = await svc.list_kb_pages(db, ctx.tenant.id, q)
+    return KbPagesResponse(pages=[KbPageInfo(**p) for p in raw])
 
 
 @router.get("", response_model=list[CrossDomainSessionRead])
