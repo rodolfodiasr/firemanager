@@ -1493,6 +1493,9 @@ type GlpiFormData = {
   unmatched_to_manual_queue: boolean;
   force_analysis_on_security: boolean;
   force_analysis_on_recurrent: boolean;
+  // KR loop
+  auto_create_kr: boolean;
+  kr_category_id: string;
 };
 
 function GlpiIntegrationCard() {
@@ -1517,6 +1520,7 @@ function GlpiIntegrationCard() {
       device_logs_timeout_seconds: "30",
       auto_correlate_devices: true, unmatched_to_manual_queue: true,
       force_analysis_on_security: true, force_analysis_on_recurrent: false,
+      auto_create_kr: false, kr_category_id: "",
     },
   });
 
@@ -1547,6 +1551,8 @@ function GlpiIntegrationCard() {
       unmatched_to_manual_queue: existing.unmatched_to_manual_queue ?? true,
       force_analysis_on_security: existing.force_analysis_on_security ?? true,
       force_analysis_on_recurrent: existing.force_analysis_on_recurrent ?? false,
+      auto_create_kr: existing.auto_create_kr ?? false,
+      kr_category_id: existing.kr_category_id != null ? String(existing.kr_category_id) : "",
     });
   }, [open, existing]);
 
@@ -1571,6 +1577,8 @@ function GlpiIntegrationCard() {
         unmatched_to_manual_queue:    fd.unmatched_to_manual_queue,
         force_analysis_on_security:   fd.force_analysis_on_security,
         force_analysis_on_recurrent:  fd.force_analysis_on_recurrent,
+        auto_create_kr:               fd.auto_create_kr,
+        kr_category_id:               fd.kr_category_id ? parseInt(fd.kr_category_id) : null,
         ...(fd.password ? { password: fd.password } : {}),
       };
       if (existing) return glpiApi.updateIntegration(existing.id, payload);
@@ -1749,6 +1757,22 @@ function GlpiIntegrationCard() {
                   <input type="checkbox" {...register("force_analysis_on_recurrent")} className="rounded" />
                   Tickets recorrentes (sempre analisar)
                 </label>
+
+                {/* Loop de Registro de Conhecimento */}
+                <p className="text-xs font-medium text-gray-600 mt-3 mb-1">Registro de Conhecimento (KR)</p>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" {...register("auto_create_kr")} className="rounded" />
+                  <span>Criar chamado KR automaticamente quando KB estiver ausente ou incompleta</span>
+                </label>
+                <div className="flex items-center gap-2 mt-1">
+                  <label className="text-xs text-gray-600 whitespace-nowrap">ID da categoria KR no GLPI:</label>
+                  <input
+                    type="number" min="1"
+                    {...register("kr_category_id")}
+                    placeholder="Opcional"
+                    className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
               </div>
             )}
 
