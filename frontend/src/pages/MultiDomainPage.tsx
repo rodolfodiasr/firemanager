@@ -713,15 +713,24 @@ export function MultiDomainPage() {
     <PageWrapper title="Investigação Multi-domínio" subtitle="Investigue problemas em múltiplos domínios de infraestrutura">
       <div className="max-w-2xl mx-auto space-y-4">
 
-        {handoffState?.context && (
-          <div className="flex items-start gap-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-3">
-            <Sparkles size={13} className="text-brand-500 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-brand-700">Contexto importado do Assistente IA</p>
-              <p className="text-xs text-brand-600 mt-0.5 line-clamp-2">{handoffState.context}</p>
+        {handoffState?.context && (() => {
+          // context format: "[Contexto: <title>]\n\n<body>" or just "<body>"
+          const ctxMatch = handoffState.context.match(/^\[Contexto:\s*(.+?)\]\n\n([\s\S]*)$/);
+          const ctxTitle  = ctxMatch ? ctxMatch[1] : null;
+          const ctxBody   = ctxMatch ? ctxMatch[2] : handoffState.context;
+          return (
+            <div className="flex items-start gap-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-3">
+              <Sparkles size={13} className="text-brand-500 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-brand-700">
+                  Contexto importado do Assistente IA
+                  {ctxTitle && <span className="ml-1.5 font-normal text-brand-600">— {ctxTitle}</span>}
+                </p>
+                <p className="text-xs text-brand-600 mt-0.5 line-clamp-2">{ctxBody}</p>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Tab bar */}
         <div className="flex items-center gap-2">

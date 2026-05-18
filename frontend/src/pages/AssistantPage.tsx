@@ -133,7 +133,7 @@ function InvestigateButtons({ content, sessionTitle }: { content: string; sessio
         </button>
       ))}
       <button
-        onClick={() => navigate("/cross-domain", { state: { context, suggested_query: content.slice(0, 300) } })}
+        onClick={() => navigate("/multi-domain", { state: { context, suggested_query: content.slice(0, 300) } })}
         className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg border border-violet-300 text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors font-medium"
       >
         <Layers size={11} />
