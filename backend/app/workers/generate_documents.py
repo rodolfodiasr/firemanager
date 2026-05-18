@@ -10,7 +10,7 @@ log = structlog.get_logger()
 
 @celery_app.task(name="app.workers.generate_documents.generate", bind=True)
 def generate(self: object, operation_id: str) -> dict[str, int]:
-    return asyncio.get_event_loop().run_until_complete(_async_generate(UUID(operation_id)))
+    return asyncio.run(_async_generate(UUID(operation_id)))
 
 
 async def _async_generate(operation_id: UUID) -> dict[str, int]:

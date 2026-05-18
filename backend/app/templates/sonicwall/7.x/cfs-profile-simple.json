@@ -21,7 +21,6 @@
     "https-filtering",
     "smart-filter",
     "safe-search",
-    "threat-api",
     "categories default",
     "no consent required",
     "no custom-header insertion",

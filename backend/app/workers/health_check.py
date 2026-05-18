@@ -11,7 +11,7 @@ log = structlog.get_logger()
 @celery_app.task(name="app.workers.health_check.run_health_checks", bind=True, max_retries=3)
 def run_health_checks(self: object) -> dict[str, int]:
     """Periodic task: checks connectivity for all active devices."""
-    return asyncio.get_event_loop().run_until_complete(_async_health_checks())
+    return asyncio.run(_async_health_checks())
 
 
 async def _async_health_checks() -> dict[str, int]:

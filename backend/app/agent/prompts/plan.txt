@@ -99,7 +99,6 @@ Gere o ActionPlan no seguinte formato JSON (sem markdown):
     "https_filtering": false,
     "smart_filter": false,
     "safe_search": false,
-    "threat_api": false,
     "google_safe_search": false,
     "youtube_restrict_mode": false,
     "bing_safe_search": false,
@@ -187,7 +186,6 @@ Regras de preenchimento:
   - https_filtering:        "https-filtering"            / "no https-filtering"
   - smart_filter:           "smart-filter"               / "no smart-filter"
   - safe_search:            "safe-search"                / "no safe-search"
-  - threat_api:             "threat-api"                 / "no threat-api"
   - google_safe_search:     "google-force-safe-search"   / "no google-force-safe-search"
   - youtube_restrict_mode:  "youtube-restrict-mode"      / "no youtube-restrict-mode"
   - bing_safe_search:       "bing-force-safe-search"     / "no bing-force-safe-search"
@@ -214,7 +212,7 @@ Regras de preenchimento:
   - NÃO inclua "enable" nem "priority <n>" na política — não são comandos válidos neste contexto.
 
   EXEMPLO COMPLETO (todas as flags ativas, sites permitidos/bloqueados, source 192.168.168.10):
-  ["address-object ipv4 fm-host-192-168-168-10", "host 192.168.168.10", "zone LAN", "exit", "address-group IPv4 fm-grp-192-168-168-10", "address-object ipv4 fm-host-192-168-168-10", "exit", "content-filter", "uri-list-object fm-uri-allowed-filtro-geral", "type uri", "uri *.eternitysolucoes.com.br", "uri qualitysi.com.br", "exit", "exit", "content-filter", "uri-list-object fm-uri-blocked-filtro-geral", "type uri", "uri xxx.com", "uri xnx.com", "exit", "exit", "content-filter", "reputation active", "exit", "exit", "content-filter", "profile fm-cfs-filtro-geral", "name fm-cfs-filtro-geral", "uri-list allowed fm-uri-allowed-filtro-geral", "uri-list forbidden fm-uri-blocked-filtro-geral", "https-filtering", "smart-filter", "safe-search", "threat-api", "google-force-safe-search", "youtube-restrict-mode", "bing-force-safe-search", "categories default", "no consent required", "no custom-header insertion", "no custom-header entries", "exit", "exit", "content-filter", "cfs", "policy fm-cfs-policy-filtro-geral", "name fm-cfs-policy-filtro-geral", "source zone LAN", "source address included group fm-grp-192-168-168-10", "source address excluded none", "destination zone WAN", "user included all", "user excluded none", "schedule always-on", "profile fm-cfs-filtro-geral", "action \"CFS Default Action\"", "exit", "exit", "exit", "commit"]
+  ["address-object ipv4 fm-host-192-168-168-10", "host 192.168.168.10", "zone LAN", "exit", "address-group IPv4 fm-grp-192-168-168-10", "address-object ipv4 fm-host-192-168-168-10", "exit", "content-filter", "uri-list-object fm-uri-allowed-filtro-geral", "type uri", "uri *.eternitysolucoes.com.br", "uri qualitysi.com.br", "exit", "exit", "content-filter", "uri-list-object fm-uri-blocked-filtro-geral", "type uri", "uri xxx.com", "uri xnx.com", "exit", "exit", "content-filter", "reputation active", "exit", "exit", "content-filter", "profile fm-cfs-filtro-geral", "name fm-cfs-filtro-geral", "uri-list allowed fm-uri-allowed-filtro-geral", "uri-list forbidden fm-uri-blocked-filtro-geral", "https-filtering", "smart-filter", "safe-search", "google-force-safe-search", "youtube-restrict-mode", "bing-force-safe-search", "categories default", "no consent required", "no custom-header insertion", "no custom-header entries", "exit", "exit", "content-filter", "cfs", "policy fm-cfs-policy-filtro-geral", "name fm-cfs-policy-filtro-geral", "source zone LAN", "source address included group fm-grp-192-168-168-10", "source address excluded none", "destination zone WAN", "user included all", "user excluded none", "schedule always-on", "profile fm-cfs-filtro-geral", "action \"CFS Default Action\"", "exit", "exit", "exit", "commit"]
 
   Use prefixo "fm-" e hífens em todos os nomes CLI gerados pela plataforma. Demais specs=null.
 

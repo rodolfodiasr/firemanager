@@ -17,7 +17,7 @@ log = structlog.get_logger()
 )
 def run_bookstack_indexing(self: object) -> dict[str, int]:
     """Periodic task: crawl BookStack and keep pgvector embeddings up to date."""
-    return asyncio.get_event_loop().run_until_complete(_async_index())
+    return asyncio.run(_async_index())
 
 
 async def _async_index() -> dict[str, int]:

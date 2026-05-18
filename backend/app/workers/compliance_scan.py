@@ -35,7 +35,7 @@ _SCORE_LOW_ALERT_THRESHOLD  = 60.0  # alert if Eternity is below this value
 )
 def run_compliance_scan(self: object) -> dict:
     """Entry point for Celery. Runs the async scan synchronously."""
-    return asyncio.get_event_loop().run_until_complete(_async_compliance_scan())
+    return asyncio.run(_async_compliance_scan())
 
 
 async def _async_compliance_scan() -> dict:

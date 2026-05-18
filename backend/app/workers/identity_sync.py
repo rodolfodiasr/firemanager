@@ -89,7 +89,7 @@ def sync_identity_connector(self, connector_id: str) -> dict:
                 log.error("identity_sync.failed", connector_id=connector_id, error=str(exc))
                 raise
 
-    return asyncio.get_event_loop().run_until_complete(_run())
+    return asyncio.run(_run())
 
 
 @shared_task(name="identity_sync.expire_jit", bind=True)
@@ -107,7 +107,7 @@ def expire_jit_requests(self) -> dict:
                 log.info("jit_expire.revoked", count=count)
             return {"revoked": count}
 
-    return asyncio.get_event_loop().run_until_complete(_run())
+    return asyncio.run(_run())
 
 
 @shared_task(name="identity_sync.check_sod_all", bind=True)
@@ -148,4 +148,4 @@ def check_sod_all_tenants(self) -> dict:
             log.info("sod_check.completed", violations=total_violations)
             return {"violations_detected": total_violations}
 
-    return asyncio.get_event_loop().run_until_complete(_run())
+    return asyncio.run(_run())

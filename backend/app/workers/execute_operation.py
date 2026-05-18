@@ -10,7 +10,7 @@ log = structlog.get_logger()
 
 @celery_app.task(name="app.workers.execute_operation.execute", bind=True, max_retries=1)
 def execute(self: object, operation_id: str) -> dict[str, str]:
-    return asyncio.get_event_loop().run_until_complete(_async_execute(UUID(operation_id)))
+    return asyncio.run(_async_execute(UUID(operation_id)))
 
 
 async def _async_execute(operation_id: UUID) -> dict[str, str]:

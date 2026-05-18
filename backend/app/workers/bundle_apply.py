@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 @celery_app.task(bind=True, name="workers.apply_golden_bundle")
 def apply_golden_bundle(self, bundle_apply_id: str) -> None:
     """Celery task: apply a GoldenBundle to a Device."""
-    asyncio.get_event_loop().run_until_complete(_apply(bundle_apply_id))
+    asyncio.run(_apply(bundle_apply_id))
 
 
 async def _apply(bundle_apply_id: str) -> None:  # noqa: C901

@@ -65,6 +65,8 @@ Regras:
     time_limit=1900,
 )
 def run_glpi_sync(self: object) -> dict:
+    from app.database import engine
+    engine.dispose()
     return asyncio.run(_async_glpi_sync())
 
 
@@ -148,6 +150,11 @@ async def _sync_integration(integration) -> dict:
                 problems = await client.get_open_problems(lookback_hours=integration.lookback_hours)
                 items += [(p, "Problem") for p in problems]
                 log.info("glpi_problems_fetched tenant=%s count=%d", integration.tenant_id, len(problems))
+
+            if fetch_changes:
+                changes = await client.get_open_changes(lookback_hours=integration.lookback_hours)
+                items += [(c, "Change") for c in changes]
+                log.info("glpi_changes_fetched tenant=%s count=%d", integration.tenant_id, len(changes))
 
             log.info("glpi_items_total tenant=%s count=%d", integration.tenant_id, len(items))
 
@@ -697,6 +704,8 @@ def GlpiClient_strip_html(html: str | None) -> str:
     time_limit=660,
 )
 def run_glpi_analysis_manual(self: object, analysis_id: str, device_ids: list[str]) -> dict:
+    from app.database import engine
+    engine.dispose()
     return asyncio.run(_async_run_manual_analysis(analysis_id, device_ids))
 
 

@@ -99,7 +99,6 @@ Gere o ActionPlan no seguinte formato JSON (sem markdown):
     "https_filtering": false,
     "smart_filter": false,
     "safe_search": false,
-    "threat_api": false,
     "google_safe_search": false,
     "youtube_restrict_mode": false,
     "bing_safe_search": false,

@@ -80,7 +80,7 @@ _SHOW_CONFIG_CMD = {
     time_limit=360,
 )
 def analyze_config_migration(self, migration_id: str) -> dict:
-    return asyncio.get_event_loop().run_until_complete(_async_analyze(migration_id))
+    return asyncio.run(_async_analyze(migration_id))
 
 
 @celery_app.task(
@@ -90,7 +90,7 @@ def analyze_config_migration(self, migration_id: str) -> dict:
     time_limit=360,
 )
 def apply_config_migration(self, migration_id: str) -> dict:
-    return asyncio.get_event_loop().run_until_complete(_async_apply(migration_id))
+    return asyncio.run(_async_apply(migration_id))
 
 
 @celery_app.task(
@@ -100,7 +100,7 @@ def apply_config_migration(self, migration_id: str) -> dict:
     time_limit=360,
 )
 def regenerate_config_migration(self, migration_id: str) -> dict:
-    return asyncio.get_event_loop().run_until_complete(_async_regenerate(migration_id))
+    return asyncio.run(_async_regenerate(migration_id))
 
 
 async def _async_analyze(migration_id: str) -> dict:

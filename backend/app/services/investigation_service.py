@@ -380,6 +380,15 @@ async def _execute_server_commands(
         )
 
     output, _ok = await connector.run_commands(commands)
+    if not _ok:
+        return (
+            f"FALHA DE CONEXÃO SSH com o host '{server.host}' (porta {server.ssh_port}).\n"
+            f"Erro: {output}\n\n"
+            f"Causa provável: o campo 'Host/IP' do servidor está configurado com um nome "
+            f"de host que não pode ser resolvido pelo servidor da plataforma. "
+            f"Acesse Servidores → edite '{server.name}' → altere o campo Host/IP para o "
+            f"endereço IP direto (ex: 192.168.1.10) e tente novamente."
+        )
     outputs.append(output)
 
     # Optionally append monitoring data for cross-correlation

@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 )
 def process_knowledge_document(self, document_id: str) -> dict:
     """Index a knowledge document in background (chunk + embed + store)."""
-    return asyncio.get_event_loop().run_until_complete(_async_process(document_id))
+    return asyncio.run(_async_process(document_id))
 
 
 async def _async_process(document_id: str) -> dict:

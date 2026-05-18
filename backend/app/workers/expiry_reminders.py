@@ -81,4 +81,4 @@ def check_password_expiry(self) -> dict:
         log.info("expiry_reminders.done", sent=sent_total)
         return {"sent": sent_total}
 
-    return asyncio.get_event_loop().run_until_complete(_run())
+    return asyncio.run(_run())

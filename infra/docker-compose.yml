@@ -126,6 +126,7 @@ services:
     depends_on:
       - api
     networks:
+      - public-net
       - api-net
       - data-net
       - internal-net

@@ -300,7 +300,6 @@ class AgentSession:
                     (cf.https_filtering, "HTTPS Filtering"),
                     (cf.smart_filter, "Smart Filtering"),
                     (cf.safe_search, "Safe Search"),
-                    (cf.threat_api, "Threat API"),
                     (cf.google_safe_search, "Google Force Safe Search"),
                     (cf.youtube_restrict_mode, "YouTube Restrict Mode"),
                     (cf.bing_safe_search, "Bing Force Safe Search"),

@@ -13,7 +13,7 @@ log = structlog.get_logger()
 @celery_app.task(name="app.workers.bookstack_snapshot.run_bookstack_snapshots", bind=True, max_retries=1)
 def run_bookstack_snapshots(self: object) -> dict[str, int]:
     """Hourly task: publish snapshots for tenants whose snapshot_hour matches current UTC hour."""
-    return asyncio.get_event_loop().run_until_complete(_async_run_snapshots())
+    return asyncio.run(_async_run_snapshots())
 
 
 async def _async_run_snapshots() -> dict[str, int]:

@@ -247,6 +247,57 @@ class GlpiClient:
         logger.warning("GLPI Problem search returned %s: %s", resp.status_code, resp.text[:300])
         return []
 
+    async def get_open_changes(
+        self,
+        lookback_hours: int = 24,
+        limit: int = 200,
+    ) -> list[dict]:
+        """Return open Changes (GLPI Change module) modified within lookback_hours."""
+        since = (
+            datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        # Change open statuses: 1=New, 2=Accepted, 3=Assigned, 4=Planned, 5=Waiting
+        params: dict[str, Any] = {
+            "criteria[0][field]": "12",
+            "criteria[0][searchtype]": "equals",
+            "criteria[0][value]": "1",
+            "criteria[1][link]": "OR",
+            "criteria[1][field]": "12",
+            "criteria[1][searchtype]": "equals",
+            "criteria[1][value]": "2",
+            "criteria[2][link]": "OR",
+            "criteria[2][field]": "12",
+            "criteria[2][searchtype]": "equals",
+            "criteria[2][value]": "3",
+            "criteria[3][link]": "OR",
+            "criteria[3][field]": "12",
+            "criteria[3][searchtype]": "equals",
+            "criteria[3][value]": "4",
+            "criteria[4][link]": "OR",
+            "criteria[4][field]": "12",
+            "criteria[4][searchtype]": "equals",
+            "criteria[4][value]": "5",
+            "criteria[5][link]": "AND",
+            "criteria[5][field]": "19",
+            "criteria[5][searchtype]": "morethan",
+            "criteria[5][value]": since,
+            "forcedisplay[0]": "1",   # name
+            "forcedisplay[1]": "12",  # status
+            "forcedisplay[2]": "19",  # date_mod
+            "forcedisplay[3]": "21",  # content
+            "range": f"0-{limit - 1}",
+            "as_map": "0",
+        }
+        resp = await self._http.get(
+            f"{self._base}/search/Change",
+            headers=self._headers(),
+            params=params,
+        )
+        if resp.status_code in (200, 206):
+            return resp.json().get("data", [])
+        logger.warning("GLPI Change search returned %s: %s", resp.status_code, resp.text[:300])
+        return []
+
     async def get_similar_tickets(self, title: str, limit: int = 5) -> list[dict]:
         """Search for tickets with a similar title (closed/solved)."""
         params = {

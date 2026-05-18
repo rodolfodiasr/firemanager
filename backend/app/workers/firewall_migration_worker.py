@@ -48,7 +48,7 @@ _REST_VENDORS = {"sonicwall", "sophos"}
     bind=True, soft_time_limit=300, time_limit=360,
 )
 def analyze_firewall_migration(self, migration_id: str) -> dict:
-    return asyncio.get_event_loop().run_until_complete(_async_analyze(migration_id))
+    return asyncio.run(_async_analyze(migration_id))
 
 
 @celery_app.task(
@@ -56,7 +56,7 @@ def analyze_firewall_migration(self, migration_id: str) -> dict:
     bind=True, soft_time_limit=300, time_limit=360,
 )
 def apply_firewall_migration(self, migration_id: str) -> dict:
-    return asyncio.get_event_loop().run_until_complete(_async_apply(migration_id))
+    return asyncio.run(_async_apply(migration_id))
 
 
 async def _async_analyze(migration_id: str) -> dict:

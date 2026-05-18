@@ -93,7 +93,6 @@ class ContentFilterSpecModel(BaseModel):
     https_filtering: bool = False
     smart_filter: bool = False
     safe_search: bool = False
-    threat_api: bool = False
     google_safe_search: bool = False
     youtube_restrict_mode: bool = False
     bing_safe_search: bool = False

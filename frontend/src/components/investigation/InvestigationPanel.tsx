@@ -379,6 +379,8 @@ export function InvestigationPanel({
 
   const hasTarget = agentType === "rmm"
     ? !!target.rmm_agent_external_id
+    : agentType === "n3"
+    ? !!target.server_id || selectedDeviceIds.size > 0
     : selectedDeviceIds.size > 0;
 
   const startMut = useMutation({
