@@ -37,6 +37,7 @@ import {
   Sparkles,
   HelpCircle,
   WifiOff,
+  Terminal,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { auditApi } from "../../api/audit";
@@ -81,9 +82,10 @@ const navSections: NavSection[] = [
   {
     title: "Firewalls",
     items: [
-      { to: "/devices",   icon: Server, label: "Dispositivos"    },
-      { to: "/inspector", icon: Radar,  label: "Inspetor"        },
-      { to: "/agent",     icon: Bot,    label: "Agente · Firewall", minRole: "analyst_n1" },
+      { to: "/devices",     icon: Server,   label: "Dispositivos"               },
+      { to: "/inspector",   icon: Radar,    label: "Inspetor"                   },
+      { to: "/agent",       icon: Bot,      label: "Agente · Firewall", minRole: "analyst_n1" },
+      { to: "/direct-mode", icon: Terminal, label: "CLI Direto",        minRole: "analyst_n1" },
     ],
   },
 
@@ -111,12 +113,13 @@ const navSections: NavSection[] = [
   {
     title: "Infraestrutura",
     items: [
-      { to: "/servers",             icon: HardDrive,   label: "Servidores"          },
-      { to: "/server-analysis",     icon: Brain,       label: "Agente · Servidores", minRole: "analyst_n1" },
-      { to: "/database-connectors", icon: DatabaseZap, label: "Bancos de Dados"     },
-      { to: "/vm-migration",        icon: Monitor,     label: "Migração de VMs",     minRole: "analyst_n1" },
-      { to: "/rmm-agent",           icon: Laptop,      label: "Agente · Estações",   beta: true, rmmBadge: true, minRole: "analyst_n1" },
-      { to: "/cloud-posture",       icon: Globe,       label: "Cloud Posture"        },
+      { to: "/servers",             icon: HardDrive,   label: "Servidores"           },
+      { to: "/server-analysis",     icon: Brain,       label: "Agente · Servidores",  minRole: "analyst_n1" },
+      { to: "/server-direct",       icon: Terminal,    label: "Console SSH",          minRole: "analyst_n1" },
+      { to: "/database-connectors", icon: DatabaseZap, label: "Bancos de Dados"      },
+      { to: "/vm-migration",        icon: Monitor,     label: "Migração de VMs",      minRole: "analyst_n1" },
+      { to: "/rmm-agent",           icon: Laptop,      label: "Agente · Estações",    beta: true, rmmBadge: true, minRole: "analyst_n1" },
+      { to: "/cloud-posture",       icon: Globe,       label: "Cloud Posture"         },
     ],
   },
 
