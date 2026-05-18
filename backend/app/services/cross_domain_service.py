@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.database import AsyncSessionLocal
 from app.models.investigation import InvestigationSession
@@ -360,12 +361,13 @@ async def _analyze_domain_background(
                 return
 
             # Mark this domain as running
-            sub_results: list[dict] = list(session.sub_results or [])
+            sub_results: list[dict] = [dict(sr) for sr in (session.sub_results or [])]
             for sr in sub_results:
                 if sr["domain"] == domain:
                     sr["status"]     = "running"
                     sr["started_at"] = datetime.now(timezone.utc).isoformat()
             session.sub_results = sub_results
+            flag_modified(session, "sub_results")
             await db.commit()
 
             # ── Gather investigation history (skip in "consulta" mode) ──────
@@ -414,7 +416,7 @@ async def _analyze_domain_background(
             if not session:
                 return
 
-            sub_results = list(session.sub_results or [])
+            sub_results = [dict(sr) for sr in (session.sub_results or [])]
             for sr in sub_results:
                 if sr["domain"] == domain:
                     sr["status"]          = "done"
@@ -425,6 +427,7 @@ async def _analyze_domain_background(
 
             all_done = all(sr["status"] in ("done", "error") for sr in sub_results)
             session.sub_results = sub_results
+            flag_modified(session, "sub_results")
             if all_done:
                 session.status = "done"
 
@@ -441,7 +444,7 @@ async def _analyze_domain_background(
                 )
                 sess = result3.scalar_one_or_none()
                 if sess:
-                    sub_results = list(sess.sub_results or [])
+                    sub_results = [dict(sr) for sr in (sess.sub_results or [])]
                     for sr in sub_results:
                         if sr["domain"] == domain:
                             sr["status"]      = "error"
@@ -449,6 +452,7 @@ async def _analyze_domain_background(
                             sr["finished_at"] = datetime.now(timezone.utc).isoformat()
                     all_done = all(sr["status"] in ("done", "error") for sr in sub_results)
                     sess.sub_results = sub_results
+                    flag_modified(sess, "sub_results")
                     if all_done:
                         sess.status = "done"
                     await db2.commit()
@@ -491,8 +495,12 @@ async def start_session(
 
     session_id = session.id
 
+    await db.commit()
+    await db.refresh(session)
+
+    # Schedule background tasks AFTER commit so the session is visible to new DB connections
     for domain in domains:
-        asyncio.ensure_future(
+        asyncio.create_task(
             _analyze_domain_background(
                 session_id, tenant_id, domain, problem_description,
                 device_ids=domain_devices.get(domain, []),
@@ -500,8 +508,6 @@ async def start_session(
             )
         )
 
-    await db.commit()
-    await db.refresh(session)
     return session
 
 
@@ -596,7 +602,7 @@ async def rerun_domain(
             f"{problem}\n\n### Contexto Adicional Fornecido pelo Analista\n\n{additional_context}"
         )
 
-    asyncio.ensure_future(
+    asyncio.create_task(
         _analyze_domain_background(
             session.id, session.tenant_id, domain, problem,
             device_ids=device_ids,

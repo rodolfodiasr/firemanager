@@ -187,14 +187,16 @@ function AutoSessionDetail({ sessionId, onBack }: { sessionId: string; onBack: (
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const { data: session, isLoading } = useQuery({
+  const { data: session, isLoading, isError } = useQuery({
     queryKey: ["cross-domain", sessionId],
     queryFn: () => crossDomainApi.get(sessionId),
     refetchInterval: (query) => {
       const data = (query as { state?: { data?: CrossDomainSession } }).state?.data;
-      if (!data) return false;
-      return data.status === "running" ? 2000 : false;
+      if (!data) return 3000;
+      const anyPending = data.sub_results.some((s) => s.status === "pending" || s.status === "running");
+      return anyPending ? 2000 : false;
     },
+    retry: 3,
   });
 
   const correlateMut = useMutation({
@@ -214,6 +216,16 @@ function AutoSessionDetail({ sessionId, onBack }: { sessionId: string; onBack: (
     mutationFn: () => crossDomainApi.delete(sessionId),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cross-domain-list"] }); onBack(); },
   });
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-500">
+        <AlertTriangle size={24} className="text-red-400" />
+        <p className="text-sm">Erro ao carregar investigação.</p>
+        <button onClick={onBack} className="text-xs text-brand-600 hover:underline">← Voltar</button>
+      </div>
+    );
+  }
 
   if (isLoading || !session) {
     return <div className="flex items-center justify-center h-64 gap-2 text-gray-500 text-sm"><Loader2 size={16} className="animate-spin" /> Carregando…</div>;
@@ -740,11 +752,11 @@ export function MultiDomainPage() {
     onError: () => toast.error("Erro ao iniciar investigação."),
   });
 
-  // Data
+  // Data — always fetch list so history tab is ready instantly
   const { data: cdList = [] } = useQuery({
     queryKey: ["cross-domain-list"],
     queryFn: crossDomainApi.list,
-    enabled: activeTab === "history",
+    staleTime: 30_000,
   });
 
   const { data: compositeList = [], isLoading: compositeListLoading } = useQuery({
