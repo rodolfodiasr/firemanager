@@ -1,6 +1,7 @@
 import apiClient from "./client";
 
 export type CrossDomainAgentType = "firewall" | "network" | "n3" | "rmm";
+export type CrossDomainMode = "consulta" | "diagnostico" | "completo";
 
 export interface CrossDomainSubResult {
   domain: CrossDomainAgentType;
@@ -10,6 +11,10 @@ export interface CrossDomainSubResult {
   error: string | null;
   started_at: string | null;
   finished_at: string | null;
+  rag_docs_found: number;
+  rag_doc_titles: string[];
+  device_ids: string[];
+  mode: CrossDomainMode;
 }
 
 export interface CrossDomainSession {
@@ -27,10 +32,12 @@ export interface CrossDomainSession {
 export interface StartCrossDomainRequest {
   problem_description: string;
   domains: CrossDomainAgentType[];
-  device_ids?: string[];
-  server_ids?: string[];
-  integration_ids?: string[];
-  rmm_integration_id?: string;
+  domain_devices?: Record<string, string[]>;
+  mode?: CrossDomainMode;
+}
+
+export interface SuggestDevicesResponse {
+  suggestions: Record<string, Array<{ id: string; name: string; vendor?: string; host?: string; os_type?: string }>>;
 }
 
 export interface CorrelateRequest {
@@ -40,6 +47,9 @@ export interface CorrelateRequest {
 export const crossDomainApi = {
   start: (data: StartCrossDomainRequest): Promise<CrossDomainSession> =>
     apiClient.post("/investigations/cross-domain", data).then((r) => r.data),
+
+  suggestDevices: (problem_description: string): Promise<SuggestDevicesResponse> =>
+    apiClient.post("/investigations/cross-domain/suggest-devices", { problem_description }).then((r) => r.data),
 
   get: (id: string): Promise<CrossDomainSession> =>
     apiClient.get(`/investigations/cross-domain/${id}`).then((r) => r.data),

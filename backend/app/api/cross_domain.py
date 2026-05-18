@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 from fastapi import Depends
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TenantContext, get_tenant_context
@@ -22,6 +22,8 @@ router = APIRouter()
 class CrossDomainStart(BaseModel):
     problem_description: str
     domains: list[str]  # firewall | network | n3 | rmm
+    domain_devices: dict[str, list[str]] = Field(default_factory=dict)
+    mode: str = "diagnostico"  # consulta | diagnostico | completo
 
 
 class CrossDomainChatRequest(BaseModel):
@@ -32,6 +34,14 @@ class CrossDomainRerunRequest(BaseModel):
     additional_context: str | None = None
 
 
+class SuggestDevicesRequest(BaseModel):
+    problem_description: str
+
+
+class SuggestDevicesResponse(BaseModel):
+    suggestions: dict[str, list[dict]]
+
+
 class SubResultRead(BaseModel):
     domain: str
     status: str
@@ -40,6 +50,10 @@ class SubResultRead(BaseModel):
     error: str | None
     started_at: str | None
     finished_at: str | None
+    rag_docs_found: int = 0
+    rag_doc_titles: list[str] = Field(default_factory=list)
+    device_ids: list[str] = Field(default_factory=list)
+    mode: str = "diagnostico"
 
 
 class CrossDomainSessionRead(BaseModel):
@@ -59,6 +73,21 @@ class CrossDomainSessionRead(BaseModel):
 
 
 def _session_read(s) -> CrossDomainSessionRead:
+    sub_results = []
+    for sr in (s.sub_results or []):
+        sub_results.append(SubResultRead(
+            domain=sr["domain"],
+            status=sr["status"],
+            investigation_session_id=sr.get("investigation_session_id"),
+            synthesis=sr.get("synthesis"),
+            error=sr.get("error"),
+            started_at=sr.get("started_at"),
+            finished_at=sr.get("finished_at"),
+            rag_docs_found=sr.get("rag_docs_found", 0),
+            rag_doc_titles=sr.get("rag_doc_titles", []),
+            device_ids=sr.get("device_ids", []),
+            mode=sr.get("mode", "diagnostico"),
+        ))
     return CrossDomainSessionRead(
         id=s.id,
         tenant_id=s.tenant_id,
@@ -66,7 +95,7 @@ def _session_read(s) -> CrossDomainSessionRead:
         problem_description=s.problem_description,
         domains=s.domains or [],
         status=s.status,
-        sub_results=[SubResultRead(**sr) for sr in (s.sub_results or [])],
+        sub_results=sub_results,
         correlation=s.correlation,
         created_at=s.created_at.isoformat(),
         updated_at=s.updated_at.isoformat(),
@@ -90,14 +119,33 @@ async def start_cross_domain(
     if not data.problem_description.strip():
         raise HTTPException(status_code=400, detail="Descreva o problema.")
 
+    valid_modes = {"consulta", "diagnostico", "completo"}
+    if data.mode not in valid_modes:
+        raise HTTPException(status_code=400, detail=f"Modo inválido: {data.mode}")
+
     session = await svc.start_session(
         db,
         tenant_id=ctx.tenant.id,
         user_id=ctx.user.id,
         problem_description=data.problem_description,
         domains=data.domains,
+        domain_devices=data.domain_devices,
+        mode=data.mode,
     )
     return _session_read(session)
+
+
+@router.post("/suggest-devices", response_model=SuggestDevicesResponse)
+async def suggest_devices(
+    data: SuggestDevicesRequest,
+    ctx:  Annotated[TenantContext, Depends(get_tenant_context)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> SuggestDevicesResponse:
+    """Extract IPs/hostnames from the problem and suggest matching managed devices."""
+    if not data.problem_description.strip():
+        return SuggestDevicesResponse(suggestions={})
+    suggestions = await svc.identify_devices(db, ctx.tenant.id, data.problem_description)
+    return SuggestDevicesResponse(suggestions=suggestions)
 
 
 @router.get("", response_model=list[CrossDomainSessionRead])

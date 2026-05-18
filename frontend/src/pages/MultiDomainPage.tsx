@@ -6,11 +6,13 @@ import {
   CheckCircle2, AlertTriangle, Clock, RefreshCw, Sparkles, ArrowRight,
   ChevronDown, ChevronRight, History, Trash2, Wrench, MessageSquare,
   RotateCcw, Send, Plus, Users, GitMerge, ClipboardList, Zap,
+  BookOpen, Cpu, Wand2, ScanSearch,
 } from "lucide-react";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import {
   crossDomainApi,
   type CrossDomainAgentType,
+  type CrossDomainMode,
   type CrossDomainSession,
   type CrossDomainSubResult,
 } from "../api/crossDomain";
@@ -21,8 +23,14 @@ import {
   type SubInvestigation,
 } from "../api/composite";
 import { permissionsApi } from "../api/permissions";
+import { devicesApi } from "../api/devices";
+import { serversApi } from "../api/servers";
 import { useAuthStore } from "../store/authStore";
 import toast from "react-hot-toast";
+
+// Vendor sets for domain classification
+const FIREWALL_VENDORS = new Set(["fortinet","sonicwall","pfsense","opnsense","mikrotik","endian","sophos"]);
+const NETWORK_VENDORS  = new Set(["hp_comware","dell_n","cisco_ios","cisco_nxos","juniper","aruba","dell","ubiquiti","edgeswitch"]);
 
 // ── Shared domain config ──────────────────────────────────────────────────────
 
@@ -93,6 +101,22 @@ function SubResultCard({
           {sub.status === "done"    && <CheckCircle2 size={14} className="text-green-600" />}
           {sub.status === "error"   && <AlertTriangle size={14} className="text-red-500" />}
           {sub.status === "pending" && <Clock size={14} className="text-gray-400" />}
+          {sub.rag_docs_found > 0 && (
+            <span
+              title={`Base de Conhecimento: ${sub.rag_doc_titles.join(", ") || `${sub.rag_docs_found} doc(s)`}`}
+              className="flex items-center gap-0.5 text-[9px] font-semibold bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded"
+            >
+              <BookOpen size={8} /> {sub.rag_docs_found}
+            </span>
+          )}
+          {sub.device_ids.length > 0 && (
+            <span
+              title={`${sub.device_ids.length} dispositivo(s) selecionado(s)`}
+              className="flex items-center gap-0.5 text-[9px] font-semibold bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded"
+            >
+              <Cpu size={8} /> {sub.device_ids.length}
+            </span>
+          )}
           {sub.investigation_session_id && (
             <button onClick={(e) => { e.stopPropagation(); onNavigate(); }} className="text-[11px] px-2 py-0.5 rounded border border-current opacity-70 hover:opacity-100 transition-opacity">Abrir</button>
           )}
@@ -617,6 +641,10 @@ export function MultiDomainPage() {
   const [cdProblem, setCdProblem] = useState(handoffState?.suggested_query?.slice(0, 500) ?? "");
   const [cdSelectedDomains, setCdSelectedDomains] = useState<Set<CrossDomainAgentType>>(new Set(["firewall", "network", "n3", "rmm"]));
   const [cdActiveSessionId, setCdActiveSessionId] = useState<string | null>(null);
+  const [cdMode, setCdMode] = useState<CrossDomainMode>("diagnostico");
+  const [domainDevices, setDomainDevices] = useState<Partial<Record<CrossDomainAgentType, string[]>>>({});
+  const [showDevicePanel, setShowDevicePanel] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
 
   // Composite (Coordenado) state
   const [showCompositeCreate, setShowCompositeCreate] = useState(false);
@@ -631,6 +659,55 @@ export function MultiDomainPage() {
     },
     staleTime: 60_000,
   });
+
+  // Fetch devices and servers for device selection panel
+  const { data: allDevices = [] } = useQuery({
+    queryKey: ["devices-for-cd"],
+    queryFn: devicesApi.list,
+    staleTime: 120_000,
+    enabled: showDevicePanel,
+  });
+
+  const { data: allServers = [] } = useQuery({
+    queryKey: ["servers-for-cd"],
+    queryFn: serversApi.list,
+    staleTime: 120_000,
+    enabled: showDevicePanel,
+  });
+
+  const firewallDevices = allDevices.filter((d) => FIREWALL_VENDORS.has(d.vendor));
+  const networkDevices  = allDevices.filter((d) => NETWORK_VENDORS.has(d.vendor));
+
+  const toggleDeviceForDomain = (domain: CrossDomainAgentType, id: string) => {
+    setDomainDevices((prev) => {
+      const current = new Set(prev[domain] ?? []);
+      current.has(id) ? current.delete(id) : current.add(id);
+      return { ...prev, [domain]: Array.from(current) };
+    });
+  };
+
+  const handleAutoSuggest = async () => {
+    if (!cdProblem.trim()) return;
+    setIsSuggesting(true);
+    try {
+      const res = await crossDomainApi.suggestDevices(cdProblem.trim());
+      if (Object.keys(res.suggestions).length === 0) {
+        toast("Nenhum dispositivo identificado no texto.", { icon: "🔍" });
+        return;
+      }
+      setShowDevicePanel(true);
+      const suggested: Partial<Record<CrossDomainAgentType, string[]>> = {};
+      for (const [domain, devices] of Object.entries(res.suggestions)) {
+        suggested[domain as CrossDomainAgentType] = devices.map((d) => d.id);
+      }
+      setDomainDevices(suggested);
+      toast.success(`${Object.values(res.suggestions).flat().length} dispositivo(s) identificado(s) automaticamente.`);
+    } catch {
+      toast.error("Erro ao identificar dispositivos.");
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
 
   const allowedDomains: CrossDomainAgentType[] = (() => {
     if (!myProfile) return ["firewall", "network", "n3", "rmm"];
@@ -647,7 +724,14 @@ export function MultiDomainPage() {
     setCdSelectedDomains((prev) => { const n = new Set(prev); n.has(d) ? n.delete(d) : n.add(d); return n; });
 
   const cdStartMut = useMutation({
-    mutationFn: () => crossDomainApi.start({ problem_description: cdProblem.trim(), domains: Array.from(cdSelectedDomains) }),
+    mutationFn: () => crossDomainApi.start({
+      problem_description: cdProblem.trim(),
+      domains: Array.from(cdSelectedDomains),
+      domain_devices: Object.fromEntries(
+        Object.entries(domainDevices).filter(([, ids]) => ids && ids.length > 0)
+      ),
+      mode: cdMode,
+    }),
     onSuccess: (s) => {
       qc.setQueryData(["cross-domain", s.id], s);
       qc.invalidateQueries({ queryKey: ["cross-domain-list"] });
@@ -800,6 +884,157 @@ export function MultiDomainPage() {
                   })}
                 </div>
               </div>
+              {/* Mode selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-700">Modo de investigação</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { id: "consulta"    as CrossDomainMode, label: "Consulta",    desc: "IA + Base de Conhecimento",             icon: BookOpen },
+                    { id: "diagnostico" as CrossDomainMode, label: "Diagnóstico", desc: "Histórico de investigações + KB",        icon: ScanSearch },
+                    { id: "completo"    as CrossDomainMode, label: "Completo",    desc: "Histórico + KB + dispositivos",          icon: Cpu },
+                  ] as const).map(({ id, label, desc, icon: MIcon }) => (
+                    <button
+                      key={id}
+                      onClick={() => { setCdMode(id); if (id === "completo") setShowDevicePanel(true); }}
+                      className={`flex flex-col items-start gap-1 px-2.5 py-2 rounded-xl border text-left transition-colors ${
+                        cdMode === id
+                          ? "border-violet-400 bg-violet-50 text-violet-800"
+                          : "border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <MIcon size={11} className="shrink-0" />
+                        <span className="text-xs font-semibold">{label}</span>
+                        {cdMode === id && <CheckCircle2 size={10} className="ml-auto shrink-0 text-violet-600" />}
+                      </div>
+                      <span className="text-[10px] text-gray-400 leading-tight">{desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Device selection panel */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-gray-700">
+                    Dispositivos específicos
+                    <span className="ml-1 font-normal text-gray-400">(opcional)</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleAutoSuggest}
+                      disabled={!cdProblem.trim() || isSuggesting}
+                      title="Identificar dispositivos automaticamente a partir do texto"
+                      className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border border-brand-300 text-brand-700 hover:bg-brand-50 disabled:opacity-40 transition-colors"
+                    >
+                      {isSuggesting ? <Loader2 size={10} className="animate-spin" /> : <Wand2 size={10} />}
+                      Auto-identificar
+                    </button>
+                    <button
+                      onClick={() => setShowDevicePanel((v) => !v)}
+                      className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                    >
+                      {showDevicePanel ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                      {showDevicePanel ? "Ocultar" : "Selecionar"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Show summary of selected devices even when panel is collapsed */}
+                {!showDevicePanel && Object.values(domainDevices).some((ids) => ids && ids.length > 0) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(["firewall", "network", "n3", "rmm"] as CrossDomainAgentType[]).map((domain) => {
+                      const count = domainDevices[domain]?.length ?? 0;
+                      if (!count) return null;
+                      const cfg = DOMAIN_CONFIG[domain];
+                      const Icon = cfg.icon;
+                      return (
+                        <span key={domain} className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium ${cfg.color}`}>
+                          <Icon size={9} /> {cfg.label}: {count}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {showDevicePanel && (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    {/* Firewall devices */}
+                    {cdSelectedDomains.has("firewall") && firewallDevices.length > 0 && (
+                      <div className="border-b border-gray-100 last:border-b-0">
+                        <div className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold ${DOMAIN_CONFIG.firewall.color}`}>
+                          <Flame size={11} /> Firewall ({firewallDevices.length})
+                        </div>
+                        <div className="px-3 pb-2 grid grid-cols-2 gap-1.5 max-h-28 overflow-y-auto">
+                          {firewallDevices.map((d) => {
+                            const sel = domainDevices.firewall?.includes(d.id) ?? false;
+                            return (
+                              <label key={d.id} className="flex items-center gap-1.5 cursor-pointer group">
+                                <input type="checkbox" checked={sel} onChange={() => toggleDeviceForDomain("firewall", d.id)} className="accent-violet-600" />
+                                <span className={`text-xs truncate ${sel ? "text-gray-800 font-medium" : "text-gray-500"}`}>{d.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Network devices */}
+                    {cdSelectedDomains.has("network") && networkDevices.length > 0 && (
+                      <div className="border-b border-gray-100 last:border-b-0">
+                        <div className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold ${DOMAIN_CONFIG.network.color}`}>
+                          <Network size={11} /> Redes ({networkDevices.length})
+                        </div>
+                        <div className="px-3 pb-2 grid grid-cols-2 gap-1.5 max-h-28 overflow-y-auto">
+                          {networkDevices.map((d) => {
+                            const sel = domainDevices.network?.includes(d.id) ?? false;
+                            return (
+                              <label key={d.id} className="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" checked={sel} onChange={() => toggleDeviceForDomain("network", d.id)} className="accent-violet-600" />
+                                <span className={`text-xs truncate ${sel ? "text-gray-800 font-medium" : "text-gray-500"}`}>{d.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Servers (n3) */}
+                    {cdSelectedDomains.has("n3") && allServers.length > 0 && (
+                      <div className="border-b border-gray-100 last:border-b-0">
+                        <div className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold ${DOMAIN_CONFIG.n3.color}`}>
+                          <Server size={11} /> Servidores ({allServers.length})
+                        </div>
+                        <div className="px-3 pb-2 grid grid-cols-2 gap-1.5 max-h-28 overflow-y-auto">
+                          {allServers.map((s) => {
+                            const sel = domainDevices.n3?.includes(s.id) ?? false;
+                            return (
+                              <label key={s.id} className="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" checked={sel} onChange={() => toggleDeviceForDomain("n3", s.id)} className="accent-violet-600" />
+                                <span className={`text-xs truncate ${sel ? "text-gray-800 font-medium" : "text-gray-500"}`}>{s.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* RMM placeholder */}
+                    {cdSelectedDomains.has("rmm") && (
+                      <div className="border-b border-gray-100 last:border-b-0 px-3 py-2">
+                        <p className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                          <Monitor size={10} /> Estações RMM — filtro por integração disponível na página Agente · Estações
+                        </p>
+                      </div>
+                    )}
+
+                    {showDevicePanel && firewallDevices.length === 0 && networkDevices.length === 0 && allServers.length === 0 && (
+                      <div className="px-3 py-3 text-xs text-gray-400 text-center">Nenhum dispositivo cadastrado ainda.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={() => cdStartMut.mutate()}
                 disabled={!cdProblem.trim() || cdSelectedDomains.size === 0 || cdStartMut.isPending}
