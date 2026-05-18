@@ -23,7 +23,7 @@ class RemediationCommandRead(BaseModel):
 class RemediationPlanRead(BaseModel):
     id: UUID
     tenant_id: UUID
-    server_id: UUID
+    server_id: UUID | None
     session_id: UUID | None
     request: str
     summary: str
@@ -34,6 +34,9 @@ class RemediationPlanRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     commands: list[RemediationCommandRead]
+    origin_type: str | None = None
+    origin_ref: str | None = None
+    campaign_id: UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -42,6 +45,15 @@ class RemediationRequest(BaseModel):
     server_id: UUID
     request: str
     session_id: UUID | None = None
+
+
+class RemediationContextRequest(BaseModel):
+    """Remediação sem server — gerada por GLPI, SOAR, alertas, etc."""
+    request: str
+    origin_type: str | None = None
+    origin_ref: str | None = None
+    device_name: str | None = None
+    campaign_id: UUID | None = None
 
 
 class CommandReview(BaseModel):
@@ -59,3 +71,48 @@ class CommandEdit(BaseModel):
 
 class CorrectiveRequest(BaseModel):
     observation: str
+
+
+# ── Templates ─────────────────────────────────────────────────────────────────
+
+class TemplateCreate(BaseModel):
+    name: str
+    description: str | None = None
+    vendor: str | None = None
+    category: str | None = None
+    commands: list[dict] = []
+
+
+class TemplateRead(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    name: str
+    description: str | None
+    vendor: str | None
+    category: str | None
+    commands: list
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Campaigns ─────────────────────────────────────────────────────────────────
+
+class CampaignCreate(BaseModel):
+    name: str
+    template_id: UUID | None = None
+    origin_type: str | None = None
+    origin_ref: str | None = None
+
+
+class CampaignRead(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    name: str
+    template_id: UUID | None
+    origin_type: str | None
+    origin_ref: str | None
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

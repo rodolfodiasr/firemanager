@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Bell, Zap, Clock, CheckCircle, XCircle, Loader2, ToggleLeft, ToggleRight, Play, X, GitBranch, Shield } from "lucide-react";
+import { Plus, Trash2, Bell, Zap, Clock, CheckCircle, XCircle, Loader2, ToggleLeft, ToggleRight, Play, X, GitBranch, Shield, Wrench } from "lucide-react";
 import toast from "react-hot-toast";
 import apiClient from "../api/client";
 import { alertsApi } from "../api/alerts";
 import { playbooksApi, type PlaybookRule } from "../api/playbooks";
+import { remediationApi } from "../api/remediation";
 import type { AlertChannel, AlertRule } from "../types/alerts";
 
 type Tab = "channels" | "rules" | "events" | "sla";
@@ -490,6 +491,14 @@ export function Alerts() {
   const [showChannelModal, setShowChannelModal] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null | "new">(null);
   const [triggerEvent, setTriggerEvent] = useState<{ title: string; body: string } | null>(null);
+  const [remediatingEventId, setRemediatingEventId] = useState<string | null>(null);
+
+  const remediateMut = useMutation({
+    mutationFn: (eventId: string) => remediationApi.createFromAlert(eventId),
+    onMutate: (eventId) => setRemediatingEventId(eventId),
+    onSuccess: () => { toast.success("Plano de remediação gerado. Acesse Remediações para revisar."); setRemediatingEventId(null); },
+    onError: () => { toast.error("Erro ao gerar plano de remediação"); setRemediatingEventId(null); },
+  });
 
   const qc = useQueryClient();
 
@@ -628,12 +637,22 @@ export function Alerts() {
                 </div>
                 <p className="text-xs text-gray-600 mt-1">{e.body}</p>
                 <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
                 <button
                   onClick={() => setTriggerEvent({ title: e.title, body: e.body })}
                   className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 border border-brand-200 hover:border-brand-400 px-2 py-0.5 rounded transition-colors shrink-0"
                 >
                   <Play size={10} /> Disparar Playbook
                 </button>
+                <button
+                  onClick={() => remediateMut.mutate(e.id)}
+                  disabled={remediatingEventId === e.id}
+                  className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-800 border border-orange-200 hover:border-orange-400 px-2 py-0.5 rounded transition-colors shrink-0 disabled:opacity-50"
+                >
+                  {remediatingEventId === e.id ? <Loader2 size={10} className="animate-spin" /> : <Wrench size={10} />}
+                  Remediar
+                </button>
+                </div>
                 <div className="flex gap-2 flex-wrap">
                   {Object.entries(e.channels_result).map(([cid, status]) => {
                     const ch = channels.find(c => c.id === cid);

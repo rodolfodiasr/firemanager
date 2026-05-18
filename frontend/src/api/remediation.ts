@@ -1,4 +1,11 @@
-import type { RemediationCommand, RemediationPlan, RemediationRequest } from "../types/remediation";
+import type {
+  RemediationCampaign,
+  RemediationCommand,
+  RemediationContextRequest,
+  RemediationPlan,
+  RemediationRequest,
+  RemediationTemplate,
+} from "../types/remediation";
 import apiClient from "./client";
 
 export const remediationApi = {
@@ -10,6 +17,30 @@ export const remediationApi = {
 
   create: (data: RemediationRequest) =>
     apiClient.post<RemediationPlan>("/remediation", data).then((r) => r.data),
+
+  createFromContext: (data: RemediationContextRequest) =>
+    apiClient.post<RemediationPlan>("/remediation/context", data).then((r) => r.data),
+
+  createFromAlert: (eventId: string) =>
+    apiClient.post<RemediationPlan>(`/alerts/events/${eventId}/remediate`).then((r) => r.data),
+
+  listTemplates: () =>
+    apiClient.get<RemediationTemplate[]>("/remediation/templates").then((r) => r.data),
+
+  createTemplate: (data: { name: string; description?: string; vendor?: string; category?: string; commands?: object[] }) =>
+    apiClient.post<RemediationTemplate>("/remediation/templates", data).then((r) => r.data),
+
+  deleteTemplate: (id: string) =>
+    apiClient.delete(`/remediation/templates/${id}`),
+
+  listCampaigns: () =>
+    apiClient.get<RemediationCampaign[]>("/remediation/campaigns").then((r) => r.data),
+
+  createCampaign: (data: { name: string; template_id?: string; origin_type?: string; origin_ref?: string }) =>
+    apiClient.post<RemediationCampaign>("/remediation/campaigns", data).then((r) => r.data),
+
+  updateCampaignStatus: (id: string, status: string) =>
+    apiClient.patch(`/remediation/campaigns/${id}/status`, { status }).then((r) => r.data),
 
   updateCommand: (planId: string, commandId: string, data: { command: string; description?: string }) =>
     apiClient

@@ -205,6 +205,86 @@ async def generate_plan(
     return loaded
 
 
+async def generate_plan_from_context(
+    db: AsyncSession,
+    tenant_id: UUID,
+    request: str,
+    origin_type: str | None = None,
+    origin_ref: str | None = None,
+    device_name: str | None = None,
+    campaign_id: UUID | None = None,
+    max_tokens: int = 2048,
+) -> RemediationPlan:
+    """Gera plano de remediação sem precisar de server_id.
+    Usado por GLPI, SOAR, alertas e investigações.
+    """
+    from anthropic import AsyncAnthropic
+    import logging
+    _log = logging.getLogger(__name__)
+
+    device_hint = f"Device: {device_name}\n" if device_name else ""
+    user_msg = f"{device_hint}Task: {request}"
+
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    msg = await client.messages.create(
+        model="claude-opus-4-7",
+        max_tokens=max_tokens,
+        system=_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+
+    raw = msg.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw)
+
+    try:
+        data = _parse_ai_json(raw)
+    except RuntimeError:
+        _log.error("AI raw response (context plan, failed to parse): %s", raw[:2000])
+        raise
+
+    summary = data.get("summary", "")
+    raw_commands = data.get("commands", [])
+    rollback_steps = data.get("rollback_steps", [])
+
+    plan = RemediationPlan(
+        tenant_id=tenant_id,
+        server_id=None,
+        request=request,
+        summary=summary,
+        status=RemediationStatus.pending_approval,
+        rollback_steps=rollback_steps if isinstance(rollback_steps, list) else [],
+        origin_type=origin_type,
+        origin_ref=origin_ref,
+        campaign_id=campaign_id,
+    )
+    db.add(plan)
+    await db.flush()
+
+    for item in raw_commands:
+        cmd_text = item.get("command", "")
+        if _is_dangerous(cmd_text):
+            continue
+        risk_val = item.get("risk", "low")
+        if risk_val not in ("low", "medium", "high"):
+            risk_val = "low"
+        cmd = RemediationCommand(
+            plan_id=plan.id,
+            order=item.get("order", 0),
+            description=item.get("description", ""),
+            command=cmd_text,
+            risk=RemediationRisk(risk_val),
+            status=CommandStatus.pending,
+        )
+        db.add(cmd)
+
+    await db.flush()
+    loaded = await get_plan(db, tenant_id, plan.id)
+    assert loaded is not None
+    return loaded
+
+
 async def get_plan(db: AsyncSession, tenant_id: UUID, plan_id: UUID) -> RemediationPlan | None:
     result = await db.execute(
         select(RemediationPlan)

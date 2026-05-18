@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TenantContext, get_tenant_context, require_module_n2, require_module_reviewer, require_reviewer
@@ -12,17 +13,46 @@ _require_remediation    = require_module_reviewer("remediation")
 _require_remediation_n2 = require_module_n2("remediation")
 from app.database import get_db
 from app.schemas.remediation import (
+    CampaignCreate,
+    CampaignRead,
     CommandEdit,
     CommandReview,
     CorrectiveRequest,
     RemediationCommandRead,
+    RemediationContextRequest,
     RemediationPlanRead,
     RemediationRequest,
     ReviewerComment,
+    TemplateCreate,
+    TemplateRead,
 )
 from app.services import remediation_service
 
 router = APIRouter()
+
+
+@router.post("/context", response_model=RemediationPlanRead, status_code=201)
+async def create_plan_from_context(
+    data: RemediationContextRequest,
+    ctx:  Annotated[TenantContext, Depends(_require_remediation)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> RemediationPlanRead:
+    """Gera plano sem server_id — para GLPI, SOAR, alertas, etc."""
+    try:
+        plan = await remediation_service.generate_plan_from_context(
+            db=db,
+            tenant_id=ctx.tenant.id,
+            request=data.request,
+            origin_type=data.origin_type,
+            origin_ref=data.origin_ref,
+            device_name=data.device_name,
+            campaign_id=data.campaign_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar plano: {exc}")
+    return RemediationPlanRead.model_validate(plan)
 
 
 @router.post("", response_model=RemediationPlanRead, status_code=201)
@@ -190,12 +220,13 @@ async def export_pdf(
     if not plan:
         raise HTTPException(status_code=404, detail="Plano não encontrado")
 
-    from sqlalchemy import select as sa_select
     from app.models.server import Server
 
-    srv = await db.execute(sa_select(Server).where(Server.id == plan.server_id))
-    server = srv.scalar_one_or_none()
-    server_name = server.name if server else str(plan.server_id)
+    server = None
+    if plan.server_id:
+        srv = await db.execute(sa_select(Server).where(Server.id == plan.server_id))
+        server = srv.scalar_one_or_none()
+    server_name = server.name if server else (plan.origin_ref or str(plan.server_id or "N/A"))
     server_host = server.host if server else ""
 
     try:
@@ -223,6 +254,111 @@ async def delete_plan(
         raise HTTPException(status_code=404, detail="Plano não encontrado")
     await db.delete(plan)
     await db.flush()
+
+
+# ── Templates ─────────────────────────────────────────────────────────────────
+
+@router.get("/templates", response_model=list[TemplateRead])
+async def list_templates(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> list[TemplateRead]:
+    from app.models.remediation import RemediationTemplate
+    rows = (await db.execute(
+        sa_select(RemediationTemplate)
+        .where(RemediationTemplate.tenant_id == ctx.tenant.id)
+        .order_by(RemediationTemplate.created_at.desc())
+    )).scalars().all()
+    return [TemplateRead.model_validate(t) for t in rows]
+
+
+@router.post("/templates", response_model=TemplateRead, status_code=201)
+async def create_template(
+    data: TemplateCreate,
+    ctx:  Annotated[TenantContext, Depends(_require_remediation_n2)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> TemplateRead:
+    from app.models.remediation import RemediationTemplate
+    tmpl = RemediationTemplate(
+        tenant_id=ctx.tenant.id,
+        name=data.name,
+        description=data.description,
+        vendor=data.vendor,
+        category=data.category,
+        commands=data.commands,
+        created_by=ctx.user.id,
+    )
+    db.add(tmpl)
+    await db.flush()
+    await db.refresh(tmpl)
+    return TemplateRead.model_validate(tmpl)
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+async def delete_template(
+    template_id: UUID,
+    ctx: Annotated[TenantContext, Depends(_require_remediation_n2)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    from app.models.remediation import RemediationTemplate
+    tmpl = await db.get(RemediationTemplate, template_id)
+    if not tmpl or tmpl.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Template não encontrado")
+    await db.delete(tmpl)
+    await db.flush()
+
+
+# ── Campaigns ─────────────────────────────────────────────────────────────────
+
+@router.get("/campaigns", response_model=list[CampaignRead])
+async def list_campaigns(
+    ctx: Annotated[TenantContext, Depends(get_tenant_context)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> list[CampaignRead]:
+    from app.models.remediation import RemediationCampaign
+    rows = (await db.execute(
+        sa_select(RemediationCampaign)
+        .where(RemediationCampaign.tenant_id == ctx.tenant.id)
+        .order_by(RemediationCampaign.created_at.desc())
+    )).scalars().all()
+    return [CampaignRead.model_validate(c) for c in rows]
+
+
+@router.post("/campaigns", response_model=CampaignRead, status_code=201)
+async def create_campaign(
+    data: CampaignCreate,
+    ctx:  Annotated[TenantContext, Depends(_require_remediation_n2)],
+    db:   Annotated[AsyncSession, Depends(get_db)],
+) -> CampaignRead:
+    from app.models.remediation import RemediationCampaign
+    camp = RemediationCampaign(
+        tenant_id=ctx.tenant.id,
+        name=data.name,
+        template_id=data.template_id,
+        origin_type=data.origin_type,
+        origin_ref=data.origin_ref,
+        created_by=ctx.user.id,
+    )
+    db.add(camp)
+    await db.flush()
+    await db.refresh(camp)
+    return CampaignRead.model_validate(camp)
+
+
+@router.patch("/campaigns/{campaign_id}/status")
+async def update_campaign_status(
+    campaign_id: UUID,
+    body: dict,
+    ctx: Annotated[TenantContext, Depends(_require_remediation_n2)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    from app.models.remediation import RemediationCampaign
+    camp = await db.get(RemediationCampaign, campaign_id)
+    if not camp or camp.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Campanha não encontrada")
+    camp.status = body.get("status", camp.status)
+    await db.flush()
+    return {"id": str(camp.id), "status": camp.status}
 
 
 def _build_execution_pdf(plan, server_name: str, server_host: str) -> str:

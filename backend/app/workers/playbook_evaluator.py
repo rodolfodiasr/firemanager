@@ -50,7 +50,7 @@ def execute_playbook_actions(self, execution_id: str, actions_json: str) -> dict
             log.info("playbook_execution.completed", execution_id=execution_id, actions=len(taken))
             return {"execution_id": execution_id, "actions": len(taken)}
 
-    return asyncio.get_event_loop().run_until_complete(_run())
+    return asyncio.run(_run())
 
 
 async def _dispatch_action(
@@ -124,6 +124,22 @@ async def _dispatch_action(
         except Exception as exc:
             return {"error": str(exc)}
 
+    if action_type == "create_remediation":
+        try:
+            from app.services.remediation_service import generate_plan_from_context
+            request_text = resolved_params.get("request", "Auto-remediação via SOAR playbook")
+            await generate_plan_from_context(
+                db=db,
+                tenant_id=tenant_id,
+                request=request_text,
+                origin_type="soar_playbook",
+                origin_ref=resolved_params.get("origin_ref"),
+            )
+            await db.commit()
+            return {"plan_created": True}
+        except Exception as exc:
+            return {"error": str(exc)}
+
     return {"action": action_type, "status": "not_implemented"}
 
 
@@ -154,4 +170,4 @@ def evaluate_scheduled_triggers(self) -> dict:
 
         return {"tenant_count": len(tenant_ids), "executions_started": total_executions}
 
-    return asyncio.get_event_loop().run_until_complete(_run())
+    return asyncio.run(_run())

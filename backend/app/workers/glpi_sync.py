@@ -65,7 +65,7 @@ Regras:
     time_limit=1900,
 )
 def run_glpi_sync(self: object) -> dict:
-    return asyncio.get_event_loop().run_until_complete(_async_glpi_sync())
+    return asyncio.run(_async_glpi_sync())
 
 
 async def _async_glpi_sync() -> dict:
@@ -315,6 +315,33 @@ async def _process_ticket(integration, ticket_data: dict, client, itemtype: str 
             rec.is_recurrent         = is_recurrent or bool(ai_result.get("is_recurrent", False))
             rec.glpi_followup_id     = followup_id
             await db.commit()
+
+    # ── Criar RemediationPlan a partir do plano_remediacao ────────────────────
+    if ai_result.get("plano_remediacao") and correlated_device_ids:
+        try:
+            from app.services.remediation_service import generate_plan_from_context
+            from app.models.device import Device
+            from sqlalchemy import select as sa_select
+            async with AsyncSessionLocal() as rdb:
+                dev_result = await rdb.execute(
+                    sa_select(Device).where(Device.id == correlated_device_ids[0])
+                )
+                dev = dev_result.scalar_one_or_none()
+                device_name = dev.name if dev else None
+                await generate_plan_from_context(
+                    db=rdb,
+                    tenant_id=integration.tenant_id,
+                    request=(
+                        f"[GLPI #{glpi_ticket_id}] {title}\n\n"
+                        f"Plano de remediação:\n{ai_result['plano_remediacao']}"
+                    ),
+                    origin_type="glpi_ticket",
+                    origin_ref=str(glpi_ticket_id),
+                    device_name=device_name,
+                )
+                await rdb.commit()
+        except Exception as exc:
+            log.warning("glpi_remediation_plan_failed ticket=%d error=%s", glpi_ticket_id, exc)
 
     log.info(
         "ticket_analysed ticket=%d security=%s recurrent=%s confidence=%.2f enriched=%s",
@@ -670,9 +697,7 @@ def GlpiClient_strip_html(html: str | None) -> str:
     time_limit=660,
 )
 def run_glpi_analysis_manual(self: object, analysis_id: str, device_ids: list[str]) -> dict:
-    return asyncio.get_event_loop().run_until_complete(
-        _async_run_manual_analysis(analysis_id, device_ids)
-    )
+    return asyncio.run(_async_run_manual_analysis(analysis_id, device_ids))
 
 
 async def _async_run_manual_analysis(analysis_id: str, device_ids: list[str]) -> dict:

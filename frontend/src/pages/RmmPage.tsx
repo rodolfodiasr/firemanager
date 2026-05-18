@@ -5,14 +5,16 @@ import {
   ChevronRight, Loader2, FlaskConical, Terminal,
   Code2, Clock, X, Play, Wifi, WifiOff, AlertTriangle,
   Monitor, History, Settings, BookOpen, Plus, Pencil,
-  Trash2, Lock, Save,
+  Trash2, Lock, Save, FolderOpen,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   rmmApi, rmmTemplatesApi,
   type RmmIntegration, type RmmAgent, type RmmScriptRun, type RmmScriptTemplate,
   type TemplateCategory, type TemplateShell,
 } from "../api/rmm";
+import { rmmGroupsApi, type RmmGroupRead, type RmmGroupDetail, type BulkRunResult } from "../api/rmmGroups";
 
 const RMM_TYPE_LABELS: Record<string, string> = {
   tactical_rmm: "Tactical RMM",
@@ -766,11 +768,319 @@ function AgentDetail({ agent, integration, onRun, onClose, runs, loadingRuns }: 
   );
 }
 
+// ── RMM Group Modal ───────────────────────────────────────────────────────────
+
+function RmmGroupModal({
+  initial,
+  integrations,
+  onClose,
+}: {
+  initial?: RmmGroupDetail | null;
+  integrations: RmmIntegration[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    new Set(initial?.agents.map((a) => a.id) ?? [])
+  );
+  const [allAgents, setAllAgents] = useState<Array<RmmAgent & { integration_name: string }>>([]);
+  const [loadingAgents, setLoadingAgents] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadAgents = async () => {
+      setLoadingAgents(true);
+      const results: Array<RmmAgent & { integration_name: string }> = [];
+      for (const integ of integrations) {
+        try {
+          const agents = await rmmApi.agents(integ.id);
+          agents.forEach((a) => results.push({ ...a, integration_name: integ.name }));
+        } catch { /* skip */ }
+      }
+      if (!cancelled) { setAllAgents(results); setLoadingAgents(false); }
+    };
+    loadAgents();
+    return () => { cancelled = true; };
+  }, [integrations]);
+
+  const saveMut = useMutation({
+    mutationFn: () => {
+      const payload = { name, description: description || undefined, agent_ids: [...selectedIds] };
+      return initial
+        ? rmmGroupsApi.update(initial.id, payload)
+        : rmmGroupsApi.create(payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rmm-groups"] });
+      toast.success(initial ? "Grupo atualizado" : "Grupo criado");
+      onClose();
+    },
+    onError: () => toast.error("Erro ao salvar grupo"),
+  });
+
+  const toggle = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+          <h2 className="text-sm font-semibold text-gray-900">
+            {initial ? "Editar grupo" : "Novo grupo de agentes"}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Nome *</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Estações de Produção"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Descrição</label>
+            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Opcional"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-2">
+              Agentes ({selectedIds.size} selecionados)
+            </label>
+            {loadingAgents ? (
+              <div className="flex items-center gap-2 text-xs text-gray-400 py-4">
+                <Loader2 size={12} className="animate-spin" /> Carregando agentes...
+              </div>
+            ) : (
+              <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-gray-50">
+                {allAgents.length === 0 ? (
+                  <p className="text-xs text-gray-400 p-3">Nenhum agente disponível</p>
+                ) : (
+                  allAgents.map((a) => (
+                    <label key={a.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                      <input type="checkbox" checked={selectedIds.has(a.id)} onChange={() => toggle(a.id)} className="accent-brand-600" />
+                      <span className="text-sm text-gray-700 flex-1 truncate">{a.hostname}</span>
+                      <span className="text-xs text-gray-400 truncate max-w-[100px]">{a.integration_name}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${a.status === "online" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        {a.status}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t border-gray-100">
+          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancelar</button>
+          <button
+            onClick={() => saveMut.mutate()}
+            disabled={!name.trim() || saveMut.isPending}
+            className="flex items-center gap-1.5 text-sm bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700 disabled:opacity-50"
+          >
+            {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+            {initial ? "Salvar" : "Criar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Bulk Run Modal ────────────────────────────────────────────────────────────
+
+function BulkRunModal({ group, onClose }: { group: RmmGroupRead; onClose: () => void }) {
+  const [shell, setShell] = useState("powershell");
+  const [runType, setRunType] = useState<"command" | "script">("command");
+  const [body, setBody] = useState("");
+  const [result, setResult] = useState<BulkRunResult | null>(null);
+
+  const runMut = useMutation({
+    mutationFn: () => rmmGroupsApi.bulkRun(group.id, { shell, run_type: runType, body }),
+    onSuccess: (data) => { setResult(data); toast.success("Execução concluída"); },
+    onError: () => toast.error("Erro ao executar no grupo"),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+          <h2 className="text-sm font-semibold text-gray-900">Executar em grupo: {group.name}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4 space-y-3">
+          {!result ? (
+            <>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Shell</label>
+                  <select value={shell} onChange={(e) => setShell(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    {SHELLS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
+                  <select value={runType} onChange={(e) => setRunType(e.target.value as "command" | "script")}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    <option value="command">Comando</option>
+                    <option value="script">Script</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  {runType === "command" ? "Comando" : "Script"}
+                </label>
+                <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5}
+                  placeholder={runType === "command" ? "Get-Process | Sort-Object CPU -Desc | Select-Object -First 10" : "# PowerShell script\nWrite-Output 'Hello World'"}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+                />
+              </div>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 font-medium">{result.agent_count} agentes — resultados:</p>
+              {result.results.map((r) => (
+                <div key={r.agent_id} className="border border-gray-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-gray-800">{r.hostname}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      r.status === "ok" ? "bg-green-100 text-green-700"
+                      : r.status === "skipped" ? "bg-gray-100 text-gray-500"
+                      : "bg-red-100 text-red-700"
+                    }`}>{r.status}</span>
+                  </div>
+                  {r.output && (
+                    <pre className="text-[10px] bg-gray-950 text-green-400 p-2 rounded font-mono max-h-24 overflow-auto whitespace-pre-wrap">
+                      {r.output}
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t border-gray-100">
+          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Fechar</button>
+          {!result && (
+            <button
+              onClick={() => runMut.mutate()}
+              disabled={!body.trim() || runMut.isPending}
+              className="flex items-center gap-1.5 text-sm bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700 disabled:opacity-50"
+            >
+              {runMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+              {runMut.isPending ? "Executando..." : "Executar"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── RMM Groups Panel ──────────────────────────────────────────────────────────
+
+function RmmGroupsPanel({ integrations }: { integrations: RmmIntegration[] }) {
+  const qc = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
+  const [editGroup, setEditGroup] = useState<RmmGroupDetail | null>(null);
+  const [runGroup, setRunGroup] = useState<RmmGroupRead | null>(null);
+
+  const { data: groups = [], isLoading } = useQuery({
+    queryKey: ["rmm-groups"],
+    queryFn: rmmGroupsApi.list,
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => rmmGroupsApi.remove(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["rmm-groups"] }); toast.success("Grupo removido"); },
+    onError: () => toast.error("Erro ao remover grupo"),
+  });
+
+  const openEdit = async (g: RmmGroupRead) => {
+    const detail = await rmmGroupsApi.get(g.id);
+    setEditGroup(detail);
+    setShowModal(true);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-sm text-gray-500">Agrupe agentes para executar scripts e comandos em lote.</p>
+        <button
+          onClick={() => { setEditGroup(null); setShowModal(true); }}
+          className="flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors"
+        >
+          <Plus size={16} /> Novo grupo
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-gray-400 py-8">
+          <Loader2 size={16} className="animate-spin" /> Carregando...
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <FolderOpen size={40} className="text-gray-200 mb-3" />
+          <p className="text-gray-500 font-medium">Nenhum grupo criado</p>
+          <p className="text-sm text-gray-400 mt-1 max-w-sm">
+            Crie grupos para executar scripts e comandos em múltiplos agentes de uma vez.
+          </p>
+          <button onClick={() => { setEditGroup(null); setShowModal(true); }}
+            className="mt-4 flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700">
+            <Plus size={16} /> Criar primeiro grupo
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {groups.map((g) => (
+            <div key={g.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="bg-brand-50 text-brand-600 p-2 rounded-lg shrink-0"><FolderOpen size={16} /></div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-900 truncate">{g.name}</h3>
+                    {g.description && <p className="text-xs text-gray-400 truncate">{g.description}</p>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0 ml-2">
+                  <button onClick={() => openEdit(g)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" title="Editar"><Pencil size={13} /></button>
+                  <button onClick={() => { if (confirm(`Remover grupo "${g.name}"?`)) deleteMut.mutate(g.id); }} className="p-1.5 text-gray-400 hover:text-red-500 rounded" title="Remover"><Trash2 size={13} /></button>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">{g.agent_count} agente{g.agent_count !== 1 ? "s" : ""}</p>
+              <button onClick={() => setRunGroup(g)}
+                className="flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-700 font-medium">
+                <Terminal size={12} /> Executar no grupo
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showModal && (
+        <RmmGroupModal
+          initial={editGroup}
+          integrations={integrations}
+          onClose={() => { setShowModal(false); setEditGroup(null); }}
+        />
+      )}
+      {runGroup && <BulkRunModal group={runGroup} onClose={() => setRunGroup(null)} />}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function RmmPage() {
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<"agents" | "templates">("agents");
+  const [activeView, setActiveView] = useState<"agents" | "templates" | "groups">("agents");
   const [integrations, setIntegrations] = useState<RmmIntegration[]>([]);
   const [selected, setSelected] = useState<RmmIntegration | null>(null);
   const [agents, setAgents] = useState<RmmAgent[]>([]);
@@ -872,10 +1182,19 @@ export default function RmmPage() {
         >
           <BookOpen size={14} /> Templates de Script
         </button>
+        <button
+          onClick={() => setActiveView("groups")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeView === "groups" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          <FolderOpen size={14} /> Grupos
+        </button>
       </div>
 
       {/* Templates view */}
       {activeView === "templates" && <TemplatesPanel />}
+
+      {/* Groups view */}
+      {activeView === "groups" && <RmmGroupsPanel integrations={integrations} />}
 
       {/* Agents view */}
       {activeView === "agents" && (

@@ -10,6 +10,16 @@ from sqlalchemy.sql import func
 from app.database import Base
 
 
+class RemediationOriginType(str, enum.Enum):
+    manual      = "manual"
+    compliance  = "compliance"
+    glpi_ticket = "glpi_ticket"
+    soar_playbook = "soar_playbook"
+    cve_firmware  = "cve_firmware"
+    alert         = "alert"
+    investigation = "investigation"
+
+
 class RemediationStatus(str, enum.Enum):
     pending_approval = "pending_approval"
     approved         = "approved"
@@ -45,11 +55,18 @@ class RemediationPlan(Base):
         nullable=False,
         index=True,
     )
-    server_id: Mapped[UUID] = mapped_column(
+    server_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("servers.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
+    )
+    origin_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    origin_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    campaign_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("remediation_campaigns.id", ondelete="SET NULL"),
+        nullable=True,
     )
     session_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -108,3 +125,45 @@ class RemediationCommand(Base):
     executed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
     plan: Mapped["RemediationPlan"] = relationship("RemediationPlan", back_populates="commands")
+
+
+class RemediationTemplate(Base):
+    __tablename__ = "remediation_templates"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vendor: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    commands: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False,
+    )
+
+
+class RemediationCampaign(Base):
+    __tablename__ = "remediation_campaigns"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    template_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("remediation_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    origin_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    origin_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft")
+    created_by: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False,
+    )

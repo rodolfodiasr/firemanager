@@ -3,11 +3,14 @@ import { useForm, useWatch } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Server as ServerIcon, Plus, Trash2, Pencil, CheckCircle2, XCircle,
-  Loader2, Terminal, Monitor,
+  Loader2, Terminal, Monitor, FolderOpen, Play, X,
 } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { serversApi } from "../api/servers";
+import { serverGroupsApi } from "../api/serverGroups";
 import type { Server, ServerCreate } from "../types/server";
+import type { ServerGroupRead, ServerGroupDetail } from "../api/serverGroups";
 
 // ── Credential fields ─────────────────────────────────────────────────────────
 
@@ -371,9 +374,311 @@ function ServerRow({ server, onEdit }: RowProps) {
   );
 }
 
+// ── Server Group Modal ────────────────────────────────────────────────────────
+
+function ServerGroupModal({
+  initial,
+  servers,
+  onClose,
+}: {
+  initial?: ServerGroupDetail | null;
+  servers: Server[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    new Set(initial?.servers.map((s) => s.id) ?? [])
+  );
+
+  const saveMut = useMutation({
+    mutationFn: () => {
+      const payload = { name, description: description || undefined, server_ids: [...selectedIds] };
+      return initial
+        ? serverGroupsApi.update(initial.id, payload)
+        : serverGroupsApi.create(payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["server-groups"] });
+      toast.success(initial ? "Grupo atualizado" : "Grupo criado");
+      onClose();
+    },
+    onError: () => toast.error("Erro ao salvar grupo"),
+  });
+
+  const toggle = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+          <h2 className="text-sm font-semibold text-gray-900">
+            {initial ? "Editar grupo" : "Novo grupo de servidores"}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Nome *</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ex: Servidores de Produção"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Descrição</label>
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Opcional"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-2">
+              Servidores ({selectedIds.size} selecionados)
+            </label>
+            <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-gray-50">
+              {servers.length === 0 ? (
+                <p className="text-xs text-gray-400 p-3">Nenhum servidor cadastrado</p>
+              ) : (
+                servers.map((s) => (
+                  <label key={s.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(s.id)}
+                      onChange={() => toggle(s.id)}
+                      className="accent-brand-600"
+                    />
+                    <span className="text-sm text-gray-700 flex-1">{s.name}</span>
+                    <span className="text-xs text-gray-400">{s.host}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      s.os_type === "linux"
+                        ? "bg-green-100 text-green-700"
+                        : "bg-blue-100 text-blue-700"
+                    }`}>
+                      {s.os_type === "linux" ? "Linux" : "Windows"}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t border-gray-100">
+          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2">
+            Cancelar
+          </button>
+          <button
+            onClick={() => saveMut.mutate()}
+            disabled={!name.trim() || saveMut.isPending}
+            className="flex items-center gap-1.5 text-sm bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700 disabled:opacity-50"
+          >
+            {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+            {initial ? "Salvar" : "Criar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Server Group Card ─────────────────────────────────────────────────────────
+
+function ServerGroupCard({
+  group,
+  onEdit,
+  onDelete,
+}: {
+  group: ServerGroupRead;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [analyzing, setAnalyzing] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [result, setResult] = useState<string | null>(null);
+
+  const analyzeMut = useMutation({
+    mutationFn: () => serverGroupsApi.analyze(group.id, question),
+    onSuccess: (data) => {
+      setResult(data.answer);
+      toast.success("Análise concluída");
+    },
+    onError: () => toast.error("Erro ao analisar grupo"),
+  });
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="bg-brand-50 text-brand-600 p-2 rounded-lg shrink-0">
+            <FolderOpen size={16} />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900 truncate">{group.name}</h3>
+            {group.description && (
+              <p className="text-xs text-gray-400 truncate">{group.description}</p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0 ml-2">
+          <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" title="Editar">
+            <Pencil size={13} />
+          </button>
+          <button onClick={onDelete} className="p-1.5 text-gray-400 hover:text-red-500 rounded" title="Remover">
+            <Trash2 size={13} />
+          </button>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-500 mb-3">
+        {group.server_count} servidor{group.server_count !== 1 ? "es" : ""}
+      </p>
+
+      {analyzing ? (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            rows={2}
+            autoFocus
+            placeholder="Ex: Qual o uso de CPU médio? Há processos suspeitos?"
+            className="w-full border rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+          />
+          {result && (
+            <div className="mt-2 bg-gray-50 rounded-lg p-3 text-xs text-gray-700 whitespace-pre-wrap max-h-48 overflow-y-auto">
+              {result}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-2">
+            <button onClick={() => { setAnalyzing(false); setResult(null); setQuestion(""); }} className="text-xs text-gray-500 hover:text-gray-700">
+              Fechar
+            </button>
+            <button
+              onClick={() => analyzeMut.mutate()}
+              disabled={question.trim().length < 5 || analyzeMut.isPending}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50"
+            >
+              {analyzeMut.isPending ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+              {analyzeMut.isPending ? "Analisando..." : "Analisar"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAnalyzing(true)}
+          className="flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-700 font-medium"
+        >
+          <Play size={12} />
+          Analisar grupo com N3
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Server Groups Tab ─────────────────────────────────────────────────────────
+
+function ServerGroupsTab({ servers }: { servers: Server[] }) {
+  const qc = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
+  const [editGroup, setEditGroup] = useState<ServerGroupDetail | null>(null);
+
+  const { data: groups = [], isLoading } = useQuery({
+    queryKey: ["server-groups"],
+    queryFn: serverGroupsApi.list,
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => serverGroupsApi.remove(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["server-groups"] });
+      toast.success("Grupo removido");
+    },
+    onError: () => toast.error("Erro ao remover grupo"),
+  });
+
+  const openEdit = async (g: ServerGroupRead) => {
+    const detail = await serverGroupsApi.get(g.id);
+    setEditGroup(detail);
+    setShowModal(true);
+  };
+
+  const openCreate = () => { setEditGroup(null); setShowModal(true); };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-sm text-gray-500">
+          Agrupe servidores para executar análise N3 em lote em todos os membros.
+        </p>
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors shrink-0"
+        >
+          <Plus size={16} />
+          Novo grupo
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-gray-400 py-8">
+          <Loader2 size={16} className="animate-spin" /> Carregando...
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <FolderOpen size={40} className="text-gray-200 mb-3" />
+          <p className="text-gray-500 font-medium">Nenhum grupo criado</p>
+          <p className="text-sm text-gray-400 mt-1 max-w-sm">
+            Crie grupos para analisar múltiplos servidores de uma vez com o Analista N3.
+          </p>
+          <button onClick={openCreate} className="mt-4 flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700">
+            <Plus size={16} /> Criar primeiro grupo
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {groups.map((g) => (
+            <ServerGroupCard
+              key={g.id}
+              group={g}
+              onEdit={() => openEdit(g)}
+              onDelete={() => {
+                if (confirm(`Remover grupo "${g.name}"?`)) deleteMut.mutate(g.id);
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {showModal && (
+        <ServerGroupModal
+          initial={editGroup}
+          servers={servers}
+          onClose={() => { setShowModal(false); setEditGroup(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+type Tab = "servers" | "groups";
+
 export function Servers() {
+  const [tab, setTab] = useState<Tab>("servers");
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Server | undefined>();
 
@@ -391,71 +696,94 @@ export function Servers() {
 
   return (
     <PageWrapper title="Servidores">
-      <div className="flex items-start justify-between mb-6">
-        <p className="text-sm text-gray-500 mt-1">
-          Registre servidores Linux (SSH) e Windows (WinRM) para análise pelo Analista N3.
-        </p>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors shrink-0"
-        >
-          <Plus size={16} />
-          Adicionar
-        </button>
+      {/* Tab switcher */}
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        {(["servers", "groups"] as Tab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              tab === t
+                ? "border-brand-600 text-brand-700"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t === "servers" ? "Servidores" : "Grupos"}
+          </button>
+        ))}
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-sm text-gray-400 py-8">
-          <Loader2 size={16} className="animate-spin" /> Carregando...
-        </div>
-      ) : servers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <ServerIcon size={40} className="text-gray-200 mb-3" />
-          <p className="text-gray-500 font-medium">Nenhum servidor cadastrado</p>
-          <p className="text-sm text-gray-400 mt-1 max-w-sm">
-            Registre servidores Linux via SSH ou Windows via WinRM para coletar diagnósticos e analisar com IA.
-          </p>
-          <button onClick={openCreate}
-            className="mt-4 flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700">
-            <Plus size={16} /> Adicionar servidor
-          </button>
-        </div>
+      {tab === "groups" ? (
+        <ServerGroupsTab servers={servers} />
       ) : (
-        <div className="space-y-6">
-          {linux.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Terminal size={14} className="text-green-600" />
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Linux — SSH ({linux.length})
-                </p>
-              </div>
-              <div className="space-y-2">
-                {linux.map((s) => (
-                  <ServerRow key={s.id} server={s} onEdit={() => openEdit(s)} />
-                ))}
-              </div>
-            </div>
-          )}
-          {windows.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Monitor size={14} className="text-blue-600" />
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Windows — WinRM ({windows.length})
-                </p>
-              </div>
-              <div className="space-y-2">
-                {windows.map((s) => (
-                  <ServerRow key={s.id} server={s} onEdit={() => openEdit(s)} />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+        <>
+          <div className="flex items-start justify-between mb-6">
+            <p className="text-sm text-gray-500 mt-1">
+              Registre servidores Linux (SSH) e Windows (WinRM) para análise pelo Analista N3.
+            </p>
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors shrink-0"
+            >
+              <Plus size={16} />
+              Adicionar
+            </button>
+          </div>
 
-      {showModal && <ServerModal initial={editing} onClose={closeModal} />}
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-400 py-8">
+              <Loader2 size={16} className="animate-spin" /> Carregando...
+            </div>
+          ) : servers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <ServerIcon size={40} className="text-gray-200 mb-3" />
+              <p className="text-gray-500 font-medium">Nenhum servidor cadastrado</p>
+              <p className="text-sm text-gray-400 mt-1 max-w-sm">
+                Registre servidores Linux via SSH ou Windows via WinRM para coletar diagnósticos e analisar com IA.
+              </p>
+              <button onClick={openCreate}
+                className="mt-4 flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700">
+                <Plus size={16} /> Adicionar servidor
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {linux.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Terminal size={14} className="text-green-600" />
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Linux — SSH ({linux.length})
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {linux.map((s) => (
+                      <ServerRow key={s.id} server={s} onEdit={() => openEdit(s)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {windows.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Monitor size={14} className="text-blue-600" />
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Windows — WinRM ({windows.length})
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {windows.map((s) => (
+                      <ServerRow key={s.id} server={s} onEdit={() => openEdit(s)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {showModal && <ServerModal initial={editing} onClose={closeModal} />}
+        </>
+      )}
     </PageWrapper>
   );
 }

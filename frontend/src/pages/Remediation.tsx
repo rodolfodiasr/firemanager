@@ -531,6 +531,37 @@ function GlpiChangeModal({ plan, onClose }: { plan: RemediationPlan; onClose: ()
   );
 }
 
+// ── Origin Badge ──────────────────────────────────────────────────────────────
+
+const ORIGIN_LABELS: Record<string, string> = {
+  glpi_ticket:   "GLPI",
+  soar_playbook: "SOAR",
+  compliance:    "Compliance",
+  alert:         "Alerta",
+  cve_firmware:  "CVE",
+  investigation: "Investigação",
+};
+
+const ORIGIN_COLORS: Record<string, string> = {
+  glpi_ticket:   "bg-indigo-100 text-indigo-700",
+  soar_playbook: "bg-purple-100 text-purple-700",
+  compliance:    "bg-blue-100 text-blue-700",
+  alert:         "bg-red-100 text-red-700",
+  cve_firmware:  "bg-orange-100 text-orange-700",
+  investigation: "bg-teal-100 text-teal-700",
+};
+
+function OriginBadge({ originType, originRef }: { originType: string; originRef: string | null }) {
+  const label = ORIGIN_LABELS[originType] ?? originType;
+  const color = ORIGIN_COLORS[originType] ?? "bg-gray-100 text-gray-700";
+  const ref = originRef ? ` #${originRef}` : "";
+  return (
+    <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${color}`}>
+      {label}{ref}
+    </span>
+  );
+}
+
 // ── Plan card ─────────────────────────────────────────────────────────────────
 
 function PlanCard({ plan, isN1 }: { plan: RemediationPlan; isN1: boolean }) {
@@ -587,7 +618,12 @@ function PlanCard({ plan, isN1 }: { plan: RemediationPlan; isN1: boolean }) {
       >
         <Terminal size={18} className="text-brand-500 mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{plan.request}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-medium text-gray-900 truncate">{plan.request}</p>
+            {plan.origin_type && plan.origin_type !== "manual" && (
+              <OriginBadge originType={plan.origin_type} originRef={plan.origin_ref} />
+            )}
+          </div>
           <p className="text-xs text-gray-400 mt-0.5">
             {new Date(plan.created_at).toLocaleString("pt-BR")} · {plan.commands.length} comando(s)
           </p>

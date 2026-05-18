@@ -39,7 +39,7 @@ export interface RollbackStep {
 export interface RemediationPlan {
   id: string;
   tenant_id: string;
-  server_id: string;
+  server_id: string | null;
   session_id: string | null;
   request: string;
   summary: string;
@@ -50,10 +50,43 @@ export interface RemediationPlan {
   created_at: string;
   updated_at: string;
   commands: RemediationCommand[];
+  origin_type: string | null;
+  origin_ref: string | null;
+  campaign_id: string | null;
 }
 
 export interface RemediationRequest {
   server_id: string;
   request: string;
   session_id?: string;
+}
+
+export interface RemediationContextRequest {
+  request: string;
+  origin_type?: string;
+  origin_ref?: string;
+  device_name?: string;
+  campaign_id?: string;
+}
+
+export interface RemediationTemplate {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  vendor: string | null;
+  category: string | null;
+  commands: object[];
+  created_at: string;
+}
+
+export interface RemediationCampaign {
+  id: string;
+  tenant_id: string;
+  name: string;
+  template_id: string | null;
+  origin_type: string | null;
+  origin_ref: string | null;
+  status: string;
+  created_at: string;
 }

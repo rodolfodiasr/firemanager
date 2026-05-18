@@ -198,3 +198,26 @@ async def list_events(db: DbDep, ctx: CtxDep):
         .limit(200)
     )).scalars().all()
     return [EventRead.from_orm(e) for e in rows]
+
+
+@router.post("/events/{event_id}/remediate", status_code=201)
+async def remediate_event(event_id: UUID, db: DbDep, ctx: CtxDep):
+    """Gera um plano de remediação a partir de um evento de alerta."""
+    event = await db.get(AlertEvent, event_id)
+    if not event or event.tenant_id != ctx.tenant.id:
+        raise HTTPException(404)
+
+    from app.services.remediation_service import generate_plan_from_context
+    from app.schemas.remediation import RemediationPlanRead
+    try:
+        plan = await generate_plan_from_context(
+            db=db,
+            tenant_id=ctx.tenant.id,
+            request=f"[Alerta] {event.title}\n\n{event.body}",
+            origin_type="alert",
+            origin_ref=str(event_id),
+        )
+        await db.commit()
+        return RemediationPlanRead.model_validate(plan)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar plano: {exc}")

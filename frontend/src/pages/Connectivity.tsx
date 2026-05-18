@@ -6,19 +6,24 @@ import {
   ArrowLeftRight,
   CheckCircle2,
   ChevronRight,
+  FolderOpen,
   Info,
   Loader2,
   Network,
+  Pencil,
   Play,
+  Plus,
   RefreshCw,
   Shield,
   Trash2,
+  X,
   XCircle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { PageWrapper } from "../components/layout/PageWrapper";
 import { connectivityApi } from "../api/connectivity";
 import { devicesApi } from "../api/devices";
+import { networkSegmentsApi, type NetworkSegmentRead, type NetworkSegmentDetail } from "../api/networkSegments";
 import type {
   ConnectivityAnalysisRead,
   ConnectivityAnalysisSummary,
@@ -523,10 +528,252 @@ function DetailModal({
   );
 }
 
+// ── Network Segment Modal ─────────────────────────────────────────────────────
+
+function NetworkSegmentModal({
+  initial,
+  devices,
+  onClose,
+}: {
+  initial?: NetworkSegmentDetail | null;
+  devices: Device[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [cidr, setCidr] = useState(initial?.cidr ?? "");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    new Set(initial?.devices.map((d) => d.id) ?? [])
+  );
+
+  const saveMut = useMutation({
+    mutationFn: () => {
+      const payload = {
+        name,
+        description: description || undefined,
+        cidr: cidr || undefined,
+        device_ids: [...selectedIds],
+      };
+      return initial
+        ? networkSegmentsApi.update(initial.id, payload)
+        : networkSegmentsApi.create(payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["network-segments"] });
+      toast.success(initial ? "Segmento atualizado" : "Segmento criado");
+      onClose();
+    },
+    onError: () => toast.error("Erro ao salvar segmento"),
+  });
+
+  const toggle = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-gray-100">
+          <h2 className="text-sm font-semibold text-gray-900">
+            {initial ? "Editar segmento" : "Novo segmento de rede"}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-4 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Nome *</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: LAN Matriz"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Descrição</label>
+            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Opcional"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">CIDR (opcional)</label>
+            <input value={cidr} onChange={(e) => setCidr(e.target.value)} placeholder="192.168.1.0/24"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-2">
+              Dispositivos ({selectedIds.size} selecionados)
+            </label>
+            <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-gray-50">
+              {devices.length === 0 ? (
+                <p className="text-xs text-gray-400 p-3">Nenhum dispositivo disponível</p>
+              ) : (
+                devices.map((d) => (
+                  <label key={d.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" checked={selectedIds.has(d.id)} onChange={() => toggle(d.id)} className="accent-brand-600" />
+                    <span className="text-sm text-gray-700 flex-1 truncate">{d.name}</span>
+                    <span className="text-xs text-gray-400">{d.vendor}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t border-gray-100">
+          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancelar</button>
+          <button
+            onClick={() => saveMut.mutate()}
+            disabled={!name.trim() || saveMut.isPending}
+            className="flex items-center gap-1.5 text-sm bg-brand-600 text-white px-4 py-2 rounded-lg hover:bg-brand-700 disabled:opacity-50"
+          >
+            {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+            {initial ? "Salvar" : "Criar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Network Segments Tab ──────────────────────────────────────────────────────
+
+function NetworkSegmentsTab({ devices }: { devices: Device[] }) {
+  const qc = useQueryClient();
+  const [showModal, setShowModal] = useState(false);
+  const [editSegment, setEditSegment] = useState<NetworkSegmentDetail | null>(null);
+  const [analyzing, setAnalyzing] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<Record<string, string>>({});
+
+  const { data: segments = [], isLoading } = useQuery({
+    queryKey: ["network-segments"],
+    queryFn: networkSegmentsApi.list,
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => networkSegmentsApi.remove(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["network-segments"] }); toast.success("Segmento removido"); },
+    onError: () => toast.error("Erro ao remover segmento"),
+  });
+
+  const analyzeMut = useMutation({
+    mutationFn: (id: string) => networkSegmentsApi.analyze(id),
+    onSuccess: (data, id) => {
+      setAnalysisResult((prev) => ({
+        ...prev,
+        [id]: `${data.segment_name} — ${data.device_count} dispositivos analisados. ${data.analyses.length} análises iniciadas.`,
+      }));
+      toast.success("Análise iniciada para o segmento");
+    },
+    onError: () => toast.error("Erro ao analisar segmento"),
+  });
+
+  const openEdit = async (seg: NetworkSegmentRead) => {
+    const detail = await networkSegmentsApi.get(seg.id);
+    setEditSegment(detail);
+    setShowModal(true);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-sm text-gray-500">
+          Agrupe dispositivos de rede em segmentos para análise de conectividade em lote.
+        </p>
+        <button
+          onClick={() => { setEditSegment(null); setShowModal(true); }}
+          className="flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors"
+        >
+          <Plus size={16} /> Novo segmento
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-gray-400 py-8">
+          <Loader2 size={16} className="animate-spin" /> Carregando...
+        </div>
+      ) : segments.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <Network size={40} className="text-gray-200 mb-3" />
+          <p className="text-gray-500 font-medium">Nenhum segmento criado</p>
+          <p className="text-sm text-gray-400 mt-1 max-w-sm">
+            Crie segmentos de rede para analisar a conectividade de múltiplos dispositivos de uma vez.
+          </p>
+          <button onClick={() => { setEditSegment(null); setShowModal(true); }}
+            className="mt-4 flex items-center gap-2 bg-brand-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-brand-700">
+            <Plus size={16} /> Criar primeiro segmento
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {segments.map((seg) => (
+            <div key={seg.id} className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-sm transition-shadow">
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="bg-brand-50 text-brand-600 p-2 rounded-lg shrink-0"><FolderOpen size={16} /></div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-900 truncate">{seg.name}</h3>
+                    {seg.description && <p className="text-xs text-gray-400 truncate">{seg.description}</p>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0 ml-2">
+                  <button onClick={() => openEdit(seg)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" title="Editar"><Pencil size={13} /></button>
+                  <button onClick={() => { if (confirm(`Remover segmento "${seg.name}"?`)) deleteMut.mutate(seg.id); }} className="p-1.5 text-gray-400 hover:text-red-500 rounded" title="Remover"><Trash2 size={13} /></button>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mb-3">
+                <span className="text-xs text-gray-500">
+                  {seg.device_count} dispositivo{seg.device_count !== 1 ? "s" : ""}
+                </span>
+                {seg.cidr && (
+                  <span className="text-xs font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                    {seg.cidr}
+                  </span>
+                )}
+              </div>
+              {analysisResult[seg.id] && (
+                <div className="mb-2 text-xs text-green-700 bg-green-50 rounded-lg p-2">
+                  {analysisResult[seg.id]}
+                </div>
+              )}
+              {analyzing === seg.id ? (
+                <div className="flex items-center gap-1 text-xs text-brand-600">
+                  <Loader2 size={11} className="animate-spin" /> Analisando...
+                </div>
+              ) : (
+                <button
+                  onClick={async () => {
+                    setAnalyzing(seg.id);
+                    await analyzeMut.mutateAsync(seg.id).catch(() => {});
+                    setAnalyzing(null);
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-700 font-medium"
+                >
+                  <Play size={12} /> Analisar conectividade do segmento
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showModal && (
+        <NetworkSegmentModal
+          initial={editSegment}
+          devices={devices}
+          onClose={() => { setShowModal(false); setEditSegment(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
+
+type ConnectivityPageTab = "analyses" | "segments";
 
 export function Connectivity() {
   const qc = useQueryClient();
+  const [pageTab, setPageTab] = useState<ConnectivityPageTab>("analyses");
   const [mode, setMode] = useState<ConnectivityMode>("single");
   const [deviceAId, setDeviceAId] = useState("");
   const [deviceBId, setDeviceBId] = useState("");
@@ -583,6 +830,27 @@ export function Connectivity() {
       title="Conectividade de Rede"
       subtitle="Análise de tabelas de roteamento, BGP/OSPF e detecção de anomalias"
     >
+      {/* Page tab switcher */}
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        {(["analyses", "segments"] as ConnectivityPageTab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setPageTab(t)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              pageTab === t
+                ? "border-brand-600 text-brand-700"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t === "analyses" ? "Análises" : "Segmentos"}
+          </button>
+        ))}
+      </div>
+
+      {pageTab === "segments" ? (
+        <NetworkSegmentsTab devices={devices} />
+      ) : (
+        <>
       {/* Mode toggle + selectors */}
       <div className="bg-white border rounded-xl p-4 mb-6 space-y-3">
         {/* Toggle */}
@@ -765,6 +1033,8 @@ export function Connectivity() {
           deviceBName={detailSummary.device_b_id ? deviceMap[detailSummary.device_b_id]?.name : undefined}
           onClose={() => setDetailId(null)}
         />
+      )}
+        </>
       )}
     </PageWrapper>
   );
