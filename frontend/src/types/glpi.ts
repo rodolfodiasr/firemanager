@@ -27,6 +27,8 @@ export interface GlpiIntegration {
   // KR loop
   auto_create_kr: boolean;
   kr_category_id: number | null;
+  kr_bookstack_book_id: number | null;
+  kr_bookstack_chapter_id: number | null;
   created_at: string;
   updated_at: string;
 }

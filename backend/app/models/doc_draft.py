@@ -41,6 +41,8 @@ class AssistantDocDraft(Base):
     similar_docs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     bookstack_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bookstack_page_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_book_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_chapter_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     glpi_analysis_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True), nullable=True, index=True
     )

@@ -31,6 +31,8 @@ class GlpiIntegrationCreate(BaseModel):
     # KR loop
     auto_create_kr: bool = False
     kr_category_id: int | None = None
+    kr_bookstack_book_id: int | None = None
+    kr_bookstack_chapter_id: int | None = None
 
     @field_validator("glpi_url")
     @classmethod
@@ -78,6 +80,8 @@ class GlpiIntegrationUpdate(BaseModel):
     # KR loop
     auto_create_kr: bool | None = None
     kr_category_id: int | None = None
+    kr_bookstack_book_id: int | None = None
+    kr_bookstack_chapter_id: int | None = None
 
     @field_validator("glpi_url")
     @classmethod
@@ -112,6 +116,8 @@ class GlpiIntegrationRead(BaseModel):
     # KR loop
     auto_create_kr: bool
     kr_category_id: int | None
+    kr_bookstack_book_id: int | None
+    kr_bookstack_chapter_id: int | None
     created_at: datetime
     updated_at: datetime
 

@@ -3,7 +3,7 @@ import time
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -137,6 +137,10 @@ async def update_glpi_integration(
         intg.auto_create_kr = data.auto_create_kr
     if data.kr_category_id is not None:
         intg.kr_category_id = data.kr_category_id
+    if data.kr_bookstack_book_id is not None:
+        intg.kr_bookstack_book_id = data.kr_bookstack_book_id
+    if data.kr_bookstack_chapter_id is not None:
+        intg.kr_bookstack_chapter_id = data.kr_bookstack_chapter_id
 
     await db.flush()
     await db.refresh(intg)
@@ -375,11 +379,50 @@ async def list_kr_drafts(
     return out
 
 
+@router.get("/bookstack/books", response_model=list[dict])
+async def list_bookstack_books(
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> list[dict]:
+    """List all books available in the tenant's BookStack integration."""
+    from app.services.integration_service import resolve_integration
+    from app.models.integration import IntegrationType
+    from app.connectors.bookstack import connector_from_config
+
+    config = await resolve_integration(db, IntegrationType.bookstack, ctx.tenant.id)
+    if not config:
+        raise HTTPException(status_code=400, detail="Integração BookStack não configurada.")
+    connector = connector_from_config(config)
+    books = await connector.list_books()
+    return [{"id": b.id, "name": b.name, "slug": b.slug} for b in books]
+
+
+@router.get("/bookstack/books/{book_id}/chapters", response_model=list[dict])
+async def list_bookstack_chapters(
+    book_id: int,
+    ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
+    db:  Annotated[AsyncSession, Depends(get_db)],
+) -> list[dict]:
+    """List chapters inside a BookStack book."""
+    from app.services.integration_service import resolve_integration
+    from app.models.integration import IntegrationType
+    from app.connectors.bookstack import connector_from_config
+
+    config = await resolve_integration(db, IntegrationType.bookstack, ctx.tenant.id)
+    if not config:
+        raise HTTPException(status_code=400, detail="Integração BookStack não configurada.")
+    connector = connector_from_config(config)
+    chapters = await connector.list_chapters(book_id)
+    return [{"id": c.id, "name": c.name, "book_id": c.book_id} for c in chapters]
+
+
 @router.post("/analyses/{analysis_id}/resolve-kr", status_code=200)
 async def resolve_kr(
     analysis_id: UUID,
     ctx: Annotated[TenantContext, Depends(require_tenant_admin)],
     db:  Annotated[AsyncSession, Depends(get_db)],
+    book_id: int | None = Body(None),
+    chapter_id: int | None = Body(None),
 ) -> dict:
     """Publish the KR draft to BookStack, post a GLPI followup, and close the KR ticket.
 
@@ -415,7 +458,11 @@ async def resolve_kr(
 
     # 1. Publish to BookStack
     try:
-        draft = await doc_publisher.publish_draft(db, draft.id, ctx.tenant.id)
+        draft = await doc_publisher.publish_draft(
+            db, draft.id, ctx.tenant.id,
+            override_book_id=book_id,
+            override_chapter_id=chapter_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

@@ -57,10 +57,18 @@ export const glpiApi = {
   listKrDrafts: () =>
     apiClient.get<GlpiKrDraft[]>("/glpi/kr-drafts").then((r) => r.data),
 
-  resolveKr: (analysisId: string) =>
+  resolveKr: (analysisId: string, params: { book_id?: number; chapter_id?: number } = {}) =>
     apiClient
       .post<{ published: boolean; bookstack_page_url: string | null; followup_posted: boolean; kr_closed: boolean }>(
-        `/glpi/analyses/${analysisId}/resolve-kr`
+        `/glpi/analyses/${analysisId}/resolve-kr`,
+        params,
       )
       .then((r) => r.data),
+
+  // BookStack structure
+  listBookstackBooks: () =>
+    apiClient.get<{ id: number; name: string; slug: string }[]>("/glpi/bookstack/books").then((r) => r.data),
+
+  listBookstackChapters: (bookId: number) =>
+    apiClient.get<{ id: number; name: string; book_id: number }[]>(`/glpi/bookstack/books/${bookId}/chapters`).then((r) => r.data),
 };

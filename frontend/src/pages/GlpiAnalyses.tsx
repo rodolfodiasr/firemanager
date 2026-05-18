@@ -322,10 +322,143 @@ function FilterPill({
   );
 }
 
+// ── Publish KR Modal ──────────────────────────────────────────────────────────
+
+function PublishKrModal({
+  draft,
+  onClose,
+  onPublished,
+}: {
+  draft: GlpiKrDraft;
+  onClose: () => void;
+  onPublished: (result: { bookstack_page_url: string | null }) => void;
+}) {
+  const { data: integration } = useQuery({
+    queryKey: ["glpi-integration"],
+    queryFn: glpiApi.getIntegration,
+  });
+
+  const [bookId, setBookId]       = useState<number | "">(integration?.kr_bookstack_book_id ?? "");
+  const [chapterId, setChapterId] = useState<number | "">(integration?.kr_bookstack_chapter_id ?? "");
+
+  // Sync integration defaults when they load
+  const intgLoaded = !!integration;
+  useState(() => {
+    if (integration?.kr_bookstack_book_id) setBookId(integration.kr_bookstack_book_id);
+    if (integration?.kr_bookstack_chapter_id) setChapterId(integration.kr_bookstack_chapter_id);
+  });
+
+  const { data: books = [], isLoading: loadingBooks } = useQuery({
+    queryKey: ["bookstack-books"],
+    queryFn: glpiApi.listBookstackBooks,
+  });
+
+  const { data: chapters = [], isLoading: loadingChapters } = useQuery({
+    queryKey: ["bookstack-chapters", bookId],
+    queryFn: () => glpiApi.listBookstackChapters(bookId as number),
+    enabled: !!bookId,
+  });
+
+  const resolveMut = useMutation({
+    mutationFn: () =>
+      glpiApi.resolveKr(draft.glpi_analysis_id, {
+        book_id:    bookId    || undefined,
+        chapter_id: chapterId || undefined,
+      }),
+    onSuccess: (result) => {
+      toast.success("Documentação publicada e chamado KR fechado.");
+      onPublished(result);
+      onClose();
+    },
+    onError: () => toast.error("Falha ao publicar a documentação"),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">Publicar no BookStack</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg px-3 py-2">
+          <p className="text-xs font-medium text-gray-700 truncate">{draft.title}</p>
+          <p className="text-xs text-gray-400 mt-0.5">Origem: #{draft.glpi_ticket_id} — {draft.glpi_ticket_title}</p>
+        </div>
+
+        {/* Book selector */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Livro de destino</label>
+          {loadingBooks ? (
+            <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+              <Loader2 size={12} className="animate-spin" /> Carregando livros...
+            </div>
+          ) : books.length === 0 ? (
+            <p className="text-xs text-amber-600">BookStack não configurado ou sem livros disponíveis.</p>
+          ) : (
+            <select
+              value={bookId}
+              onChange={(e) => { setBookId(e.target.value ? Number(e.target.value) : ""); setChapterId(""); }}
+              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="">— Selecionar livro —</option>
+              {books.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Chapter selector */}
+        {bookId && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Capítulo (opcional)</label>
+            {loadingChapters ? (
+              <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                <Loader2 size={12} className="animate-spin" /> Carregando capítulos...
+              </div>
+            ) : (
+              <select
+                value={chapterId}
+                onChange={(e) => setChapterId(e.target.value ? Number(e.target.value) : "")}
+                className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="">— Sem capítulo (raiz do livro) —</option>
+                {chapters.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-2">
+          <button
+            onClick={onClose}
+            className="flex-1 border border-gray-300 text-gray-600 text-sm font-medium py-2 rounded-lg hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => resolveMut.mutate()}
+            disabled={resolveMut.isPending || books.length === 0}
+            className="flex-1 flex items-center justify-center gap-2 bg-brand-600 text-white text-sm font-semibold py-2 rounded-lg hover:bg-brand-700 disabled:opacity-60"
+          >
+            {resolveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            Publicar e Fechar KR
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── KR Drafts tab ─────────────────────────────────────────────────────────────
 
 function KrDraftsTab() {
   const qc = useQueryClient();
+  const [publishingDraft, setPublishingDraft] = useState<GlpiKrDraft | null>(null);
 
   const { data: drafts = [], isLoading } = useQuery({
     queryKey: ["glpi-kr-drafts"],
@@ -333,18 +466,11 @@ function KrDraftsTab() {
     refetchInterval: 30_000,
   });
 
-  const resolveMut = useMutation({
-    mutationFn: (analysisId: string) => glpiApi.resolveKr(analysisId),
-    onSuccess: (result, analysisId) => {
-      qc.invalidateQueries({ queryKey: ["glpi-kr-drafts"] });
-      qc.invalidateQueries({ queryKey: ["glpi-analyses"] });
-      toast.success("Documentação publicada e chamado KR fechado.");
-      if (result.bookstack_page_url) {
-        window.open(result.bookstack_page_url, "_blank");
-      }
-    },
-    onError: () => toast.error("Falha ao publicar a documentação"),
-  });
+  function handlePublished(result: { bookstack_page_url: string | null }) {
+    qc.invalidateQueries({ queryKey: ["glpi-kr-drafts"] });
+    qc.invalidateQueries({ queryKey: ["glpi-analyses"] });
+    if (result.bookstack_page_url) window.open(result.bookstack_page_url, "_blank");
+  }
 
   if (isLoading) {
     return (
@@ -369,6 +495,14 @@ function KrDraftsTab() {
   }
 
   return (
+    <>
+    {publishingDraft && (
+      <PublishKrModal
+        draft={publishingDraft}
+        onClose={() => setPublishingDraft(null)}
+        onPublished={handlePublished}
+      />
+    )}
     <div className="space-y-3">
       {drafts.map((draft) => (
         <div
@@ -408,25 +542,17 @@ function KrDraftsTab() {
 
           <div className="shrink-0 flex flex-col gap-2 items-end">
             <button
-              onClick={() => {
-                if (window.confirm("Publicar no BookStack e fechar o chamado KR no GLPI?")) {
-                  resolveMut.mutate(draft.glpi_analysis_id);
-                }
-              }}
-              disabled={resolveMut.isPending}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-60 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
+              onClick={() => setPublishingDraft(draft)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
             >
-              {resolveMut.isPending ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Send size={12} />
-              )}
+              <Send size={12} />
               Publicar e Fechar Chamado
             </button>
           </div>
         </div>
       ))}
     </div>
+    </>
   );
 }
 

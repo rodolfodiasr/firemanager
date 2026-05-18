@@ -90,8 +90,14 @@ async def publish_draft(
     db: AsyncSession,
     draft_id: UUID,
     tenant_id: UUID,
+    override_book_id: int | None = None,
+    override_chapter_id: int | None = None,
 ) -> AssistantDocDraft:
-    """Publica o draft aprovado no BookStack e atualiza status para 'published'."""
+    """Publica o draft aprovado no BookStack e atualiza status para 'published'.
+
+    override_book_id / override_chapter_id permitem que o analista escolha o destino
+    no momento da publicação, sobrescrevendo os defaults da integração.
+    """
     result = await db.execute(
         select(AssistantDocDraft).where(
             AssistantDocDraft.id == draft_id,
@@ -111,13 +117,21 @@ async def publish_draft(
     from app.connectors.bookstack import connector_from_config
     connector = connector_from_config(config)
 
-    book_id = int(config.get("book_id", 0))
+    # Override tem prioridade; depois draft.target_book_id; depois config padrão
+    book_id = override_book_id or draft.target_book_id or int(config.get("book_id", 0))
     if not book_id:
-        raise ValueError("book_id não configurado na integração BookStack.")
+        raise ValueError("book_id não configurado — escolha um livro de destino.")
 
-    chapter_id = config.get("doc_chapter_id")
-    if chapter_id:
-        chapter_id = int(chapter_id)
+    chapter_id: int | None = override_chapter_id or draft.target_chapter_id
+    if chapter_id is None:
+        raw = config.get("doc_chapter_id")
+        chapter_id = int(raw) if raw else None
+
+    # Persiste o destino escolhido no draft
+    if override_book_id:
+        draft.target_book_id = override_book_id
+    if override_chapter_id:
+        draft.target_chapter_id = override_chapter_id
 
     page = await connector.create_page(
         book_id=book_id,

@@ -1496,6 +1496,8 @@ type GlpiFormData = {
   // KR loop
   auto_create_kr: boolean;
   kr_category_id: string;
+  kr_bookstack_book_id: string;
+  kr_bookstack_chapter_id: string;
 };
 
 function GlpiIntegrationCard() {
@@ -1521,6 +1523,7 @@ function GlpiIntegrationCard() {
       auto_correlate_devices: true, unmatched_to_manual_queue: true,
       force_analysis_on_security: true, force_analysis_on_recurrent: false,
       auto_create_kr: false, kr_category_id: "",
+      kr_bookstack_book_id: "", kr_bookstack_chapter_id: "",
     },
   });
 
@@ -1553,6 +1556,8 @@ function GlpiIntegrationCard() {
       force_analysis_on_recurrent: existing.force_analysis_on_recurrent ?? false,
       auto_create_kr: existing.auto_create_kr ?? false,
       kr_category_id: existing.kr_category_id != null ? String(existing.kr_category_id) : "",
+      kr_bookstack_book_id: existing.kr_bookstack_book_id != null ? String(existing.kr_bookstack_book_id) : "",
+      kr_bookstack_chapter_id: existing.kr_bookstack_chapter_id != null ? String(existing.kr_bookstack_chapter_id) : "",
     });
   }, [open, existing]);
 
@@ -1579,6 +1584,8 @@ function GlpiIntegrationCard() {
         force_analysis_on_recurrent:  fd.force_analysis_on_recurrent,
         auto_create_kr:               fd.auto_create_kr,
         kr_category_id:               fd.kr_category_id ? parseInt(fd.kr_category_id) : null,
+        kr_bookstack_book_id:         fd.kr_bookstack_book_id ? parseInt(fd.kr_bookstack_book_id) : null,
+        kr_bookstack_chapter_id:      fd.kr_bookstack_chapter_id ? parseInt(fd.kr_bookstack_chapter_id) : null,
         ...(fd.password ? { password: fd.password } : {}),
       };
       if (existing) return glpiApi.updateIntegration(existing.id, payload);
@@ -1773,6 +1780,27 @@ function GlpiIntegrationCard() {
                     className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
                 </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <label className="text-xs text-gray-600 whitespace-nowrap">Livro padrão BookStack (ID):</label>
+                  <input
+                    type="number" min="1"
+                    {...register("kr_bookstack_book_id")}
+                    placeholder="Opcional"
+                    className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <label className="text-xs text-gray-600 whitespace-nowrap">Capítulo padrão BookStack (ID):</label>
+                  <input
+                    type="number" min="1"
+                    {...register("kr_bookstack_chapter_id")}
+                    placeholder="Opcional"
+                    className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-0.5 pl-0.5">
+                  O analista pode sobrescrever o destino no momento da publicação.
+                </p>
               </div>
             )}
 
