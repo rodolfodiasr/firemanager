@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.api import admin, ai_safety, alerts, assistant, assistant_docs, audit, auth, backup, bulk_jobs, category_roles, cloud_accounts, compliance, compliance_packs, config_migration, connectivity, database_connectors, device_groups, devices, dlp, documents, edge_agents, edge_gateway, enterprise, executive, file_shares, firewall_migration, firmware, glpi, glpi_widget, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, investigations, invite, knowledge, llm_configs, module_roles, network_segments, onboarding, operations, orchestrator, platform_config, playbooks, product, recommendations, remediation, rmm, rmm_groups, rmm_templates, security_infra, self_service, selfservice_portal, server_groups, server_operations, servers, siem, siem_syslog, sso_mappings, stripe_webhook, templates, tenants, variables, vm_migration, web_audit
+from app.api import admin, ai_safety, alerts, assistant, assistant_docs, audit, auth, backup, bulk_jobs, category_roles, cloud_accounts, compliance, compliance_packs, composite_investigation, config_migration, connectivity, cross_domain, database_connectors, device_groups, devices, dlp, documents, edge_agents, edge_gateway, enterprise, executive, file_shares, firewall_migration, firmware, glpi, glpi_widget, golden_bundles, golden_template, identity, identity_governance, inspect, integrations, investigations, invite, knowledge, llm_configs, module_roles, network_segments, onboarding, operations, orchestrator, platform_config, playbooks, product, recommendations, remediation, rmm, rmm_groups, rmm_templates, security_infra, self_service, selfservice_portal, server_groups, server_operations, servers, siem, siem_syslog, sso_mappings, stripe_webhook, templates, tenants, variables, vm_migration, web_audit
 from app.config import settings
 
 log = structlog.get_logger()
@@ -116,6 +116,8 @@ app.include_router(backup.router,              prefix="",                       
 app.include_router(llm_configs.admin_router,   prefix="/admin/llm-configs",             tags=["llm-configs"])
 app.include_router(llm_configs.router,         prefix="/llm-configs",                   tags=["llm-configs"])
 app.include_router(investigations.router,      prefix="/investigations",                 tags=["investigations"])
+app.include_router(cross_domain.router,        prefix="/investigations/cross-domain",     tags=["cross-domain"])
+app.include_router(composite_investigation.router, prefix="/investigations/composite",    tags=["composite-investigation"])
 app.include_router(edge_gateway.router,        prefix="",                                tags=["edge-gateway"])
 app.include_router(web_audit.router,           prefix="/web-audit",                      tags=["web-audit"])
 

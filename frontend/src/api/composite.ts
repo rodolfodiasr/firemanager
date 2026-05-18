@@ -53,29 +53,30 @@ export const compositeApi = {
   get: (id: string): Promise<CompositeInvestigation> =>
     apiClient.get(`/investigations/composite/${id}`).then((r) => r.data),
 
-  // Submete os findings de um sub-domínio
   submitFindings: (compositeId: string, subId: string, data: SubmitFindingsRequest): Promise<SubInvestigation> =>
-    apiClient.put(`/investigations/composite/${compositeId}/sub/${subId}/submit`, data).then((r) => r.data),
+    apiClient.post(`/investigations/composite/${compositeId}/sub/${subId}/submit`, data).then((r) => r.data),
 
-  // Escala o sub-domínio (especialista pede ajuda)
-  escalate: (compositeId: string, subId: string, reason: string): Promise<SubInvestigation> =>
-    apiClient.put(`/investigations/composite/${compositeId}/sub/${subId}/escalate`, { reason }).then((r) => r.data),
+  escalate: (compositeId: string, subId: string): Promise<SubInvestigation> =>
+    apiClient.post(`/investigations/composite/${compositeId}/sub/${subId}/escalate`).then((r) => r.data),
 
-  // N3 consolida todos os findings com IA
+  reopen: (compositeId: string, subId: string): Promise<SubInvestigation> =>
+    apiClient.post(`/investigations/composite/${compositeId}/sub/${subId}/reopen`).then((r) => r.data),
+
   consolidate: (id: string): Promise<CompositeInvestigation> =>
     apiClient.post(`/investigations/composite/${id}/consolidate`).then((r) => r.data),
 
-  // Gera plano de ação no Assistente IA a partir da consolidação
-  generateActionPlan: (id: string): Promise<{ assistant_session_id: string }> =>
+  generateActionPlan: (id: string): Promise<CompositeInvestigation> =>
     apiClient.post(`/investigations/composite/${id}/action-plan`).then((r) => r.data),
 
   resolve: (id: string): Promise<CompositeInvestigation> =>
     apiClient.post(`/investigations/composite/${id}/resolve`).then((r) => r.data),
 
+  chat: (id: string, message: string): Promise<{ response: string }> =>
+    apiClient.post(`/investigations/composite/${id}/chat`, { message }).then((r) => r.data),
+
   delete: (id: string): Promise<void> =>
     apiClient.delete(`/investigations/composite/${id}`).then(() => undefined),
 
-  // Lista sub-investigações atribuídas ao usuário atual
-  mySubInvestigations: (): Promise<(SubInvestigation & { composite_symptom: string })[]> =>
-    apiClient.get("/investigations/composite/my-tasks").then((r) => r.data),
+  mySubInvestigations: (): Promise<SubInvestigation[]> =>
+    apiClient.get("/investigations/composite/my-sub-investigations").then((r) => r.data),
 };

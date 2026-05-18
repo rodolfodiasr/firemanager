@@ -14,7 +14,6 @@ import {
   Globe,
   Brain,
   Layers,
-  GitMerge,
   HardDrive,
   ShieldCheck,
   ClipboardCheck,
@@ -156,8 +155,7 @@ const navSections: NavSection[] = [
     items: [
       { to: "/knowledge",               icon: Database,      label: "Base de Conhecimento"      },
       { to: "/assistant",               icon: Sparkles,      label: "Assistente IA"              },
-      { to: "/cross-domain",            icon: Layers,        label: "Investigação Cruzada",  beta: true, minRole: "analyst_n1" },
-      { to: "/composite-investigation", icon: GitMerge,      label: "Investigação Composta", beta: true, minRole: "analyst_n1" },
+      { to: "/multi-domain",             icon: Layers,        label: "Investigação Multi-domínio", beta: true, minRole: "analyst_n1" },
       { to: "/glpi",                    icon: MessageSquare, label: "Tickets IA"                },
       { to: "#", icon: Radar, label: "Análise de Regras IA", upcoming: "F29" },
     ],

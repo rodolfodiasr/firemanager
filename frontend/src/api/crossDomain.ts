@@ -50,6 +50,12 @@ export const crossDomainApi = {
   correlate: (id: string): Promise<CrossDomainSession> =>
     apiClient.post(`/investigations/cross-domain/${id}/correlate`).then((r) => r.data),
 
+  rerunDomain: (id: string, domain: CrossDomainAgentType, additionalContext?: string): Promise<CrossDomainSession> =>
+    apiClient.post(`/investigations/cross-domain/${id}/rerun/${domain}`, { additional_context: additionalContext ?? null }).then((r) => r.data),
+
+  chat: (id: string, domain: CrossDomainAgentType, message: string): Promise<{ response: string }> =>
+    apiClient.post(`/investigations/cross-domain/${id}/chat/${domain}`, { message }).then((r) => r.data),
+
   delete: (id: string): Promise<void> =>
     apiClient.delete(`/investigations/cross-domain/${id}`).then(() => undefined),
 };

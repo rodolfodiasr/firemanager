@@ -41,6 +41,7 @@ import { AdminBackupPage } from "./pages/AdminBackupPage";
 import { HelpCenterPage } from "./pages/HelpCenterPage";
 import { CrossDomainPage } from "./pages/CrossDomainPage";
 import { CompositeInvestigationPage } from "./pages/CompositeInvestigationPage";
+import { MultiDomainPage } from "./pages/MultiDomainPage";
 import { VaultPage } from "./pages/VaultPage";
 import { Sidebar } from "./components/layout/Sidebar";
 import { SupportBanner } from "./components/layout/SupportBanner";
@@ -119,8 +120,9 @@ export function AppRouter() {
       <Route path="/rmm-agent"             element={<ProtectedLayout><RmmAgent /></ProtectedLayout>} />
       <Route path="/admin-backup"          element={<ProtectedLayout><AdminBackupPage /></ProtectedLayout>} />
       <Route path="/help"                  element={<ProtectedLayout><HelpCenterPage /></ProtectedLayout>} />
-      <Route path="/cross-domain"          element={<ProtectedLayout><CrossDomainPage /></ProtectedLayout>} />
-      <Route path="/composite-investigation" element={<ProtectedLayout><CompositeInvestigationPage /></ProtectedLayout>} />
+      <Route path="/multi-domain"            element={<ProtectedLayout><MultiDomainPage /></ProtectedLayout>} />
+      <Route path="/cross-domain"            element={<Navigate to="/multi-domain" replace />} />
+      <Route path="/composite-investigation" element={<Navigate to="/multi-domain" replace />} />
       <Route path="/vault"                 element={<ProtectedLayout><VaultPage /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
