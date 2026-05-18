@@ -6,6 +6,7 @@ import { AppRouter } from "./router";
 import { useAuthStore } from "./store/authStore";
 import { StagingBanner } from "./components/layout/StagingBanner";
 import { AgentDrawer } from "./components/layout/AgentDrawer";
+import { UpdateBanner } from "./components/pwa/UpdateBanner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +42,7 @@ export default function App() {
         >
           Pular para o conteúdo
         </a>
+        <UpdateBanner />
         <StagingBanner />
         <AuthInit />
         <AppRouter />
