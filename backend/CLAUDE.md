@@ -182,6 +182,21 @@ O módulo de servidores é analítico — NÃO executa comandos de modificação
 - Zabbix JSON-RPC: v6.x (token no body) vs v7.x (Bearer header) — versão por tenant
 - Wazuh REST API: v4.x/v5.x com JWT
 
+### use_sudo — Escalação de privilégio SSH (migration 0090)
+
+Coluna `use_sudo BOOLEAN NOT NULL DEFAULT FALSE` na tabela `servers`. Quando `true`, todos os comandos diagnósticos são prefixados com `sudo`.
+
+**Como funciona (`ssh_linux.py`):**
+- `use_sudo=True` + `sudo_password` presente → `sudo -S <cmd>` + escreve a senha no stdin do canal (paramiko `stdin.write`)
+- `use_sudo=True` + sem senha → `sudo <cmd>` (assume NOPASSWD configurado)
+- Linhas `[sudo]` no stderr são filtradas antes de salvar o resultado
+
+**Onde a senha fica:** `sudo_password` é armazenada dentro do JSON de `server.encrypted_credentials` (campo Fernet), **não** é uma coluna separada. `creds.get("sudo_password", "")` em `server_analysis.py`.
+
+**Ping (`ping()`):** NÃO usa sudo — apenas `echo ok`. O endpoint `test_server` testa conectividade, não privilégio.
+
+**Cadeia de migrations:** … → `0089` (rmm_integration_id em investigation_sessions) → `0090` (use_sudo em servers)
+
 ---
 
 ## Importações circulares

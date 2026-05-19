@@ -408,14 +408,16 @@ Completamente opcional — devices sem edge_agent_id continuam funcionando como 
 ---
 
 ### Fase 43 — Integração GLPI com Análise de Chamados IA
-*Análise automática de chamados GLPI com Claude AI, enriquecimento de dados e bridge com o AI Assistant*
+*Análise automática de chamados GLPI com Claude AI, enriquecimento, bridge com AI Assistant, loop KB/KR e limpeza de chamados fechados*
 
 **Tabelas:**
-- `glpi_integrations` — configuração por tenant: URL, app_token, username, encrypted_password, filtros por prioridade/tipo/categoria, `poll_interval_minutes`, `lookback_hours`, `auto_analysis_enabled`, `enrich_zabbix`, `enrich_wazuh`, `enrich_device_logs`, `auto_correlate_devices`, `unmatched_to_manual_queue`, `force_analysis_on_security`, `force_analysis_on_recurrent`
-- `glpi_ticket_analyses` — resultado de análise por chamado: `glpi_ticket_id`, `glpi_itemtype` (Ticket/Problem/Change), `glpi_ticket_title`, `glpi_ticket_content`, status (`pending`/`pending_manual`/`analyzing`/`completed`/`failed`), `diagnostico`, `acoes_imediatas`, `plano_remediacao`, `causa_raiz`, `prevencao`, `confianca` (0–1), `is_security_incident`, `is_recurrent`, `recurrence_count`, `related_ticket_ids`, `glpi_followup_id`
+- `glpi_integrations` — configuração por tenant: URL, app_token, username, encrypted_password, filtros por prioridade/tipo/categoria, `poll_interval_minutes`, `lookback_hours`, `auto_analysis_enabled`, `enrich_zabbix`, `enrich_wazuh`, `enrich_device_logs`, `auto_correlate_devices`, `unmatched_to_manual_queue`, `force_analysis_on_security`, `force_analysis_on_recurrent`; campos KB/KR (migration 0094): `auto_create_kr` (bool), `kr_category_id` (int, ID de categoria GLPI para KRs), `kr_bookstack_book_id` (int, livro padrão BookStack), `kr_bookstack_chapter_id` (int, capítulo padrão BookStack)
+- `glpi_ticket_analyses` — resultado de análise por chamado: `glpi_ticket_id`, `glpi_itemtype` (Ticket/Problem/Change), `glpi_ticket_title`, `glpi_ticket_content`, status (`pending`/`pending_manual`/`analyzing`/`completed`/`failed`/`cancelled`), `diagnostico`, `acoes_imediatas`, `plano_remediacao`, `causa_raiz`, `prevencao`, `confianca` (0–1), `is_security_incident`, `is_recurrent`, `recurrence_count`, `related_ticket_ids`, `glpi_followup_id`; campos KR (migration 0094): `kb_status` (enum: none/draft/published), `kr_ticket_id` (int, ID do KR criado no GLPI), `kr_draft_id` (UUID FK → assistant_doc_drafts, rascunho BookStack)
+
+**Status `cancelled`:** adicionado ao enum `GlpiAnalysisStatus` como VARCHAR (`native_enum=False`) — não requer migration DDL. Marca chamados `pending`/`pending_manual` cujo ticket GLPI já foi fechado/resolvido; oculto por padrão na listagem.
 
 **Celery worker `glpi_sync.py`:**
-1. Para cada `GlpiIntegration` ativa: busca chamados abertos via `GlpiClient` (status: new/assigned/planned/pending; filtro por prioridade >= `min_priority`)
+1. **Part A — import guard:** `_process_ticket()` verifica campo `"12"` (status raw) do resultado da busca GLPI antes de criar registro; se `_is_glpi_item_closed(status, itemtype)` → retorna `"skipped"` sem persistir (Tickets: status ≥ 5 = Solved/Closed; Problems/Changes: status ≥ 6 = Closed)
 2. Skip de tickets já analisados (unique constraint `tenant_id + glpi_ticket_id`)
 3. Detecção de recorrência: busca chamados similares fechados (threshold: >= 2)
 4. Correlação automática com devices: extrai IPs/hostnames do título+conteúdo; cruza com devices gerenciados
@@ -423,12 +425,33 @@ Completamente opcional — devices sem edge_agent_id continuam funcionando como 
 6. Análise Claude: JSON estruturado com diagnostico, acoes_imediatas, plano_remediacao, causa_raiz, prevencao, confianca, is_security_incident
 7. Post do resultado como nota de acompanhamento no GLPI (`glpi_followup_id`)
 8. Persistência em `glpi_ticket_analyses`
+9. **Loop KB/KR:** se `auto_create_kr=True` e análise `is_security_incident` ou `is_recurrent` → gera rascunho BookStack (`AssistantDocDraft` via doc_publisher), cria KR no GLPI (`POST /glpi/ITILKnowledgeBase`), posta followup no chamado original com link
 
-**GlpiClient (`glpi_service.py`):** async context-manager para GLPI 11.0.4 REST API; auth com `initSession`; strip de HTML nos conteúdos de ticket; paginação automática.
+**Tarefa de limpeza `clean_stale_glpi_analyses` (Celery beat):**
+- Schedule: `crontab(minute="*/15")` — a cada 15 minutos
+- Cutoff: `_STALE_CUTOFF_MINUTES = 30` — analisa somente registros `pending`/`pending_manual` criados há mais de 30 minutos
+- Para cada análise elegível: chama `GlpiClient.get_item_status(ticket_id, itemtype)` — se item fechado → marca `status = cancelled` e loga `analysis_cancelled`
+- Agrupa por integração para reutilizar sessão GLPI; ignora integração inativa
+- Retorna `{"cancelled": N, "errors": N, "checked": N}` no resultado da task
+
+**GlpiClient (`glpi_service.py`):** async context-manager para GLPI 11.0.4 REST API; auth com `initSession`/`killSession`; strip de HTML nos conteúdos de ticket; paginação automática. Métodos adicionados:
+- `get_item_status(item_id, itemtype)` — retorna int de status atual via `GET /{itemtype}/{id}?get_hateoas=false`, ou `None` em erro
+- `set_ticket_status(ticket_id, status)` — atualiza status do ticket (existente)
+- `create_knowledge_record(title, content, category_id)` — cria KR na base de conhecimento GLPI
 
 **Bridge GLPI → AI Assistant (migration 0051):**
 Colunas adicionadas em `assistant_sessions`: `glpi_ticket_id`, `glpi_integration_id`, `glpi_itemtype`, `glpi_ticket_title`.
-Endpoint `POST /glpi/analyses/{id}/open-session` — cria ou reutiliza sessão do assistant pré-contextualizada com o chamado. Permite que o analista continue a investigação do chamado em linguagem natural dentro do Assistant.
+Endpoint `POST /glpi/analyses/{id}/open-chat` — cria ou reutiliza sessão do assistant pré-contextualizada com o chamado.
+
+**Frontend — `GlpiAnalyses.tsx`:**
+- Badge `cancelled`: `bg-gray-100 text-gray-400 line-through`, label "Cancelado"
+- Filtro pill "Cancelados" — passa `include_cancelled: true` ao `listAnalyses`
+- Aba "Registros KB" (`KrDraftsTab`): lista `GlpiKrDraft` com status `kb_status`, botão "Publicar no BookStack" abre `PublishKrModal`
+- `PublishKrModal`: seletor de livro e capítulo BookStack; chama `POST /glpi/analyses/{id}/resolve-kr`
+
+**Frontend — `Organisation.tsx` (aba GLPI):**
+- Campos `auto_create_kr`, `kr_category_id`, `kr_bookstack_book_id`, `kr_bookstack_chapter_id` no formulário de integração
+- Seletor de livro BookStack via `GET /glpi/bookstack/books`
 
 **Endpoints REST:**
 - `GET /glpi/integrations` — retorna config GLPI do tenant
@@ -436,10 +459,21 @@ Endpoint `POST /glpi/analyses/{id}/open-session` — cria ou reutiliza sessão d
 - `PATCH /glpi/integrations/{id}` — atualiza config
 - `DELETE /glpi/integrations/{id}` — remove config
 - `POST /glpi/integrations/{id}/test` — testa conexão com GLPI
-- `POST /glpi/integrations/{id}/run-analysis` — dispara análise manual
-- `GET /glpi/analyses` — lista análises (com filtros de status, tipo)
+- `POST /glpi/integrations/{id}/sync` — dispara sync manual
+- `GET /glpi/analyses` — lista análises; `?include_cancelled=true` exibe canceladas; padrão oculta
 - `GET /glpi/analyses/{id}` — detalhe de uma análise
-- `POST /glpi/analyses/{id}/open-session` — abre sessão Assistant vinculada ao ticket
+- `POST /glpi/analyses/{id}/run` — inicia análise manual para device_ids especificados
+- `POST /glpi/analyses/{id}/open-chat` — abre sessão Assistant vinculada ao ticket
+- `GET /glpi/kr-drafts` — lista rascunhos KR do tenant (`kb_status != none`)
+- `POST /glpi/analyses/{id}/resolve-kr` — publica rascunho no BookStack, posta followup no GLPI, fecha KR; aceita `book_id`/`chapter_id` opcionais para override de destino
+- `GET /glpi/bookstack/books` — lista livros BookStack disponíveis
+- `GET /glpi/bookstack/books/{book_id}/chapters` — lista capítulos de um livro
+
+**Celery beat schedules relacionados (`celery_app.py`):**
+```python
+"glpi-ticket-sync":   crontab(minute="*/5")   # sync de chamados abertos
+"glpi-cleanup-stale": crontab(minute="*/15")   # marca pending/pending_manual fechados como cancelled
+```
 
 ---
 
